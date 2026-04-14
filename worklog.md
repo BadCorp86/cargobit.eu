@@ -202,3 +202,42 @@ flowchart TD
 - SUPPORT_NOTIFICATION: Support benachrichtigen
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: permission-matrix-schema
+Agent: Main Agent
+Task: Permission-Matrix als JSON-Schema Dokumentation
+
+## Work Log:
+- Permission-Matrix als JSON Schema Draft-07 definiert
+- Kompakte Permission-Matrix für alle Rollen erstellt
+- Validierungsbeispiel dokumentiert
+- Integration in Hybrid-Security-Layer bestätigt
+
+## Permission-Matrix JSON Schema:
+```json
+{
+  "roles": ["ADMIN", "SUPPORT", "SHIPPER", "DISPATCHER", "DRIVER", "MARKETER"],
+  "permissions": {
+    "CREATE_TRANSPORT": { "allowedRoles": ["SHIPPER"] },
+    "MAKE_OFFER": { "allowedRoles": ["DISPATCHER"] },
+    "ACCEPT_OFFER": { "allowedRoles": ["SHIPPER"] },
+    "ASSIGN_DRIVER": { "allowedRoles": ["DISPATCHER"] },
+    "UPDATE_STATUS": { "allowedRoles": ["DRIVER", "DISPATCHER"] },
+    "VIEW_WALLET": { "allowedRoles": ["SHIPPER", "DISPATCHER", "ADMIN", "SUPPORT"] },
+    "INITIATE_PAYOUT": { "allowedRoles": ["SHIPPER", "ADMIN"] },
+    "MANAGE_VEHICLES": { "allowedRoles": ["DISPATCHER"] },
+    "MANAGE_USERS": { "allowedRoles": ["ADMIN"] },
+    "MANAGE_PLANS": { "allowedRoles": ["ADMIN"] }
+  }
+}
+```
+
+## Hybrid-Security-Layer Integration:
+```pseudo
+if not PermissionMatrix.allows(user.role, action):
+    return 403 Forbidden
+// Danach: Risk-Scoring, Mitigations, Block/Allow
+```
+
+### Status: ✅ DOKUMENTIERT & IMPLEMENTIERT
