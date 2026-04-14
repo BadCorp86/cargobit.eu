@@ -1,0 +1,136 @@
+{
+  "$id": "vehicleRequirements.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Fahrzeuganforderungen",
+  "description": "Schema für Fahrzeuganforderungen bei Transporten - CargoBit Platform",
+  "type": "object",
+  "properties": {
+    "vehicleType": {
+      "type": "array",
+      "description": "Erlaubte Fahrzeugtypen",
+      "items": {
+        "type": "string",
+        "enum": [
+          "sprinter",
+          "koffer",
+          "plane",
+          "curtainsider",
+          "kipper",
+          "silo",
+          "mulde",
+          "tankauflieger",
+          "autotransporter",
+          "tieflader",
+          "tiefbett",
+          "containerchassis",
+          "reefer",
+          "langauflieger",
+          "jumbo",
+          "ibc_transporter"
+        ]
+      },
+      "minItems": 1
+    },
+    "minPayload_kg": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Minimale Nutzlast in Kilogramm"
+    },
+    "minVolume_m3": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Minimales Ladevolumen in Kubikmetern"
+    },
+    "minLength_m": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Minimale Ladeflächenlänge in Metern"
+    },
+    "minWidth_m": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Minimale Ladeflächenbreite in Metern"
+    },
+    "minHeight_m": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Minimale Innenhöhe in Metern"
+    },
+    "adrRequired": {
+      "type": "boolean",
+      "default": false,
+      "description": "ADR-Zertifizierung erforderlich"
+    },
+    "adrClasses": {
+      "type": "array",
+      "description": "Erforderliche ADR-Klassen",
+      "items": {
+        "type": "string",
+        "enum": ["1", "2", "3", "4.1", "4.2", "4.3", "5.1", "5.2", "6.1", "6.2", "7", "8", "9"]
+      }
+    },
+    "tunnelCodes": {
+      "type": "array",
+      "description": "Erlaubte Tunnelcodes für Gefahrgut",
+      "items": {
+        "type": "string",
+        "enum": ["A", "B", "C", "D", "E"]
+      }
+    },
+    "coolingRequired": {
+      "type": "boolean",
+      "default": false,
+      "description": "Kühlung erforderlich"
+    },
+    "temperatureMin": {
+      "type": "number",
+      "description": "Minimale Temperatur in Grad Celsius"
+    },
+    "temperatureMax": {
+      "type": "number",
+      "description": "Maximale Temperatur in Grad Celsius"
+    },
+    "craneRequired": {
+      "type": "boolean",
+      "default": false,
+      "description": "Ladekran erforderlich"
+    },
+    "liftRequired": {
+      "type": "boolean",
+      "default": false,
+      "description": "Hebebühne erforderlich"
+    },
+    "rampRequired": {
+      "type": "boolean",
+      "default": false,
+      "description": "Laderampe erforderlich"
+    },
+    "escortVehicleRequired": {
+      "type": "boolean",
+      "default": false,
+      "description": "Begleitfahrzeug erforderlich (für Übergrößen)"
+    },
+    "palletSpaces": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Minimale Anzahl Palettenstellplätze"
+    },
+    "internationalAllowed": {
+      "type": "boolean",
+      "default": true,
+      "description": "Fahrzeug für internationale Fahrten zugelassen"
+    },
+    "emissionClass": {
+      "type": "string",
+      "description": "Erforderliche Abgasnorm",
+      "enum": ["EURO_3", "EURO_4", "EURO_5", "EURO_6", "EEV"]
+    },
+    "loadingSystem": {
+      "type": "string",
+      "description": "Erforderliches Beladungssystem",
+      "enum": ["floor", "ceiling", "side", "rear", "top"]
+    }
+  },
+  "required": ["vehicleType"],
+  "additionalProperties": false
+}

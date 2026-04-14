@@ -178,6 +178,40 @@ model User {
   completedTransports   Int                 @default(0)
   cancelledTransports   Int                 @default(0)
   
+  // === INTERNATIONAL FIELDS ===
+  // Driver License
+  driverLicenseClass    String?             // C, CE, C1, C1E, etc.
+  driverLicenseExpiry   DateTime?
+  driverCardNumber      String?
+  driverCardExpiry      DateTime?
+  
+  // ADR Certification
+  adrCertified          Boolean             @default(false)
+  adrClasses            String?             // JSON array: ["1", "3", "8"]
+  adrExpiry             DateTime?
+  
+  // International Permissions
+  internationalAllowed  Boolean             @default(false)
+  allowedCountries      String?             // JSON array: ["DE", "AT", "PL", "CZ"]
+  visaCountries         String?             // JSON array of countries requiring visa
+  
+  // Languages
+  spokenLanguages       String?             // JSON array: ["de", "en", "pl"]
+  
+  // Experience
+  yearsExperience       Int?
+  vehicleExperience     String?             // JSON array of vehicle types
+  countryExperience     String?             // JSON array of countries with experience
+  
+  // Damage History
+  damageCount           Int                 @default(0)
+  lastDamageAt          DateTime?
+  
+  // Current Status (for drivers)
+  isAvailable           Boolean             @default(true)
+  currentLocation       String?             // JSON: {lat, lng, timestamp, country}
+  currentRoute          String?             // Current route ID if on a job
+  
   // Timestamps
   lastLoginAt           DateTime?
   createdAt             DateTime            @default(now())
@@ -198,10 +232,13 @@ model User {
   supportTickets        SupportTicket[]
   marketingCampaigns    MarketingCampaign[]
   auditLogs             AuditLog[]
+  driverPermissions     DriverPermission[]
+  matchingResults       MatchingResult[]
   
   @@index([email])
   @@index([role])
   @@index([status])
+  @@index([isAvailable])
 }
 
 model Verification {
@@ -424,7 +461,20 @@ model Transport {
   
   // Requirements
   vehicleRequirements String?         // JSON with vehicle requirements
+  driverRequirements  String?         // JSON with driver requirements
+  internationalRequirements String?   // JSON with international requirements
   specialRequirements String?
+  
+  // International Transport
+  isInternational     Boolean           @default(false)
+  transitCountries    String?           // JSON array of transit countries
+  customsRequired     Boolean           @default(false)
+  customsDocuments    String?           // JSON array of required customs docs
+  
+  // Route Information
+  calculatedRoute     String?           // JSON: route details
+  tollCosts          Float?            // Calculated toll costs
+  tunnelRestrictions  String?           // JSON: tunnel code restrictions
   
   // Tracking
   currentStatus     String?
@@ -744,4 +794,173 @@ model PricingTier {
   updatedAt           DateTime          @updatedAt()
   
   @@index([plan])
+}
+
+// ============================================
+// INTERNATIONAL MATCHING
+// ============================================
+
+/// Driver permissions for specific countries
+model DriverPermission {
+  id              String    @id @default(cuid())
+  userId          String
+  
+  // Country Permission
+  countryCode     String    // ISO 2-letter code: DE, AT, PL, CZ, etc.
+  countryName     String    // Display name: Deutschland, Österreich, etc.
+  
+  // Permission Status
+  isAllowed       Boolean   @default(true)
+  allowedAt       DateTime?
+  expiresAt       DateTime?
+  
+  // Requirements
+  visaRequired    Boolean   @default(false)
+  visaValid       Boolean   @default(false)
+  visaExpiry      DateTime?
+  
+  // Experience
+  tripsCompleted  Int       @default(0)
+  lastTripAt      DateTime?
+  
+  // Documents
+  documentUrl     String?   // Permit/visa document
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt()
+  
+  user            User      @relation(fields: [userId], references: [id])
+  
+  @@unique([userId, countryCode])
+  @@index([userId])
+  @@index([countryCode])
+  @@index([isAllowed])
+}
+
+/// Matching results for transport-driver pairing
+model MatchingResult {
+  id              String    @id @default(cuid())
+  transportId     String
+  driverId        String
+  
+  // Match Score
+  matchScore      Float     // 0-100 score
+  matchReasons    String    // JSON array of matching reasons
+  
+  // Match Type
+  matchType       String    // EXACT, REGIONAL, RETURN_LOAD, INTERNATIONAL
+  
+  // Requirements Check
+  vehicleMatch    Boolean   @default(false)
+  driverMatch     Boolean   @default(false)
+  routeMatch      Boolean   @default(false)
+  internationalMatch Boolean @default(false)
+  
+  // International Checks
+  countryPermissionsOk Boolean @default(true)
+  documentsOk     Boolean   @default(true)
+  tunnelCodesOk   Boolean   @default(true)
+  
+  // Distance & Route
+  distanceToPickup Float?   // km to pickup location
+  estimatedArrival DateTime?
+  
+  // Bonus Factors
+  languageMatch   Boolean   @default(false)
+  experienceBonus Float     @default(0)
+  ratingBonus     Float     @default(0)
+  returnLoadBonus Float     @default(0)
+  
+  // Status
+  status          String    @default("PENDING") // PENDING, NOTIFIED, ACCEPTED, REJECTED, EXPIRED
+  notifiedAt      DateTime?
+  expiresAt       DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt()
+  
+  driver          User      @relation(fields: [driverId], references: [id])
+  
+  @@unique([transportId, driverId])
+  @@index([transportId])
+  @@index([driverId])
+  @@index([matchScore])
+  @@index([status])
+}
+
+// ============================================
+// TOLL & ROUTING
+// ============================================
+
+/// Toll system configurations
+model TollSystem {
+  id              String    @id @default(cuid())
+  countryCode     String    // ISO code
+  countryName     String
+  
+  systemName      String    // Toll Collect, eToll, myto, etc.
+  systemType      String    // DISTANCE, VIGNETTE, HYBRID
+  
+  // Rates
+  euro5Rate       Float?    // Rate per km for EURO 5
+  euro6Rate       Float?    // Rate per km for EURO 6
+  euro6eevRate    Float?    // Rate per km for EURO 6 EEV
+  
+  // Vignette
+  vignetteDaily   Float?
+  vignetteWeekly  Float?
+  vignetteMonthly Float?
+  vignetteYearly  Float?
+  
+  // Currency
+  currency        String    @default("EUR")
+  
+  // Information
+  websiteUrl      String?
+  description     String?
+  
+  isActive        Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt()
+  
+  @@unique([countryCode, systemName])
+  @@index([countryCode])
+}
+
+/// Border crossing information
+model BorderCrossing {
+  id              String    @id @default(cuid())
+  
+  fromCountry     String    // ISO code
+  toCountry       String    // ISO code
+  crossingName    String    // Name of border crossing
+  
+  // Location
+  latitude        Float?
+  longitude       Float?
+  
+  // Restrictions
+  adrAllowed      Boolean   @default(true)
+  tunnelCode      String?   // ADR tunnel code if applicable
+  
+  // Timing
+  open24h         Boolean   @default(true)
+  openingHours    String?   // JSON with opening hours
+  
+  // Wait Times
+  avgWaitMinutes  Int?
+  
+  // Customs
+  customsRequired Boolean   @default(true)
+  customsType     String?   // EU_INTERNAL, EU_EXTERNAL
+  
+  isActive        Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt()
+  
+  @@unique([fromCountry, toCountry, crossingName])
+  @@index([fromCountry])
+  @@index([toCountry])
 }

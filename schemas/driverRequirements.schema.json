@@ -1,0 +1,132 @@
+{
+  "$id": "driverRequirements.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Fahreranforderungen",
+  "description": "Schema für Fahreranforderungen bei Transporten - CargoBit Platform",
+  "type": "object",
+  "properties": {
+    "adrLicenseRequired": {
+      "type": "boolean",
+      "default": false,
+      "description": "ADR-Fahrerbescheinigung erforderlich"
+    },
+    "adrClasses": {
+      "type": "array",
+      "description": "Erforderliche ADR-Klassen auf Fahrerbescheinigung",
+      "items": {
+        "type": "string",
+        "enum": ["1", "2", "3", "4.1", "4.2", "4.3", "5.1", "5.2", "6.1", "6.2", "7", "8", "9"]
+      }
+    },
+    "languages": {
+      "type": "array",
+      "description": "Erforderliche Sprachkenntnisse",
+      "items": {
+        "type": "string",
+        "enum": ["de", "en", "pl", "cz", "ro", "sl", "sk", "tr", "el", "fr", "nl", "it", "es", "pt", "hu"]
+      }
+    },
+    "minLanguages": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Minimale Anzahl der zu beherrschenden Sprachen"
+    },
+    "internationalExperience": {
+      "type": "boolean",
+      "default": false,
+      "description": "Erfahrung mit internationalen Fahrten erforderlich"
+    },
+    "vehicleExperience": {
+      "type": "array",
+      "description": "Erforderliche Erfahrung mit Fahrzeugtypen",
+      "items": {
+        "type": "string",
+        "enum": [
+          "schuettgut",
+          "tank",
+          "kuehltransport",
+          "autotransport",
+          "tieflader",
+          "container",
+          "gefangut",
+          "sattelauflieger",
+          "koffer"
+        ]
+      }
+    },
+    "countryExperience": {
+      "type": "array",
+      "description": "Erforderliche Erfahrung in bestimmten Ländern (ISO-Codes)",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "noDamageHistory": {
+      "type": "boolean",
+      "default": false,
+      "description": "Keine Schadenshistorie erforderlich"
+    },
+    "maxDamageCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximale Anzahl erlaubter Schäden in der Historie"
+    },
+    "minRating": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 5,
+      "default": 0,
+      "description": "Minimale Bewertung (0-5 Sterne)"
+    },
+    "minCompletedTransports": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Minimale Anzahl abgeschlossener Transporte"
+    },
+    "validDriverCard": {
+      "type": "boolean",
+      "default": true,
+      "description": "Gültige Fahrerkarte erforderlich"
+    },
+    "driverLicenseClass": {
+      "type": "array",
+      "description": "Erforderliche Führerscheinklassen",
+      "items": {
+        "type": "string",
+        "enum": ["C1", "C1E", "C", "CE", "D1", "D1E", "D", "DE"]
+      }
+    },
+    "visaRequired": {
+      "type": "boolean",
+      "default": false,
+      "description": "Visum für bestimmte Länder erforderlich"
+    },
+    "visaCountries": {
+      "type": "array",
+      "description": "Länder für die Visum erforderlich ist (ISO-Codes)",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "backgroundCheck": {
+      "type": "boolean",
+      "default": false,
+      "description": "Hintergrundüberprüfung erforderlich"
+    },
+    "minAge": {
+      "type": "integer",
+      "minimum": 18,
+      "maximum": 99,
+      "description": "Mindestalter des Fahrers"
+    },
+    "minDrivingExperience": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Minimale Fahrerfahrung in Jahren"
+    }
+  },
+  "additionalProperties": false
+}

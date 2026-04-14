@@ -1,0 +1,171 @@
+{
+  "$id": "internationalRequirements.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Internationale Anforderungen",
+  "description": "Schema für internationale Transportanforderungen - CargoBit Platform",
+  "type": "object",
+  "properties": {
+    "isInternational": {
+      "type": "boolean",
+      "default": false,
+      "description": "Transport ist international"
+    },
+    "transitCountries": {
+      "type": "array",
+      "description": "Durchfahrtsländer (ISO-Codes)",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "tollSystems": {
+      "type": "array",
+      "description": "Erforderliche Mautsysteme",
+      "items": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$",
+            "description": "Land (ISO-Code)"
+          },
+          "system": {
+            "type": "string",
+            "enum": [
+              "toll_collect",
+              "etoll",
+              "myto_cz",
+              "vignettes",
+              "via_toll",
+              "e_toll_pl",
+              "telepass",
+              "tis_pl"
+            ],
+            "description": "Mautsystem"
+          },
+          "required": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": ["country", "system"]
+      }
+    },
+    "customsRequired": {
+      "type": "boolean",
+      "default": false,
+      "description": "Zollabfertigung erforderlich"
+    },
+    "customsDocuments": {
+      "type": "array",
+      "description": "Erforderliche Zolldokumente",
+      "items": {
+        "type": "string",
+        "enum": [
+          "T1",
+          "T2",
+          "EX",
+          "import_declaration",
+          "export_declaration",
+          "transit_document",
+          "carnet_tir",
+          "carnet_ata"
+        ]
+      }
+    },
+    "cmrRequired": {
+      "type": "boolean",
+      "default": true,
+      "description": "CMR-Frachtbrief erforderlich"
+    },
+    "adrDocuments": {
+      "type": "boolean",
+      "default": false,
+      "description": "ADR-Dokumente erforderlich"
+    },
+    "insuranceRequired": {
+      "type": "object",
+      "description": "Versicherungsanforderungen",
+      "properties": {
+        "cmr_insurance": {
+          "type": "boolean",
+          "default": true
+        },
+        "cargo_insurance": {
+          "type": "boolean",
+          "default": false
+        },
+        "minCoverage_eur": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "borderCrossings": {
+      "type": "array",
+      "description": "Grenzübergänge",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fromCountry": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "toCountry": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "crossingPoint": {
+            "type": "string",
+            "description": "Name des Grenzübergangs"
+          },
+          "adrAllowed": {
+            "type": "boolean",
+            "default": true,
+            "description": "ADR-Transport erlaubt"
+          },
+          "tunnelRestriction": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["A", "B", "C", "D", "E"]
+            }
+          }
+        },
+        "required": ["fromCountry", "toCountry"]
+      }
+    },
+    "routePreferences": {
+      "type": "object",
+      "description": "Routenpräferenzen",
+      "properties": {
+        "avoidTolls": {
+          "type": "boolean",
+          "default": false
+        },
+        "avoidFerries": {
+          "type": "boolean",
+          "default": false
+        },
+        "avoidTunnels": {
+          "type": "boolean",
+          "default": false
+        },
+        "preferHighways": {
+          "type": "boolean",
+          "default": true
+        },
+        "routeType": {
+          "type": "string",
+          "enum": ["fastest", "shortest", "eco", "balanced"],
+          "default": "balanced"
+        }
+      }
+    },
+    "deliveryInstructions": {
+      "type": "string",
+      "description": "Spezielle Lieferanweisungen für internationale Transporte"
+    }
+  },
+  "additionalProperties": false
+}
