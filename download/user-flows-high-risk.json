@@ -1,0 +1,806 @@
+{
+  "$schema": "https://cargbit.com/user-flows",
+  "name": "CargoBit Risk Dashboard - Interactive User Flows",
+  "version": "1.0.0",
+  "description": "High-Risk Case Handling Flows mit UI-Zuständen, Backend-Calls und Entscheidungen",
+
+  "flows": {
+
+    "flowA_highRiskBlocked": {
+      "name": "High-Risk Case Handling - Aktion blockiert",
+      "trigger": "Nutzer führt sicherheitsrelevante Aktion aus",
+      "description": "Vollständiger Flow wenn eine Aktion aufgrund hohem Risk-Score blockiert wird",
+      
+      "actors": ["User", "UI", "Frontend", "SecurityGateway", "RiskEngine", "NotificationService", "Support", "Dashboard"],
+      
+      "steps": [
+        {
+          "step": 1,
+          "name": "Nutzer initiiert Aktion",
+          "actor": "User",
+          "action": "Klickt auf 'Angebot akzeptieren' Button",
+          "example": "ACCEPT_OFFER auf Transport t_4821",
+          
+          "uiState": {
+            "component": "Button",
+            "state": "default → loading",
+            "text": "Angebot akzeptieren",
+            "loadingText": "Wird geprüft...",
+            "disabled": false
+          },
+          
+          "context": {
+            "user": {
+              "id": "u_2847",
+              "role": "SHIPPER_COMPANY",
+              "companyId": "c_0892"
+            },
+            "action": "ACCEPT_OFFER",
+            "entity": {
+              "type": "transport",
+              "id": "t_4821"
+            },
+            "context": {
+              "amount": 52000,
+              "ibanAgeHours": 12,
+              "carrierId": "c_1456"
+            }
+          }
+        },
+
+        {
+          "step": 2,
+          "name": "Frontend ruft Security Gateway",
+          "actor": "Frontend",
+          "action": "POST /security/check",
+          
+          "apiCall": {
+            "method": "POST",
+            "endpoint": "http://localhost:3004/security/check",
+            "headers": {
+              "Authorization": "Bearer srv_transport_service_token_xxx",
+              "Content-Type": "application/json",
+              "X-Correlation-ID": "corr_1713182400_abc123"
+            },
+            "body": {
+              "requestId": "corr_1713182400_abc123",
+              "user": {
+                "id": "u_2847",
+                "role": "SHIPPER_COMPANY",
+                "companyId": "c_0892"
+              },
+              "action": "ACCEPT_OFFER",
+              "entity": {
+                "type": "transport",
+                "id": "t_4821",
+                "context": {
+                  "amount": 52000,
+                  "ibanAgeHours": 12,
+                  "carrierId": "c_1456"
+                }
+              }
+            }
+          }
+        },
+
+        {
+          "step": 3,
+          "name": "Security Gateway prüft Permission",
+          "actor": "SecurityGateway",
+          "action": "Permission Matrix Check",
+          
+          "logic": {
+            "check": "PERMISSION_MATRIX[SHIPPER_COMPANY][ACCEPT_OFFER]",
+            "result": true,
+            "description": "Shipper darf Angebote annehmen"
+          }
+        },
+
+        {
+          "step": 4,
+          "name": "Security Gateway ruft Risk Engine",
+          "actor": "SecurityGateway",
+          "action": "POST /risk/evaluate",
+          
+          "apiCall": {
+            "method": "POST",
+            "endpoint": "http://localhost:3003/risk/evaluate",
+            "timeout": "2000ms",
+            "body": {
+              "entityType": "TRANSPORT",
+              "entityId": "t_4821",
+              "context": {
+                "amount": 52000,
+                "ibanAgeHours": 12,
+                "carrierId": "c_1456"
+              }
+            }
+          }
+        },
+
+        {
+          "step": 5,
+          "name": "Risk Engine evaluiert Regeln",
+          "actor": "RiskEngine",
+          "action": "Rule Evaluation",
+          
+          "evaluation": {
+            "rulesTriggered": [
+              {
+                "id": "rule_high_amount",
+                "name": "high_amount",
+                "weight": 25,
+                "condition": "amount > 50000",
+                "actualValue": 52000
+              },
+              {
+                "id": "rule_new_iban",
+                "name": "new_iban",
+                "weight": 15,
+                "condition": "ibanAgeHours < 24",
+                "actualValue": 12
+              },
+              {
+                "id": "rule_fraud_flags",
+                "name": "fraud_flags",
+                "weight": 20,
+                "condition": "existingFlags > 0",
+                "actualValue": 1
+              },
+              {
+                "id": "rule_new_route",
+                "name": "new_route",
+                "weight": 15,
+                "condition": "routeFirstTime === true",
+                "actualValue": true
+              }
+            ],
+            "totalScore": 81,
+            "riskLevel": "RED",
+            "recommendation": "BLOCK"
+          }
+        },
+
+        {
+          "step": 6,
+          "name": "Security Gateway entscheidet",
+          "actor": "SecurityGateway",
+          "action": "Hybrid Decision",
+          
+          "decision": {
+            "allowed": false,
+            "decision": "blocked",
+            "reason": "Risk Score 81 >= 61 (RED threshold)"
+          }
+        },
+
+        {
+          "step": 7,
+          "name": "High-Risk Event Handler triggert",
+          "actor": "SecurityGateway",
+          "action": "Automatische Benachrichtigungen",
+          
+          "notifications": {
+            "supportTicket": {
+              "created": true,
+              "id": "st_89234",
+              "priority": "high",
+              "assignedTeam": "security-support"
+            },
+            "email": {
+              "sent": true,
+              "to": ["security-team@cargbit.com", "support@cargbit.com"],
+              "subject": "[High Risk] Aktion blockiert – Score 81 – TRANSPORT t_4821"
+            },
+            "slack": {
+              "sent": true,
+              "channel": "#security-alerts",
+              "message": "🚨 High Risk Detected\nTRANSPORT: t_4821\nScore: 81\nRules: high_amount, new_iban, fraud_flags, new_route\nAction blocked: ACCEPT_OFFER"
+            },
+            "sms": {
+              "sent": false,
+              "reason": "Score < 90, not critical"
+            }
+          }
+        },
+
+        {
+          "step": 8,
+          "name": "Response an Frontend",
+          "actor": "SecurityGateway",
+          "action": "HTTP Response",
+          
+          "response": {
+            "status": 403,
+            "body": {
+              "allowed": false,
+              "decision": "blocked",
+              "errorCode": "HIGH_RISK_BLOCKED",
+              "message": "Action blocked due to high risk. Case forwarded to support.",
+              "correlationId": "corr_1713182400_abc123",
+              "risk": {
+                "score": 81,
+                "level": "RED",
+                "triggeredRules": ["high_amount", "new_iban", "fraud_flags", "new_route"]
+              },
+              "supportTicketId": "st_89234",
+              "eventFlow": {
+                "ticket": {
+                  "id": "st_89234",
+                  "priority": "high"
+                },
+                "notifications": {
+                  "email": { "id": "email_1713182400", "status": "sent" },
+                  "slack": { "id": "slack_1713182400", "status": "sent" },
+                  "sms": false
+                }
+              }
+            }
+          }
+        },
+
+        {
+          "step": 9,
+          "name": "UI zeigt Block-State",
+          "actor": "UI",
+          "action": "Modal anzeigen",
+          
+          "uiState": {
+            "component": "BlockedModal",
+            "type": "error",
+            
+            "header": {
+              "icon": "alert-triangle",
+              "iconColor": "#E74C3C",
+              "title": "🚨 Aktion blockiert"
+            },
+            
+            "content": {
+              "message": "Diese Aktion wurde aus Sicherheitsgründen gestoppt.",
+              "subMessage": "Unser Team prüft den Fall.",
+              "ticketId": "st_89234",
+              "correlationId": "corr_1713182400_abc123"
+            },
+            
+            "details": {
+              "expandable": true,
+              "label": "Details anzeigen",
+              "content": {
+                "riskScore": 81,
+                "riskLevel": "RED",
+                "triggeredRules": ["high_amount", "new_iban", "fraud_flags", "new_route"]
+              }
+            },
+            
+            "actions": {
+              "primary": {
+                "label": "OK",
+                "action": "close"
+              },
+              "secondary": {
+                "label": "Support kontaktieren",
+                "action": "openSupportChat"
+              }
+            }
+          },
+          
+          "tooltip": {
+            "trigger": "info-icon",
+            "content": "Risk Score 81 – ausgelöste Regeln: new_iban (+15), high_amount (+25), fraud_flags (+20), new_route (+15)"
+          }
+        },
+
+        {
+          "step": 10,
+          "name": "Dashboard aktualisiert",
+          "actor": "Dashboard",
+          "action": "Real-time Update",
+          
+          "updates": {
+            "kpiCards": {
+              "redEntities": {
+                "action": "increment",
+                "value": 1
+              }
+            },
+            "highRiskTable": {
+              "action": "addRow",
+              "row": {
+                "entityType": "TRANSACTION",
+                "entityId": "t_4821",
+                "score": 81,
+                "level": "RED",
+                "lastEvent": "Just now"
+              }
+            },
+            "recentEvents": {
+              "action": "prepend",
+              "event": {
+                "type": "rule_triggered",
+                "entity": "t_4821",
+                "rules": ["high_amount", "new_iban"],
+                "timestamp": "now"
+              }
+            }
+          }
+        }
+      ],
+
+      "endStates": {
+        "success": false,
+        "userAction": "Warten auf Support-Entscheidung",
+        "nextFlow": "flowB_supportReview"
+      }
+    },
+
+    "flowB_supportReview": {
+      "name": "Support prüft High-Risk Fall",
+      "trigger": "Support öffnet High-Risk Ticket",
+      "description": "Support prüft den Fall und entscheidet über Freigabe, Verifikation oder Sperre",
+      
+      "actors": ["Support", "UI", "Dashboard", "RiskProfile", "Backend", "User"],
+      
+      "steps": [
+        {
+          "step": 1,
+          "name": "Support öffnet Ticket",
+          "actor": "Support",
+          "action": "Klickt auf Ticket-Benachrichtigung",
+          
+          "entryPoints": {
+            "email": {
+              "link": "https://cargbit.freshdesk.com/a/tickets/st_89234"
+            },
+            "slack": {
+              "button": "View Ticket",
+              "link": "https://admin.cargbit.com/risk/t_4821"
+            },
+            "dashboard": {
+              "table": "High Risk Cases",
+              "row": "t_4821"
+            }
+          }
+        },
+
+        {
+          "step": 2,
+          "name": "UI zeigt Risk Profile",
+          "actor": "UI",
+          "action": "Risk Profile Detail Page",
+          
+          "uiState": {
+            "component": "RiskProfileDetail",
+            
+            "scoreCard": {
+              "score": 81,
+              "level": "RED",
+              "circleColor": "#E74C3C",
+              "statusBadge": "BLOCKED",
+              "lastUpdated": "2024-01-15 14:32"
+            },
+            
+            "triggeredRules": [
+              {
+                "name": "high_amount",
+                "weight": 25,
+                "description": "Betrag > 50.000€",
+                "context": { "amount": 52000 }
+              },
+              {
+                "name": "new_iban",
+                "weight": 15,
+                "description": "IBAN < 24h alt",
+                "context": { "ibanAgeHours": 12 }
+              },
+              {
+                "name": "fraud_flags",
+                "weight": 20,
+                "description": "Vorhandene Fraud-Flags",
+                "context": { "existingFlags": 1 }
+              },
+              {
+                "name": "new_route",
+                "weight": 15,
+                "description": "Route zum ersten Mal",
+                "context": { "firstTimeRoute": true }
+              }
+            ],
+            
+            "entityDetails": {
+              "type": "TRANSPORT",
+              "id": "t_4821",
+              "user": "u_2847",
+              "company": "Mustermann Logistics GmbH",
+              "amount": "52.000€",
+              "carrier": "FastCargo AG",
+              "route": "München → Hamburg"
+            },
+            
+            "supportTicket": {
+              "id": "st_89234",
+              "status": "open",
+              "priority": "high",
+              "sla": "4h remaining"
+            }
+          }
+        },
+
+        {
+          "step": 3,
+          "name": "Support entscheidet",
+          "actor": "Support",
+          "action": "Wählt eine der 3 Optionen",
+          
+          "decisions": {
+            "option1_unlock": {
+              "label": "Entsperren",
+              "buttonStyle": "primary",
+              "condition": "Fall ist legitim, Nutzer bekannt, keine Bedenken",
+              
+              "confirmDialog": {
+                "title": "Entsperren bestätigen?",
+                "message": "Der Risk-Score wird auf GREEN zurückgesetzt und die Aktion kann ausgeführt werden.",
+                "requireReason": true,
+                "reasonPlaceholder": "Grund für Freigabe..."
+              },
+              
+              "apiCall": {
+                "method": "POST",
+                "endpoint": "/risk/override",
+                "body": {
+                  "entityId": "t_4821",
+                  "entityType": "TRANSACTION",
+                  "newScore": 15,
+                  "reason": "Legitimer Geschäftspartner, IBAN verifiziert"
+                }
+              },
+              
+              "result": {
+                "riskLevel": "GREEN",
+                "score": 15,
+                "auditLog": "Manual override by support@user",
+                "ticketStatus": "resolved"
+              },
+              
+              "nextFlow": "flowC_retryAfterUnlock"
+            },
+            
+            "option2_verify": {
+              "label": "Verifikation anfordern",
+              "buttonStyle": "secondary",
+              "condition": "Nutzer muss Identität oder Dokument nachreichen",
+              
+              "dialog": {
+                "title": "Verifikation anfordern",
+                "message": "Wähle die benötigte Verifikation:",
+                "options": [
+                  { "id": "identity", "label": "Identitätsnachweis" },
+                  { "id": "iban", "label": "IBAN-Bestätigung" },
+                  { "id": "company", "label": "Firmendokumente" },
+                  { "id": "other", "label": "Sonstiges" }
+                ],
+                "messageToUser": {
+                  "placeholder": "Nachricht an den Nutzer..."
+                }
+              },
+              
+              "apiCall": {
+                "method": "POST",
+                "endpoint": "/verification/request",
+                "body": {
+                  "userId": "u_2847",
+                  "entityId": "t_4821",
+                  "verificationType": "iban",
+                  "message": "Bitte laden Sie eine aktuelle IBAN-Bestätigung hoch."
+                }
+              },
+              
+              "result": {
+                "ticketStatus": "in_progress",
+                "userNotification": "Verifikation angefordert"
+              }
+            },
+            
+            "option3_block": {
+              "label": "Nutzer sperren",
+              "buttonStyle": "danger",
+              "condition": "Verdacht auf Betrug, Multiple Verstöße",
+              
+              "confirmDialog": {
+                "title": "Nutzer wirklich sperren?",
+                "message": "Diese Aktion wird den Nutzer vollständig sperren. Alle laufenden Aktionen werden abgebrochen.",
+                "requireReason": true,
+                "reasonPlaceholder": "Grund für Sperre...",
+                "severity": "critical"
+              },
+              
+              "apiCall": {
+                "method": "POST",
+                "endpoint": "/user/block",
+                "body": {
+                  "userId": "u_2847",
+                  "reason": "Verdacht auf Betrug - Multiple Fraud-Flags",
+                  "blockType": "full"
+                }
+              },
+              
+              "result": {
+                "userStatus": "BLOCKED",
+                "riskLevel": "RED",
+                "auditLog": "User blocked by support@user",
+                "ticketStatus": "resolved"
+              }
+            }
+          }
+        },
+
+        {
+          "step": 4,
+          "name": "Nutzer erhält Feedback",
+          "actor": "User",
+          "action": "Benachrichtigung erhalten",
+          
+          "notifications": {
+            "unlock": {
+              "email": {
+                "subject": "Deine Anfrage wurde genehmigt",
+                "body": "Du kannst jetzt fortfahren und das Angebot akzeptieren."
+              },
+              "inApp": {
+                "banner": "✅ Deine Anfrage wurde genehmigt. Du kannst jetzt fortfahren.",
+                "action": "Jetzt fortfahren"
+              }
+            },
+            
+            "verify": {
+              "email": {
+                "subject": "Verifikation erforderlich",
+                "body": "Bitte lade ein aktuelles Dokument hoch, um fortzufahren."
+              },
+              "inApp": {
+                "banner": "⚠️ Verifikation erforderlich. Bitte Dokumente hochladen.",
+                "action": "Dokumente hochladen"
+              }
+            },
+            
+            "block": {
+              "email": {
+                "subject": "Dein Konto wurde gesperrt",
+                "body": "Bei Fragen kontaktiere bitte unseren Support."
+              },
+              "inApp": {
+                "modal": "🚫 Dein Konto wurde gesperrt. Bei Fragen wende dich an support@cargbit.com."
+              }
+            }
+          }
+        }
+      ],
+
+      "endStates": {
+        "unlock": {
+          "success": true,
+          "nextFlow": "flowC_retryAfterUnlock"
+        },
+        "verify": {
+          "success": "pending",
+          "nextFlow": "flowD_verificationFlow"
+        },
+        "block": {
+          "success": false,
+          "terminal": true
+        }
+      }
+    },
+
+    "flowC_retryAfterUnlock": {
+      "name": "Nutzer versucht Aktion erneut",
+      "trigger": "Nutzer wurde freigegeben und versucht Aktion erneut",
+      "description": "Flow wenn der Nutzer nach Freigabe die Aktion erneut ausführt",
+      
+      "actors": ["User", "UI", "SecurityGateway", "RiskEngine"],
+      
+      "steps": [
+        {
+          "step": 1,
+          "name": "Nutzer erhält Freigabe",
+          "actor": "User",
+          "action": "Sieht Banner in App",
+          
+          "uiState": {
+            "component": "SuccessBanner",
+            "message": "✅ Deine Anfrage wurde genehmigt. Du kannst jetzt fortfahren.",
+            "action": {
+              "label": "Jetzt fortfahren",
+              "link": "/transports/t_4821"
+            }
+          }
+        },
+
+        {
+          "step": 2,
+          "name": "Nutzer navigiert zu Aktion",
+          "actor": "UI",
+          "action": "Zeigt entsperrtes UI",
+          
+          "uiState": {
+            "component": "TransportDetail",
+            "statusBadge": {
+              "previous": "BLOCKED",
+              "current": "UNLOCKED",
+              "color": "#2ECC71"
+            },
+            "actionButton": {
+              "label": "Angebot akzeptieren",
+              "state": "enabled",
+              "badge": "Freigegeben"
+            }
+          }
+        },
+
+        {
+          "step": 3,
+          "name": "Nutzer klickt erneut",
+          "actor": "User",
+          "action": "Klickt auf 'Angebot akzeptieren'",
+          
+          "apiCall": {
+            "method": "POST",
+            "endpoint": "/security/check",
+            "body": {
+              "user": { "id": "u_2847", "role": "SHIPPER_COMPANY" },
+              "action": "ACCEPT_OFFER",
+              "entity": { "type": "transport", "id": "t_4821" }
+            }
+          }
+        },
+
+        {
+          "step": 4,
+          "name": "Hybrid-Layer prüft erneut",
+          "actor": "SecurityGateway",
+          "action": "Permission + Risk Check",
+          
+          "evaluation": {
+            "permission": {
+              "check": "PERMISSION_MATRIX[SHIPPER_COMPANY][ACCEPT_OFFER]",
+              "result": true
+            },
+            "risk": {
+              "previousScore": 81,
+              "currentScore": 15,
+              "reason": "Manual override applied - rules reset"
+            }
+          }
+        },
+
+        {
+          "step": 5,
+          "name": "Aktion wird ausgeführt",
+          "actor": "SecurityGateway",
+          "action": "Allow Request",
+          
+          "response": {
+            "status": 200,
+            "body": {
+              "allowed": true,
+              "decision": "allowed",
+              "risk": {
+                "score": 15,
+                "level": "GREEN",
+                "triggeredRules": []
+              },
+              "correlationId": "corr_1713182500_xyz789"
+            }
+          }
+        },
+
+        {
+          "step": 6,
+          "name": "UI zeigt Erfolg",
+          "actor": "UI",
+          "action": "Success State",
+          
+          "uiState": {
+            "component": "SuccessModal",
+            "icon": "check-circle",
+            "iconColor": "#2ECC71",
+            "title": "✔ Angebot erfolgreich akzeptiert",
+            "message": "Der Transport wurde erfolgreich gebucht.",
+            "actions": {
+              "primary": {
+                "label": "Transport anzeigen",
+                "link": "/transports/t_4821"
+              }
+            }
+          }
+        }
+      ],
+
+      "endStates": {
+        "success": true,
+        "userAction": "Transport ist aktiv",
+        "auditLog": "Transaction completed successfully"
+      }
+    }
+
+  },
+
+  "uiStateLibrary": {
+    "BlockedModal": {
+      "description": "Modal für blockierte Aktionen",
+      "variants": ["high_risk", "permission_denied", "service_unavailable"],
+      "animation": "slideIn 0.3s ease-out"
+    },
+    
+    "SuccessBanner": {
+      "description": "Banner für erfolgreiche Freigabe",
+      "variants": ["unlock", "verification_approved"],
+      "autoDismiss": "5s"
+    },
+    
+    "RiskScoreCircle": {
+      "description": "Animierte Score-Anzeige",
+      "animation": "progress 0.5s ease-out",
+      "colorTransition": "stroke 0.3s ease"
+    },
+
+    "Button": {
+      "states": ["default", "hover", "active", "disabled", "loading"],
+      "animations": {
+        "loading": "spin 1s linear infinite",
+        "click": "scale(0.98) 100ms"
+      }
+    }
+  },
+
+  "apiEndpoints": {
+    "securityCheck": {
+      "method": "POST",
+      "path": "/security/check",
+      "auth": "Service Token",
+      "rateLimit": "100/10s"
+    },
+    "riskEvaluate": {
+      "method": "POST",
+      "path": "/risk/evaluate",
+      "auth": "Internal",
+      "timeout": "2000ms"
+    },
+    "riskOverride": {
+      "method": "POST",
+      "path": "/risk/override",
+      "auth": "Admin/Support",
+      "audit": true
+    },
+    "verificationRequest": {
+      "method": "POST",
+      "path": "/verification/request",
+      "auth": "Support"
+    },
+    "userBlock": {
+      "method": "POST",
+      "path": "/user/block",
+      "auth": "Admin",
+      "audit": true
+    }
+  },
+
+  "errorCodes": {
+    "PERMISSION_DENIED": {
+      "httpStatus": 403,
+      "message": "User role does not have permission for this action"
+    },
+    "HIGH_RISK_BLOCKED": {
+      "httpStatus": 403,
+      "message": "Action blocked due to high risk. Case forwarded to support."
+    },
+    "SECURITY_SERVICE_UNAVAILABLE": {
+      "httpStatus": 503,
+      "message": "Security service temporarily unavailable. Please retry."
+    },
+    "RATE_LIMIT_EXCEEDED": {
+      "httpStatus": 429,
+      "message": "Rate limit exceeded. Please slow down."
+    }
+  }
+}
