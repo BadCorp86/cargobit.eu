@@ -1,0 +1,747 @@
+// CargoBit Platform - Prisma Schema
+// European Logistics Marketplace
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  ADMIN
+  SUPPORT
+  SHIPPER_PRIVATE
+  SHIPPER_COMPANY
+  DRIVER_SELF_EMPLOYED
+  DISPATCHER
+  MARKETER
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum TransportType {
+  PALLET
+  BULK
+  LIQUID
+  OVERSIZE
+  LOWLOADER
+  CAR_TRANSPORT
+  COOLING
+  HAZMAT
+  CONTAINER
+}
+
+enum TransportStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  OFFERS_RECEIVED
+  CONFIRMED
+  IN_TRANSIT
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+  EXPIRED
+}
+
+enum VehicleType {
+  PLANE
+  KOEFFER
+  CURTAINSIDER
+  SPRINTER
+  KIPPER
+  SILO
+  MULDE
+  TANKAUFLIEGER
+  IBC_TRANSPORTER
+  LANGAUFLIEGER
+  JUMBO
+  TIEFLADER
+  AUTOTRANSPORTER
+  CONTAINERCHASSIS
+  KUEHLFAHRZEUG
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  PAYMENT_IN
+  PAYMENT_OUT
+  COMMISSION
+  FEE
+  REFUND
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum PayoutSchedule {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+enum DocumentType {
+  CMR
+  DELIVERY_NOTE
+  INVOICE
+  POD
+  CUSTOMS
+  INSURANCE
+  PERMIT
+  OTHER
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id                    String              @id @default(cuid())
+  email                 String              @unique
+  passwordHash          String
+  role                  UserRole            @default(SHIPPER_PRIVATE)
+  status                UserStatus          @default(PENDING)
+  
+  // Profile
+  firstName             String?
+  lastName              String?
+  phone                 String?
+  avatar                String?
+  language              String              @default("de")
+  timezone              String              @default("Europe/Berlin")
+  
+  // Company fields (for SHIPPER_COMPANY, DISPATCHER)
+  companyName           String?
+  companyVatId         String?
+  companyRegistrationNumber String?
+  companyAddress        String?
+  companyCity           String?
+  companyPostalCode     String?
+  companyCountry        String?
+  
+  // Verification
+  emailVerified         Boolean             @default(false)
+  emailVerifiedAt       DateTime?
+  identityVerified      VerificationStatus  @default(UNVERIFIED)
+  identityVerifiedAt    DateTime?
+  businessVerified      VerificationStatus  @default(UNVERIFIED)
+  businessVerifiedAt    DateTime?
+  
+  // Subscription
+  subscriptionPlan      SubscriptionPlan    @default(FREE)
+  subscriptionStart     DateTime?
+  subscriptionEnd       DateTime?
+  
+  // Stats
+  rating                Float               @default(0)
+  totalTransports       Int                 @default(0)
+  completedTransports   Int                 @default(0)
+  cancelledTransports   Int                 @default(0)
+  
+  // Timestamps
+  lastLoginAt           DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  
+  // Relations
+  wallet                Wallet?
+  vehicles              Vehicle[]
+  transportsAsShipper   Transport[]         @relation("ShipperTransports")
+  transportsAsDriver    Transport[]         @relation("DriverTransports")
+  offers                Offer[]
+  documents             Document[]
+  verifications         Verification[]
+  notifications         Notification[]
+  addresses             Address[]
+  reviews               Review[]            @relation("ReviewAuthor")
+  receivedReviews       Review[]            @relation("ReviewReceiver")
+  supportTickets        SupportTicket[]
+  marketingCampaigns    MarketingCampaign[]
+  auditLogs             AuditLog[]
+  
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+model Verification {
+  id                String              @id @default(cuid())
+  userId            String
+  type              String              // IDENTITY, BUSINESS, DRIVER_LICENSE, ADR, etc.
+  status            VerificationStatus  @default(PENDING)
+  documentUrl       String?
+  documentType      String?
+  rejectionReason   String?
+  reviewedAt        DateTime?
+  reviewedBy        String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt()
+  
+  user              User                @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([type])
+}
+
+model Address {
+  id              String    @id @default(cuid())
+  userId          String
+  label           String?   // "Home", "Office", "Warehouse"
+  contactName     String?
+  contactPhone    String?
+  street          String
+  streetNumber    String?
+  postalCode      String
+  city            String
+  state           String?
+  country         String
+  latitude        Float?
+  longitude       Float?
+  isDefault       Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt()
+  
+  user            User      @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+}
+
+// ============================================
+// WALLET SYSTEM
+// ============================================
+
+model Wallet {
+  id                String            @id @default(cuid())
+  userId            String            @unique
+  balance           Float             @default(0)
+  availableBalance  Float             @default(0)
+  pendingBalance    Float             @default(0)
+  currency          String            @default("EUR")
+  
+  // Payout settings
+  payoutIban        String?
+  payoutBic         String?
+  payoutAccountName String?
+  payoutVerified    Boolean           @default(false)
+  payoutSchedule    PayoutSchedule    @default(WEEKLY)
+  lastPayoutAt      DateTime?
+  
+  // Security
+  totalDeposited    Float             @default(0)
+  totalWithdrawn    Float             @default(0)
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt()
+  
+  user              User              @relation(fields: [userId], references: [id])
+  transactions      Transaction[]
+  
+  @@index([userId])
+}
+
+model Transaction {
+  id              String              @id @default(cuid())
+  walletId        String
+  type            TransactionType
+  status          TransactionStatus   @default(PENDING)
+  
+  amount          Float
+  fee             Float               @default(0)
+  netAmount       Float
+  
+  description     String?
+  reference       String?             // External payment reference
+  transportId     String?             // Related transport
+  
+  // Payment details
+  paymentMethod   String?
+  iban            String?
+  bic             String?
+  
+  processedAt     DateTime?
+  failedAt        DateTime?
+  failureReason   String?
+  
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt()
+  
+  wallet          Wallet              @relation(fields: [walletId], references: [id])
+  
+  @@index([walletId])
+  @@index([type])
+  @@index([status])
+}
+
+// ============================================
+// VEHICLE MANAGEMENT
+// ============================================
+
+model Vehicle {
+  id                String        @id @default(cuid())
+  userId            String
+  
+  // Vehicle details
+  registrationNumber String       @unique
+  vehicleType        VehicleType
+  brand              String?
+  model              String?
+  year               Int?
+  
+  // Dimensions & Capacity
+  lengthCm           Float?
+  widthCm            Float?
+  heightCm           Float?
+  maxWeightKg        Float?
+  volumeM3           Float?
+  palletSpaces       Int?
+  
+  // Features
+  hasCooling         Boolean       @default(false)
+  hasLift            Boolean       @default(false)
+  hasCrane           Boolean       @default(false)
+  hasTank            Boolean       @default(false)
+  tankCapacityL      Float?
+  
+  // Certifications
+  adrCertified       Boolean       @default(false)
+  adrClasses         String?       // JSON array of ADR classes
+  tunnelCodes        String?       // JSON array
+  
+  // Status
+  isActive           Boolean       @default(true)
+  currentLocation    String?       // JSON: {lat, lng}
+  
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt()
+  
+  user               User          @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([vehicleType])
+}
+
+// ============================================
+// TRANSPORT MANAGEMENT
+// ============================================
+
+model Transport {
+  id                String            @id @default(cuid())
+  
+  // Participants
+  shipperId         String
+  driverId          String?
+  
+  // Transport Type
+  transportType     TransportType
+  
+  // Status
+  status            TransportStatus   @default(DRAFT)
+  
+  // Pickup
+  pickupAddress     String
+  pickupCity        String
+  pickupPostalCode  String
+  pickupCountry     String
+  pickupDate        DateTime
+  pickupTimeFrom    String?
+  pickupTimeTo      String?
+  pickupContact     String?
+  pickupPhone       String?
+  pickupLatitude    Float?
+  pickupLongitude   Float?
+  
+  // Delivery
+  deliveryAddress   String
+  deliveryCity      String
+  deliveryPostalCode String
+  deliveryCountry   String
+  deliveryDate      DateTime?
+  deliveryTimeFrom  String?
+  deliveryTimeTo    String?
+  deliveryContact   String?
+  deliveryPhone     String?
+  deliveryLatitude  Float?
+  deliveryLongitude Float?
+  
+  // Distance & Duration
+  distanceKm        Float?
+  estimatedDuration String?
+  
+  // Cargo Details (JSON based on transport type)
+  cargoDetails      String            // JSON with type-specific fields
+  
+  // General Cargo Info
+  description       String?
+  weightKg          Float?
+  volumeM3          Float?
+  isHazmat          Boolean           @default(false)
+  isFragile         Boolean           @default(false)
+  
+  // Pricing
+  shipperBudget     Float?
+  agreedPrice       Float?
+  currency          String            @default("EUR")
+  
+  // Requirements
+  vehicleRequirements String?         // JSON with vehicle requirements
+  specialRequirements String?
+  
+  // Tracking
+  currentStatus     String?
+  currentLocation   String?           // JSON: {lat, lng, timestamp}
+  
+  // Timestamps
+  publishedAt       DateTime?
+  acceptedAt        DateTime?
+  pickedUpAt        DateTime?
+  deliveredAt       DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  cancellationReason String?
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt()
+  
+  // Relations
+  shipper           User              @relation("ShipperTransports", fields: [shipperId], references: [id])
+  driver            User?             @relation("DriverTransports", fields: [driverId], references: [id])
+  offers            Offer[]
+  documents         Document[]
+  trackingEvents    TrackingEvent[]
+  
+  @@index([shipperId])
+  @@index([driverId])
+  @@index([status])
+  @@index([transportType])
+  @@index([pickupDate])
+}
+
+model TrackingEvent {
+  id              String    @id @default(cuid())
+  transportId     String
+  status          String
+  location        String?   // JSON: {lat, lng}
+  note            String?
+  photoUrl        String?
+  createdBy       String?   // User ID
+  createdAt       DateTime  @default(now())
+  
+  transport       Transport @relation(fields: [transportId], references: [id])
+  
+  @@index([transportId])
+}
+
+model Offer {
+  id              String        @id @default(cuid())
+  transportId     String
+  driverId        String
+  
+  price           Float
+  currency        String        @default("EUR")
+  message         String?
+  estimatedDuration String?
+  
+  status          OfferStatus   @default(PENDING)
+  
+  validUntil      DateTime?
+  acceptedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt()
+  
+  transport       Transport     @relation(fields: [transportId], references: [id])
+  driver          User          @relation(fields: [driverId], references: [id])
+  
+  @@index([transportId])
+  @@index([driverId])
+  @@index([status])
+}
+
+model Document {
+  id              String        @id @default(cuid())
+  transportId     String?
+  userId          String
+  
+  type            DocumentType
+  name            String
+  description     String?
+  fileUrl         String
+  fileSize        Int?
+  mimeType        String?
+  
+  isGenerated     Boolean       @default(false)
+  isSigned        Boolean       @default(false)
+  signedAt        DateTime?
+  signedByUrl     String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt()
+  
+  transport       Transport?    @relation(fields: [transportId], references: [id])
+  user            User          @relation(fields: [userId], references: [id])
+  
+  @@index([transportId])
+  @@index([userId])
+  @@index([type])
+}
+
+// ============================================
+// REVIEWS & RATINGS
+// ============================================
+
+model Review {
+  id              String    @id @default(cuid())
+  transportId     String
+  authorId        String
+  receiverId      String
+  
+  rating          Int       // 1-5
+  comment         String?
+  
+  response        String?
+  respondedAt     DateTime?
+  
+  isVisible       Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt()
+  
+  author          User      @relation("ReviewAuthor", fields: [authorId], references: [id])
+  receiver        User      @relation("ReviewReceiver", fields: [receiverId], references: [id])
+  
+  @@index([transportId])
+  @@index([authorId])
+  @@index([receiverId])
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id              String    @id @default(cuid())
+  userId          String
+  
+  type            String    // NEW_OFFER, TRANSPORT_UPDATE, PAYMENT, etc.
+  title           String
+  message         String
+  data            String?   // JSON with additional data
+  
+  isRead          Boolean   @default(false)
+  readAt          DateTime?
+  
+  emailSent       Boolean   @default(false)
+  emailSentAt     DateTime?
+  
+  createdAt       DateTime  @default(now())
+  
+  user            User      @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([isRead])
+}
+
+// ============================================
+// SUPPORT
+// ============================================
+
+model SupportTicket {
+  id              String    @id @default(cuid())
+  userId          String
+  
+  subject         String
+  description     String
+  priority        String    @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  status          String    @default("OPEN")   // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  category        String?
+  
+  assignedTo      String?   // Support agent ID
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt()
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  
+  user            User      @relation(fields: [userId], references: [id])
+  messages        SupportMessage[]
+  
+  @@index([userId])
+  @@index([status])
+}
+
+model SupportMessage {
+  id              String          @id @default(cuid())
+  ticketId        String
+  authorId        String
+  authorRole      String          // USER, SUPPORT, ADMIN
+  message         String
+  attachments     String?         // JSON array of file URLs
+  
+  isInternal      Boolean         @default(false)
+  
+  createdAt       DateTime        @default(now())
+  
+  ticket          SupportTicket   @relation(fields: [ticketId], references: [id])
+  
+  @@index([ticketId])
+}
+
+// ============================================
+// MARKETING
+// ============================================
+
+model MarketingCampaign {
+  id              String    @id @default(cuid())
+  userId          String
+  
+  name            String
+  description     String?
+  
+  bannerUrl       String?
+  targetUrl       String?
+  position        String?   // HOME_BANNER, SIDEBAR, etc.
+  
+  budget          Float
+  spentAmount     Float     @default(0)
+  currency        String    @default("EUR")
+  
+  impressions     Int       @default(0)
+  clicks          Int       @default(0)
+  conversions     Int       @default(0)
+  
+  status          String    @default("DRAFT") // DRAFT, PENDING, ACTIVE, PAUSED, COMPLETED
+  
+  startDate       DateTime?
+  endDate         DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt()
+  
+  user            User      @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([status])
+}
+
+// ============================================
+// AUDIT LOG
+// ============================================
+
+model AuditLog {
+  id              String    @id @default(cuid())
+  userId          String?
+  
+  action          String    // LOGIN, LOGOUT, CREATE_TRANSPORT, etc.
+  entityType      String
+  entityId        String?
+  
+  oldValue        String?   // JSON
+  newValue        String?   // JSON
+  
+  ipAddress       String?
+  userAgent       String?
+  
+  createdAt       DateTime  @default(now())
+  
+  user            User?     @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+}
+
+// ============================================
+// SYSTEM SETTINGS
+// ============================================
+
+model SystemSetting {
+  id              String    @id @default(cuid())
+  key             String    @unique
+  value           String    // JSON
+  description     String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt()
+  
+  @@index([key])
+}
+
+// ============================================
+// PRICING CONFIGURATION
+// ============================================
+
+model PricingTier {
+  id                  String            @id @default(cuid())
+  plan                SubscriptionPlan  @unique
+  
+  monthlyPrice        Float
+  yearlyPrice         Float?
+  currency            String            @default("EUR")
+  
+  // Commission rates (percentage)
+  commissionRate      Float             @default(5.0)
+  minCommission       Float             @default(5.0)
+  maxCommission       Float?
+  
+  // Wallet fees
+  depositFee          Float             @default(0)
+  depositFeePercent   Float             @default(0)
+  withdrawalFee       Float             @default(1.5)
+  withdrawalFeePercent Float            @default(0.5)
+  
+  // Features
+  maxActiveTransports Int?
+  maxVehicles         Int?
+  apiAccess           Boolean           @default(false)
+  prioritySupport     Boolean           @default(false)
+  customBranding      Boolean           @default(false)
+  
+  description         String?
+  
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt()
+  
+  @@index([plan])
+}

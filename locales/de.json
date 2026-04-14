@@ -1,0 +1,618 @@
+{
+  "global": {
+    "actions": {
+      "save": "Speichern",
+      "cancel": "Abbrechen",
+      "edit": "Bearbeiten",
+      "delete": "Löschen",
+      "confirm": "Bestätigen",
+      "back": "Zurück",
+      "next": "Weiter",
+      "upload": "Hochladen",
+      "download": "Herunterladen",
+      "search": "Suchen",
+      "filter": "Filtern",
+      "apply": "Anwenden",
+      "reset": "Zurücksetzen",
+      "submit": "Absenden",
+      "close": "Schließen",
+      "view": "Ansehen",
+      "accept": "Annehmen",
+      "reject": "Ablehnen",
+      "approve": "Genehmigen"
+    },
+    "status": {
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "pending": "Ausstehend",
+      "completed": "Abgeschlossen",
+      "failed": "Fehlgeschlagen",
+      "in_transit": "Unterwegs",
+      "delayed": "Verspätet",
+      "draft": "Entwurf",
+      "published": "Veröffentlicht",
+      "cancelled": "Storniert"
+    },
+    "notifications": {
+      "success": "Erfolgreich",
+      "error": "Fehler",
+      "warning": "Warnung",
+      "info": "Information"
+    },
+    "validation": {
+      "required": "Dieses Feld ist erforderlich",
+      "invalid": "Ungültiges Format",
+      "min_length": "Mindestens {min} Zeichen erforderlich",
+      "max_length": "Maximal {max} Zeichen erlaubt",
+      "out_of_range": "Wert außerhalb des gültigen Bereichs",
+      "file_too_large": "Datei ist zu groß",
+      "invalid_email": "Ungültige E-Mail-Adresse",
+      "password_match": "Passwörter stimmen nicht überein"
+    },
+    "units": {
+      "kg": "kg",
+      "m": "m",
+      "cm": "cm",
+      "m3": "m³",
+      "l": "l",
+      "km": "km",
+      "eur": "EUR"
+    }
+  },
+  "landing": {
+    "hero": {
+      "title": "CargoBit - Ihre europäische Logistikplattform",
+      "subtitle": "Verbinden Sie Shipper und Transporteure in ganz Europa. Sichere Zahlungen, smartes Matching und transparente Preise.",
+      "cta_register": "Jetzt registrieren",
+      "cta_login": "Anmelden"
+    },
+    "features": {
+      "title": "Warum CargoBit?",
+      "transport_management": "Transport-Management",
+      "transport_management_desc": "Verwalten Sie alle Ihre Transporte an einem Ort. Von der Erstellung bis zur Lieferung.",
+      "smart_matching": "Smart Matching",
+      "smart_matching_desc": "KI-gestütztes Matching verbindet Sie mit den besten Transporteuren für Ihre Ladung.",
+      "wallet_security": "Sichere Wallet",
+      "wallet_security_desc": "Escrow-System schützt Ihre Zahlungen. Geld wird erst nach erfolgreicher Lieferung freigegeben.",
+      "driver_app": "Fahrer-App",
+      "driver_app_desc": "Mobile-optimierte Oberfläche für Fahrer mit GPS-Tracking und Dokumenten-Upload.",
+      "dispatcher_tools": "Dispatcher-Tools",
+      "dispatcher_tools_desc": "Flottenübersicht, Kapazitätskalender und automatische Zuweisungen.",
+      "auto_documents": "Automatische Dokumente",
+      "auto_documents_desc": "CMR, Lieferschein und Rechnung werden automatisch generiert."
+    },
+    "stats": {
+      "transports_completed": "Transporte abgeschlossen",
+      "active_users": "Aktive Nutzer",
+      "countries": "Länder",
+      "satisfaction_rate": "Zufriedenheitsrate"
+    },
+    "footer": {
+      "about": "Über uns",
+      "pricing": "Preise",
+      "support": "Support",
+      "legal": "Rechtliches",
+      "terms": "AGB",
+      "privacy": "Datenschutz",
+      "imprint": "Impressum",
+      "contact": "Kontakt",
+      "copyright": "© 2024 CargoBit. Alle Rechte vorbehalten."
+    },
+    "nav": {
+      "transports": "Transporte",
+      "matching": "Matching",
+      "pricing": "Preise",
+      "wallet": "Wallet",
+      "support": "Support"
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Anmelden",
+      "subtitle": "Willkommen zurück bei CargoBit",
+      "email": "E-Mail-Adresse",
+      "password": "Passwort",
+      "remember_me": "Angemeldet bleiben",
+      "forgot_password": "Passwort vergessen?",
+      "submit": "Anmelden",
+      "no_account": "Noch kein Konto?",
+      "register_link": "Jetzt registrieren"
+    },
+    "register": {
+      "title": "Registrieren",
+      "subtitle": "Erstellen Sie Ihr CargoBit-Konto",
+      "select_role": "Wählen Sie Ihre Rolle",
+      "roles": {
+        "shipper_private": "Privatkunde",
+        "shipper_private_desc": "Versenden Sie gelegentlich Pakete und Paletten",
+        "shipper_company": "Firmenkunde",
+        "shipper_company_desc": "Regelmäßige Transporte für Ihr Unternehmen",
+        "driver": "Fahrer",
+        "driver_desc": "Selbstständiger Fahrer mit eigenem Fahrzeug",
+        "dispatcher": "Disponent",
+        "dispatcher_desc": "Verwalten Sie eine Flotte von Fahrzeugen"
+      },
+      "first_name": "Vorname",
+      "last_name": "Nachname",
+      "company_name": "Firmenname",
+      "vat_id": "USt-IdNr.",
+      "email": "E-Mail-Adresse",
+      "phone": "Telefonnummer",
+      "password": "Passwort",
+      "confirm_password": "Passwort bestätigen",
+      "terms_agree": "Ich stimme den AGB und der Datenschutzerklärung zu",
+      "submit": "Konto erstellen",
+      "has_account": "Bereits ein Konto?",
+      "login_link": "Anmelden"
+    },
+    "forgot_password": {
+      "title": "Passwort vergessen",
+      "subtitle": "Geben Sie Ihre E-Mail-Adresse ein, um Ihr Passwort zurückzusetzen",
+      "email": "E-Mail-Adresse",
+      "submit": "Passwort zurücksetzen",
+      "back_to_login": "Zurück zur Anmeldung",
+      "success": "E-Mail zum Zurücksetzen wurde gesendet"
+    },
+    "reset_password": {
+      "title": "Passwort zurücksetzen",
+      "new_password": "Neues Passwort",
+      "confirm_password": "Passwort bestätigen",
+      "submit": "Passwort speichern",
+      "success": "Passwort erfolgreich geändert"
+    }
+  },
+  "dashboard": {
+    "common": {
+      "welcome": "Willkommen zurück",
+      "active_transports": "Aktive Transporte",
+      "pending_actions": "Ausstehende Aktionen",
+      "view_all": "Alle anzeigen",
+      "quick_actions": "Schnellaktionen"
+    },
+    "shipper": {
+      "title": "Shipper Dashboard",
+      "new_transport": "Neuen Transport anlegen",
+      "recent_transports": "Letzte Transporte",
+      "in_progress": "In Bearbeitung",
+      "completed": "Abgeschlossen",
+      "awaiting_offers": "Warte auf Angebote",
+      "statistics": "Statistiken",
+      "total_spent": "Gesamtausgaben",
+      "saved_offers": "Gesparte Angebote"
+    },
+    "driver": {
+      "title": "Fahrer Dashboard",
+      "next_job": "Nächster Auftrag",
+      "available_jobs": "Verfügbare Aufträge",
+      "documents": "Dokumente",
+      "vehicle_status": "Fahrzeugstatus",
+      "earnings": "Verdienst",
+      "rating": "Bewertung",
+      "completed_jobs": "Abgeschlossene Aufträge"
+    },
+    "dispatcher": {
+      "title": "Disponent Dashboard",
+      "fleet_overview": "Flottenübersicht",
+      "capacity_calendar": "Kapazitätskalender",
+      "assignments": "Zuweisungen",
+      "alerts": "Warnungen",
+      "utilization": "Auslastung",
+      "revenue": "Umsatz",
+      "driver_performance": "Fahrer-Performance"
+    },
+    "admin": {
+      "title": "Admin Dashboard",
+      "users_total": "Benutzer gesamt",
+      "transports_total": "Transporte gesamt",
+      "revenue": "Umsatz",
+      "pending_verifications": "Ausstehende Verifizierungen",
+      "system_health": "System-Status",
+      "recent_activity": "Letzte Aktivitäten"
+    }
+  },
+  "transport": {
+    "create": {
+      "title": "Neuen Transport anlegen",
+      "stepper": {
+        "details": "Details",
+        "pickup_delivery": "Abholung & Lieferung",
+        "cargo": "Fracht",
+        "pricing": "Preis",
+        "review": "Überprüfung"
+      },
+      "form": {
+        "transport_type": "Transportart",
+        "pickup_address": "Abholadresse",
+        "delivery_address": "Lieferadresse",
+        "pickup_date": "Abholdatum",
+        "delivery_date": "Lieferdatum",
+        "pickup_time": "Abholzeit",
+        "delivery_time": "Lieferzeit",
+        "description": "Beschreibung",
+        "weight": "Gewicht (kg)",
+        "length": "Länge (cm)",
+        "width": "Breite (cm)",
+        "height": "Höhe (cm)",
+        "hazmat": "Gefahrgut",
+        "temperature": "Temperaturanforderungen",
+        "vehicle_requirements": "Fahrzeuganforderungen",
+        "attachments": "Anhänge"
+      },
+      "validation": {
+        "required": "Dieses Feld ist erforderlich",
+        "invalid_format": "Ungültiges Format",
+        "out_of_range": "Wert außerhalb des gültigen Bereichs",
+        "missing_hazmat_info": "Gefahrgut-Informationen fehlen",
+        "missing_dimensions": "Maße fehlen"
+      },
+      "success": {
+        "title": "Transport erstellt",
+        "message": "Ihr Transport wurde erfolgreich erstellt und veröffentlicht"
+      },
+      "ai_price_hint": "KI-Preisempfehlung basierend auf Strecke, Gewicht und Marktpreisen"
+    },
+    "types": {
+      "pallet": {
+        "title": "Palettentransport",
+        "fields": {
+          "pallet_count": "Anzahl Paletten",
+          "pallet_type": "Palettenart",
+          "stackable": "Stapelbar",
+          "loading_equipment": "Ladehilfsmittel"
+        },
+        "pallet_types": {
+          "europalette": "Europalette",
+          "industriepalette": "Industriepalette",
+          "einwegpalette": "Einwegpalette"
+        }
+      },
+      "bulk": {
+        "title": "Schüttgut",
+        "fields": {
+          "material": "Material",
+          "grain_size": "Körnung (mm)",
+          "density": "Schüttdichte (kg/m³)",
+          "volume": "Volumen (m³)",
+          "loading_method": "Beladung",
+          "unloading_method": "Entladung"
+        },
+        "loading_methods": {
+          "silo": "Silo",
+          "conveyor": "Förderband",
+          "shovel": "Schaufel",
+          "wheel_loader": "Radlader"
+        }
+      },
+      "liquid": {
+        "title": "Flüssigkeiten",
+        "fields": {
+          "product": "Produkt",
+          "density": "Dichte (kg/l)",
+          "viscosity": "Viskosität (cP)",
+          "amount": "Menge (l)",
+          "container_type": "Behälterart",
+          "temperature_control": "Temperaturkontrolle"
+        },
+        "container_types": {
+          "tank_trailer": "Tankauflieger",
+          "ibc": "IBC",
+          "barrel": "Fass"
+        }
+      },
+      "oversize": {
+        "title": "Überlänge",
+        "fields": {
+          "length": "Länge (m)",
+          "width": "Breite (m)",
+          "height": "Höhe (m)",
+          "weight": "Gewicht (kg)",
+          "permits_required": "Sondergenehmigungen erforderlich",
+          "escort_vehicle": "Begleitfahrzeug erforderlich"
+        }
+      },
+      "lowloader": {
+        "title": "Tieflader",
+        "fields": {
+          "cargo_height": "Ladungshöhe (m)",
+          "cargo_weight": "Ladungsgewicht (kg)",
+          "ramp_required": "Rampe erforderlich",
+          "axle_load": "Achslast (kg)",
+          "loading_method": "Verladung"
+        },
+        "loading_methods": {
+          "ramp": "Rampe",
+          "crane": "Kran",
+          "self_propelled": "Selbstfahrend"
+        }
+      },
+      "car_transport": {
+        "title": "Autotransport",
+        "fields": {
+          "vehicle_count": "Anzahl Fahrzeuge",
+          "vehicle_types": "Fahrzeugtypen",
+          "vehicle_condition": "Fahrzustand",
+          "loading_order": "Beladereihenfolge wichtig"
+        },
+        "vehicle_types": {
+          "car": "Pkw",
+          "suv": "SUV",
+          "van": "Transporter"
+        },
+        "conditions": {
+          "ready": "Fahrbereit",
+          "not_ready": "Nicht fahrbereit"
+        }
+      },
+      "cooling": {
+        "title": "Kühltransport",
+        "fields": {
+          "temperature_min": "Min. Temperatur (°C)",
+          "temperature_max": "Max. Temperatur (°C)",
+          "pre_cooled": "Vorgekühlt",
+          "temperature_recording": "Temperaturaufzeichnung erforderlich"
+        }
+      },
+      "hazmat": {
+        "title": "Gefahrgut",
+        "fields": {
+          "un_number": "UN-Nummer",
+          "class": "Gefahrgutklasse",
+          "packing_group": "Verpackungsgruppe",
+          "tunnel_code": "Tunnelcode"
+        },
+        "packing_groups": {
+          "I": "I - Hohe Gefahr",
+          "II": "II - Mittlere Gefahr",
+          "III": "III - Geringe Gefahr"
+        }
+      },
+      "container": {
+        "title": "Container",
+        "fields": {
+          "container_type": "Containertyp",
+          "gross_weight": "Bruttogewicht (kg)",
+          "seal_number": "Plombennummer",
+          "crane_required": "Kran erforderlich"
+        },
+        "container_types": {
+          "20ft": "20ft Standard",
+          "40ft": "40ft Standard",
+          "45ft": "45ft Standard",
+          "reefer": "Kühlcontainer",
+          "tank": "Tankcontainer",
+          "open_top": "Open Top"
+        }
+      }
+    },
+    "list": {
+      "title": "Meine Transporte",
+      "filter_all": "Alle",
+      "filter_active": "Aktiv",
+      "filter_completed": "Abgeschlossen",
+      "filter_cancelled": "Storniert",
+      "no_transports": "Keine Transporte gefunden",
+      "create_first": "Erstellen Sie Ihren ersten Transport"
+    },
+    "detail": {
+      "title": "Transport-Details",
+      "pickup": "Abholung",
+      "delivery": "Lieferung",
+      "cargo": "Fracht",
+      "status": "Status",
+      "offers": "Angebote",
+      "tracking": "Tracking",
+      "documents": "Dokumente",
+      "timeline": "Verlauf"
+    },
+    "status": {
+      "draft": "Entwurf",
+      "pending": "Ausstehend",
+      "published": "Veröffentlicht",
+      "offers_received": "Angebote erhalten",
+      "confirmed": "Bestätigt",
+      "in_transit": "Unterwegs",
+      "delivered": "Geliefert",
+      "completed": "Abgeschlossen",
+      "cancelled": "Storniert",
+      "disputed": "Streitfall"
+    }
+  },
+  "wallet": {
+    "title": "Wallet",
+    "balance": "Guthaben",
+    "available": "Verfügbar",
+    "pending": "Ausstehend",
+    "deposit": "Einzahlung",
+    "withdraw": "Auszahlung",
+    "transactions": "Transaktionen",
+    "fees": "Gebühren",
+    "payout_schedule": "Auszahlungsintervall",
+    "iban": "IBAN",
+    "bic": "BIC",
+    "account_holder": "Kontoinhaber",
+    "verification_needed": "Verifizierung erforderlich",
+    "payout_methods": {
+      "weekly": "Wöchentlich",
+      "biweekly": "Alle 2 Wochen",
+      "monthly": "Monatlich"
+    },
+    "messages": {
+      "deposit_success": "Einzahlung erfolgreich",
+      "withdraw_success": "Auszahlung eingeleitet",
+      "insufficient_funds": "Nicht genügend Guthaben",
+      "verification_required": "Bitte verifizieren Sie Ihr Konto für Auszahlungen"
+    },
+    "transaction_types": {
+      "deposit": "Einzahlung",
+      "withdrawal": "Auszahlung",
+      "payment_in": "Zahlungseingang",
+      "payment_out": "Zahlungsausgang",
+      "commission": "Provision",
+      "fee": "Gebühr",
+      "refund": "Rückerstattung"
+    }
+  },
+  "pricing": {
+    "title": "Preise & Pläne",
+    "subtitle": "Wählen Sie den passenden Plan für Ihre Bedürfnisse",
+    "monthly": "Monatlich",
+    "yearly": "Jährlich",
+    "save_percent": "{percent}% sparen",
+    "plans": {
+      "free": {
+        "name": "Free",
+        "description": "Für Einsteiger und Gelegenheitsnutzer",
+        "price": "Kostenlos",
+        "features": [
+          "5 aktive Transporte/Monat",
+          "Basis-Matching",
+          "E-Mail Support",
+          "Standard-Provision"
+        ]
+      },
+      "starter": {
+        "name": "Starter",
+        "description": "Für wachsende Unternehmen",
+        "price": "29€",
+        "features": [
+          "25 aktive Transporte/Monat",
+          "Erweitertes Matching",
+          "Prioritäts-Support",
+          "Reduzierte Provision",
+          "API-Zugang"
+        ]
+      },
+      "professional": {
+        "name": "Professional",
+        "description": "Für professionelle Logistiker",
+        "price": "79€",
+        "features": [
+          "Unbegrenzte Transporte",
+          "Smart Matching Premium",
+          "24/7 Support",
+          "Niedrigste Provision",
+          "API-Zugang",
+          "Automatische Dokumente",
+          "Custom Branding"
+        ]
+      },
+      "enterprise": {
+        "name": "Enterprise",
+        "description": "Für große Flotten und Speditionen",
+        "price": "Auf Anfrage",
+        "features": [
+          "Alles aus Professional",
+          "Dedizierter Account Manager",
+          "Individuelle Integration",
+          "SLA Garantie",
+          "Multi-User Support"
+        ]
+      }
+    },
+    "commission": {
+      "title": "Provisionen",
+      "description": "Transparente Provisionen basierend auf Ihrem Plan",
+      "calculator_title": "Provisionsrechner",
+      "transport_value": "Transportwert (€)",
+      "your_commission": "Ihre Provision",
+      "you_save": "Sie sparen"
+    },
+    "cta": {
+      "current_plan": "Aktueller Plan",
+      "get_started": "Jetzt starten",
+      "contact_sales": "Vertrieb kontaktieren"
+    }
+  },
+  "support": {
+    "title": "Support",
+    "subtitle": "Wie können wir Ihnen helfen?",
+    "search_placeholder": "Suchen Sie nach Hilfe...",
+    "categories": {
+      "getting_started": "Erste Schritte",
+      "transports": "Transporte",
+      "payments": "Zahlungen & Wallet",
+      "account": "Konto & Profil",
+      "technical": "Technische Probleme"
+    },
+    "ticket": {
+      "create": "Ticket erstellen",
+      "subject": "Betreff",
+      "category": "Kategorie",
+      "priority": "Priorität",
+      "message": "Nachricht",
+      "attachments": "Anhänge",
+      "submit": "Absenden"
+    },
+    "chat": {
+      "title": "Live-Chat",
+      "online": "Online",
+      "offline": "Offline",
+      "placeholder": "Schreiben Sie Ihre Nachricht...",
+      "ai_hint": "Fragen Sie unseren KI-Assistenten"
+    }
+  },
+  "admin": {
+    "users": {
+      "title": "Benutzerverwaltung",
+      "search_placeholder": "Benutzer suchen...",
+      "filter_role": "Rolle filtern",
+      "verify": "Verifizieren",
+      "ban": "Sperren",
+      "unban": "Entsperren",
+      "reset_password": "Passwort zurücksetzen",
+      "view_details": "Details anzeigen"
+    },
+    "transports": {
+      "title": "Transport-Verwaltung",
+      "disputed": "Streitfälle",
+      "cancelled": "Stornierte",
+      "high_value": "Hochwertige Transporte"
+    },
+    "system": {
+      "title": "System-Einstellungen",
+      "maintenance": "Wartungsmodus",
+      "logs": "System-Logs",
+      "api_keys": "API-Schlüssel",
+      "email_templates": "E-Mail-Vorlagen"
+    },
+    "advertising": {
+      "title": "Werbung",
+      "pending_approvals": "Ausstehende Genehmigungen",
+      "approve_banner": "Banner genehmigen",
+      "reject_banner": "Banner ablehnen",
+      "statistics": "Statistiken"
+    }
+  },
+  "notifications": {
+    "new_offer": "Neues Angebot für Ihren Transport",
+    "offer_accepted": "Ihr Angebot wurde angenommen",
+    "transport_confirmed": "Transport wurde bestätigt",
+    "transport_in_transit": "Transport ist unterwegs",
+    "transport_delivered": "Transport wurde geliefert",
+    "payment_received": "Zahlung erhalten",
+    "verification_required": "Verifizierung erforderlich",
+    "new_message": "Neue Nachricht"
+  },
+  "legal": {
+    "terms": "Allgemeine Geschäftsbedingungen",
+    "privacy": "Datenschutzerklärung",
+    "imprint": "Impressum",
+    "liability_notice": "Haftungsausschluss",
+    "cookie_policy": "Cookie-Richtlinie"
+  },
+  "errors": {
+    "404": {
+      "title": "Seite nicht gefunden",
+      "message": "Die angeforderte Seite existiert nicht.",
+      "back_home": "Zurück zur Startseite"
+    },
+    "500": {
+      "title": "Serverfehler",
+      "message": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es später erneut."
+    },
+    "unauthorized": {
+      "title": "Nicht autorisiert",
+      "message": "Bitte melden Sie sich an, um auf diese Seite zuzugreifen."
+    }
+  }
+}
