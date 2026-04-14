@@ -458,11 +458,15 @@
     "monthly": "Monthly",
     "yearly": "Yearly",
     "save_percent": "Save {percent}%",
+    "save_or_free": "Save 20% or 2 Months Free",
+    "per_month": "/month",
+    "per_year": "/year",
     "plans": {
       "free": {
         "name": "Free",
         "description": "For beginners and occasional users",
-        "price": "Free",
+        "price_monthly": "Free",
+        "price_yearly": "Free",
         "features": [
           "5 active transports/month",
           "Basic matching",
@@ -473,24 +477,26 @@
       "starter": {
         "name": "Starter",
         "description": "For growing businesses",
-        "price": "€29",
+        "price_monthly": "€89",
+        "price_yearly": "€890",
         "features": [
           "25 active transports/month",
           "Advanced matching",
           "Priority support",
-          "Reduced commission",
+          "Reduced commission (10%)",
           "API access"
         ]
       },
       "professional": {
         "name": "Professional",
-        "description": "For professional logisticians",
-        "price": "€79",
+        "description": "For professionals",
+        "price_monthly": "€699",
+        "price_yearly": "€6990",
         "features": [
           "Unlimited transports",
           "Smart Matching Premium",
           "24/7 support",
-          "Lowest commission",
+          "Lowest commission (8%)",
           "API access",
           "Automatic documents",
           "Custom branding"
@@ -499,14 +505,40 @@
       "enterprise": {
         "name": "Enterprise",
         "description": "For large fleets and forwarding companies",
-        "price": "On Request",
+        "price_monthly": "On Request",
+        "price_yearly": "On Request",
         "features": [
           "Everything in Professional",
           "Dedicated account manager",
           "Custom integration",
           "SLA guarantee",
-          "Multi-user support"
+          "Multi-user support",
+          "Lowest commission (6%)"
         ]
+      }
+    },
+    "fees": {
+      "title": "Fees & Commissions",
+      "subtitle": "Transparent pricing structure for all users",
+      "shipper_fee": {
+        "title": "Shipper Fee",
+        "percent": "4%",
+        "description": "Shippers pay 4% of the awarded price"
+      },
+      "transporter_commission": {
+        "title": "Transporter Commission",
+        "description": "Transporters pay based on subscription tier",
+        "tiers": {
+          "free": "Free: 14%",
+          "starter": "Starter: 10%",
+          "professional": "Professional: 8%",
+          "enterprise": "Enterprise: 6%"
+        }
+      },
+      "wallet_fee": {
+        "title": "Wallet Fee",
+        "percent": "3.5%",
+        "description": "For deposits and withdrawals"
       }
     },
     "commission": {

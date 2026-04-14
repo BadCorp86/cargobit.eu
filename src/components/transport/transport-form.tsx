@@ -452,6 +452,166 @@ export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormPro
           </div>
         );
 
+      case 'liquid':
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Produkt</Label>
+                <Input
+                  value={formData.liquidProduct}
+                  onChange={(e) => updateFormData('liquidProduct', e.target.value)}
+                  placeholder="z.B. Wasserstoffperoxid"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Menge (Liter)</Label>
+                <Input
+                  type="number"
+                  value={formData.liquidAmount}
+                  onChange={(e) => updateFormData('liquidAmount', e.target.value)}
+                  placeholder="z.B. 25000"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Behälterart</Label>
+              <Select value={formData.liquidContainerType} onValueChange={(v) => updateFormData('liquidContainerType', v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Auswählen..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tankauflieger">Tankauflieger</SelectItem>
+                  <SelectItem value="ibc">IBC</SelectItem>
+                  <SelectItem value="fass">Fass</SelectItem>
+                  <SelectItem value="tankcontainer">Tankcontainer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        );
+
+      case 'oversize':
+        return (
+          <div className="space-y-4">
+            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <div className="font-medium">Überlänge-Transport</div>
+                <div className="text-muted-foreground">
+                  Sondergenehmigungen können erforderlich sein. Preis enthält ggf. zusätzliche Kosten.
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Länge (m)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={formData.oversizeLength}
+                  onChange={(e) => updateFormData('oversizeLength', e.target.value)}
+                  placeholder="z.B. 18.5"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Breite (m)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={formData.oversizeWidth}
+                  onChange={(e) => updateFormData('oversizeWidth', e.target.value)}
+                  placeholder="z.B. 3.2"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Höhe (m)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={formData.oversizeHeight}
+                  onChange={(e) => updateFormData('oversizeHeight', e.target.value)}
+                  placeholder="z.B. 4.0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Gewicht (kg)</Label>
+                <Input
+                  type="number"
+                  value={formData.weight}
+                  onChange={(e) => updateFormData('weight', e.target.value)}
+                  placeholder="z.B. 35000"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formData.oversizePermits}
+                  onCheckedChange={(v) => updateFormData('oversizePermits', v)}
+                />
+                <Label>Sondergenehmigungen erforderlich</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formData.escortVehicle}
+                  onCheckedChange={(v) => updateFormData('escortVehicle', v)}
+                />
+                <Label>Begleitfahrzeug erforderlich</Label>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'lowloader':
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Ladungshöhe (m)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={formData.lowloaderCargoHeight}
+                  onChange={(e) => updateFormData('lowloaderCargoHeight', e.target.value)}
+                  placeholder="z.B. 3.5"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Ladungsgewicht (kg)</Label>
+                <Input
+                  type="number"
+                  value={formData.lowloaderCargoWeight}
+                  onChange={(e) => updateFormData('lowloaderCargoWeight', e.target.value)}
+                  placeholder="z.B. 45000"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={formData.lowloaderRamp}
+                onCheckedChange={(v) => updateFormData('lowloaderRamp', v)}
+              />
+              <Label>Rampe erforderlich</Label>
+            </div>
+            <div className="space-y-2">
+              <Label>Verladung</Label>
+              <Select value={formData.loadingMethod} onValueChange={(v) => updateFormData('loadingMethod', v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Auswählen..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rampe">Rampe</SelectItem>
+                  <SelectItem value="kran">Kran</SelectItem>
+                  <SelectItem value="selbstfahrend">Selbstfahrend</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }

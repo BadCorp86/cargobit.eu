@@ -79,12 +79,30 @@ const translations = {
       monthly: 'Monatlich',
       yearly: 'Jährlich',
       save: ' sparen',
+      saveOrFree: '20% sparen oder 2 Monate Gratis',
+      perMonth: '/Monat',
+      perYear: '/Jahr',
       plans: [
-        { name: 'Free', price: 'Kostenlos', desc: 'Für Einsteiger', features: ['5 aktive Transporte/Monat', 'Basis-Matching', 'E-Mail Support', 'Standard-Provision'] },
-        { name: 'Starter', price: '29€', desc: 'Für wachsende Unternehmen', features: ['25 aktive Transporte/Monat', 'Erweitertes Matching', 'Prioritäts-Support', 'Reduzierte Provision', 'API-Zugang'] },
-        { name: 'Professional', price: '79€', desc: 'Für Profis', features: ['Unbegrenzte Transporte', 'Smart Matching Premium', '24/7 Support', 'Niedrigste Provision', 'API-Zugang', 'Automatische Dokumente', 'Custom Branding'], popular: true },
-        { name: 'Enterprise', price: 'Auf Anfrage', desc: 'Für große Flotten', features: ['Alles aus Professional', 'Dedizierter Account Manager', 'Individuelle Integration', 'SLA Garantie', 'Multi-User Support'] }
+        { name: 'Free', priceMonthly: 'Kostenlos', priceYearly: 'Kostenlos', desc: 'Für Einsteiger', features: ['5 aktive Transporte/Monat', 'Basis-Matching', 'E-Mail Support', 'Standard-Provision (14%)'] },
+        { name: 'Starter', priceMonthly: '89€', priceYearly: '890€', desc: 'Für wachsende Unternehmen', features: ['25 aktive Transporte/Monat', 'Erweitertes Matching', 'Prioritäts-Support', 'Reduzierte Provision (10%)', 'API-Zugang'] },
+        { name: 'Professional', priceMonthly: '699€', priceYearly: '6990€', desc: 'Für Profis', features: ['Unbegrenzte Transporte', 'Smart Matching Premium', '24/7 Support', 'Niedrigste Provision (8%)', 'API-Zugang', 'Automatische Dokumente', 'Custom Branding'], popular: true },
+        { name: 'Enterprise', priceMonthly: 'Auf Anfrage', priceYearly: 'Auf Anfrage', desc: 'Für große Flotten', features: ['Alles aus Professional', 'Dedizierter Account Manager', 'Individuelle Integration', 'SLA Garantie', 'Multi-User Support', 'Niedrigste Provision (6%)'] }
       ],
+      fees: {
+        title: 'Gebühren & Provisionen',
+        shipperFee: { title: 'Verlader-Gebühr', percent: '4%', desc: 'Verlader zahlen 4% vom Zuschlagspreis' },
+        transporterCommission: { 
+          title: 'Transportprovision', 
+          desc: 'Transporteure zahlen je nach Abo-Tier',
+          tiers: [
+            { name: 'Kostenlos', percent: '14%' },
+            { name: 'Starter', percent: '10%' },
+            { name: 'Professional', percent: '8%' },
+            { name: 'Enterprise', percent: '6%' }
+          ]
+        },
+        walletFee: { title: 'Wallet-Gebühr', percent: '3,5%', desc: 'Für Ein- und Auszahlungen' }
+      },
       cta: 'Jetzt starten'
     },
     footer: {
@@ -446,7 +464,11 @@ export default function Home() {
                 <Switch checked={isYearly} onCheckedChange={setIsYearly} />
                 <span className={isYearly ? 'font-medium' : 'text-muted-foreground'}>
                   {t.pricing.yearly}
-                  <Badge variant="secondary" className="ml-2">20{t.pricing.save}</Badge>
+                  {isYearly && (
+                    <Badge variant="secondary" className="ml-2 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                      {t.pricing.saveOrFree}
+                    </Badge>
+                  )}
                 </span>
               </div>
             </div>
@@ -463,9 +485,13 @@ export default function Home() {
                     <CardTitle className="text-xl">{plan.name}</CardTitle>
                     <CardDescription>{plan.desc}</CardDescription>
                     <div className="mt-4">
-                      <span className="text-4xl font-bold">{plan.price}</span>
-                      {plan.price !== 'Kostenlos' && plan.price !== 'Auf Anfrage' && (
-                        <span className="text-muted-foreground">/Monat</span>
+                      <span className="text-4xl font-bold">
+                        {isYearly ? plan.priceYearly : plan.priceMonthly}
+                      </span>
+                      {plan.priceMonthly !== 'Kostenlos' && plan.priceMonthly !== 'Auf Anfrage' && (
+                        <span className="text-muted-foreground">
+                          {isYearly ? t.pricing.perYear : t.pricing.perMonth}
+                        </span>
                       )}
                     </div>
                   </CardHeader>
@@ -490,6 +516,57 @@ export default function Home() {
                   </CardFooter>
                 </Card>
               ))}
+            </div>
+
+            {/* Fees Section */}
+            <div className="mt-20">
+              <div className="text-center mb-12">
+                <h3 className="text-2xl font-bold mb-2">{t.pricing.fees.title}</h3>
+                <p className="text-muted-foreground">Transparente Preisstruktur für alle Nutzer</p>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-8">
+                {/* Shipper Fee */}
+                <Card className="text-center p-6">
+                  <div className="w-16 h-16 mx-auto rounded-2xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4">
+                    <Package className="w-8 h-8" />
+                  </div>
+                  <h4 className="font-semibold text-lg mb-1">{t.pricing.fees.shipperFee.title}</h4>
+                  <div className="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-2">
+                    {t.pricing.fees.shipperFee.percent}
+                  </div>
+                  <p className="text-sm text-muted-foreground">{t.pricing.fees.shipperFee.desc}</p>
+                </Card>
+
+                {/* Transporter Commission */}
+                <Card className="text-center p-6">
+                  <div className="w-16 h-16 mx-auto rounded-2xl bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center mb-4">
+                    <Truck className="w-8 h-8" />
+                  </div>
+                  <h4 className="font-semibold text-lg mb-1">{t.pricing.fees.transporterCommission.title}</h4>
+                  <p className="text-sm text-muted-foreground mb-4">{t.pricing.fees.transporterCommission.desc}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {t.pricing.fees.transporterCommission.tiers.map((tier, i) => (
+                      <div key={i} className="bg-muted rounded-lg p-2">
+                        <div className="text-xs text-muted-foreground">{tier.name}</div>
+                        <div className="font-bold text-green-600 dark:text-green-400">{tier.percent}</div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                {/* Wallet Fee */}
+                <Card className="text-center p-6">
+                  <div className="w-16 h-16 mx-auto rounded-2xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-4">
+                    <Wallet className="w-8 h-8" />
+                  </div>
+                  <h4 className="font-semibold text-lg mb-1">{t.pricing.fees.walletFee.title}</h4>
+                  <div className="text-3xl font-bold text-purple-600 dark:text-purple-400 mb-2">
+                    {t.pricing.fees.walletFee.percent}
+                  </div>
+                  <p className="text-sm text-muted-foreground">{t.pricing.fees.walletFee.desc}</p>
+                </Card>
+              </div>
             </div>
           </div>
         </section>

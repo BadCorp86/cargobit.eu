@@ -31,6 +31,8 @@ import {
   Loader2,
   Copy,
   Check,
+  Shield,
+  Lock,
 } from 'lucide-react';
 
 interface WalletModalProps {
@@ -55,6 +57,46 @@ const mockTransactions: Transaction[] = [
   { id: '5', type: 'deposit', amount: 1000, status: 'completed', description: 'Einzahlung per Überweisung', date: '2024-01-10' },
   { id: '6', type: 'refund', amount: 150, status: 'completed', description: 'Rückerstattung Transport #4500', date: '2024-01-08' },
 ];
+
+const getTypeIcon = (type: Transaction['type']) => {
+  switch (type) {
+    case 'deposit':
+    case 'payment_in':
+    case 'refund':
+      return <ArrowDownLeft className="w-4 h-4 text-green-500" />;
+    case 'withdrawal':
+    case 'payment_out':
+    case 'commission':
+    case 'fee':
+      return <ArrowUpRight className="w-4 h-4 text-red-500" />;
+    default:
+      return <Euro className="w-4 h-4" />;
+  }
+};
+
+const getStatusBadge = (status: Transaction['status']) => {
+  switch (status) {
+    case 'completed':
+      return <Badge variant="default" className="bg-green-500/10 text-green-600"><CheckCircle2 className="w-3 h-3 mr-1" />Abgeschlossen</Badge>;
+    case 'pending':
+      return <Badge variant="secondary"><Clock className="w-3 h-3 mr-1" />Ausstehend</Badge>;
+    case 'failed':
+      return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Fehlgeschlagen</Badge>;
+  }
+};
+
+const getTypeLabel = (type: Transaction['type']) => {
+  const labels: Record<Transaction['type'], string> = {
+    deposit: 'Einzahlung',
+    withdrawal: 'Auszahlung',
+    payment_in: 'Zahlungseingang',
+    payment_out: 'Zahlungsausgang',
+    commission: 'Provision',
+    fee: 'Gebühr',
+    refund: 'Rückerstattung',
+  };
+  return labels[type];
+};
 
 export function WalletModal({ open, onOpenChange }: WalletModalProps) {
   const [activeTab, setActiveTab] = useState('overview');
@@ -89,46 +131,6 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const getTypeIcon = (type: Transaction['type']) => {
-    switch (type) {
-      case 'deposit':
-      case 'payment_in':
-      case 'refund':
-        return <ArrowDownLeft className="w-4 h-4 text-green-500" />;
-      case 'withdrawal':
-      case 'payment_out':
-      case 'commission':
-      case 'fee':
-        return <ArrowUpRight className="w-4 h-4 text-red-500" />;
-      default:
-        return <Euro className="w-4 h-4" />;
-    }
-  };
-
-  const getStatusBadge = (status: Transaction['status']) => {
-    switch (status) {
-      case 'completed':
-        return <Badge variant="default" className="bg-green-500/10 text-green-600"><CheckCircle2 className="w-3 h-3 mr-1" />Abgeschlossen</Badge>;
-      case 'pending':
-        return <Badge variant="secondary"><Clock className="w-3 h-3 mr-1" />Ausstehend</Badge>;
-      case 'failed':
-        return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Fehlgeschlagen</Badge>;
-    }
-  };
-
-  const getTypeLabel = (type: Transaction['type']) => {
-    const labels: Record<Transaction['type'], string> = {
-      deposit: 'Einzahlung',
-      withdrawal: 'Auszahlung',
-      payment_in: 'Zahlungseingang',
-      payment_out: 'Zahlungsausgang',
-      commission: 'Provision',
-      fee: 'Gebühr',
-      refund: 'Rückerstattung',
-    };
-    return labels[type];
   };
 
   return (
@@ -170,11 +172,59 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                 </Card>
                 <Card>
                   <CardContent className="pt-4">
-                    <div className="text-sm text-muted-foreground">Ausstehend</div>
+                    <div className="text-sm text-muted-foreground">Escrow</div>
                     <div className="text-2xl font-bold text-yellow-600">€{pendingBalance.toFixed(2)}</div>
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Escrow Info */}
+              <Card className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/20">
+                <CardContent className="pt-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                      <Shield className="w-5 h-5 text-blue-500" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium mb-1">Escrow-Schutz</div>
+                      <div className="text-sm text-muted-foreground">
+                        Zahlungen werden sicher verwahrt bis zur erfolgreichen Lieferung. Bei Streitfällen vermittelt unser Support-Team.
+                      </div>
+                    </div>
+                    <Lock className="w-5 h-5 text-blue-500" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Wallet Fee Info */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Gebührenübersicht</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <ArrowDownLeft className="w-4 h-4 text-green-500" />
+                      <span>Einzahlungen</span>
+                    </div>
+                    <Badge variant="secondary">Kostenlos</Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <ArrowUpRight className="w-4 h-4 text-red-500" />
+                      <span>Auszahlungen</span>
+                    </div>
+                    <Badge variant="outline">3,5% Gebühr</Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Euro className="w-4 h-4 text-purple-500" />
+                      <span>Währungsumrechnung</span>
+                    </div>
+                    <Badge variant="outline">2,5% Gebühr</Badge>
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Payout Settings */}
               <Card>
@@ -349,13 +399,13 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                       <span>€{(parseFloat(withdrawAmount) || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-red-600">
-                      <span>Gebühr (0.5%)</span>
-                      <span>-€{((parseFloat(withdrawAmount) || 0) * 0.005).toFixed(2)}</span>
+                      <span>Gebühr (3,5%)</span>
+                      <span>-€{((parseFloat(withdrawAmount) || 0) * 0.035).toFixed(2)}</span>
                     </div>
                     <Separator />
                     <div className="flex justify-between font-medium">
                       <span>Auszahlung</span>
-                      <span>€{((parseFloat(withdrawAmount) || 0) * 0.995).toFixed(2)}</span>
+                      <span>€{((parseFloat(withdrawAmount) || 0) * 0.965).toFixed(2)}</span>
                     </div>
                   </div>
 

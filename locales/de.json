@@ -458,11 +458,15 @@
     "monthly": "Monatlich",
     "yearly": "Jährlich",
     "save_percent": "{percent}% sparen",
+    "save_or_free": "20% sparen oder 2 Monate Gratis",
+    "per_month": "/Monat",
+    "per_year": "/Jahr",
     "plans": {
       "free": {
         "name": "Free",
         "description": "Für Einsteiger und Gelegenheitsnutzer",
-        "price": "Kostenlos",
+        "price_monthly": "Kostenlos",
+        "price_yearly": "Kostenlos",
         "features": [
           "5 aktive Transporte/Monat",
           "Basis-Matching",
@@ -473,24 +477,26 @@
       "starter": {
         "name": "Starter",
         "description": "Für wachsende Unternehmen",
-        "price": "29€",
+        "price_monthly": "89€",
+        "price_yearly": "890€",
         "features": [
           "25 aktive Transporte/Monat",
           "Erweitertes Matching",
           "Prioritäts-Support",
-          "Reduzierte Provision",
+          "Reduzierte Provision (10%)",
           "API-Zugang"
         ]
       },
       "professional": {
         "name": "Professional",
-        "description": "Für professionelle Logistiker",
-        "price": "79€",
+        "description": "Für Profis",
+        "price_monthly": "699€",
+        "price_yearly": "6990€",
         "features": [
           "Unbegrenzte Transporte",
           "Smart Matching Premium",
           "24/7 Support",
-          "Niedrigste Provision",
+          "Niedrigste Provision (8%)",
           "API-Zugang",
           "Automatische Dokumente",
           "Custom Branding"
@@ -499,14 +505,40 @@
       "enterprise": {
         "name": "Enterprise",
         "description": "Für große Flotten und Speditionen",
-        "price": "Auf Anfrage",
+        "price_monthly": "Auf Anfrage",
+        "price_yearly": "Auf Anfrage",
         "features": [
           "Alles aus Professional",
           "Dedizierter Account Manager",
           "Individuelle Integration",
           "SLA Garantie",
-          "Multi-User Support"
+          "Multi-User Support",
+          "Niedrigste Provision (6%)"
         ]
+      }
+    },
+    "fees": {
+      "title": "Gebühren & Provisionen",
+      "subtitle": "Transparente Preisstruktur für alle Nutzer",
+      "shipper_fee": {
+        "title": "Verlader-Gebühr",
+        "percent": "4%",
+        "description": "Verlader zahlen 4% vom Zuschlagspreis"
+      },
+      "transporter_commission": {
+        "title": "Transportprovision",
+        "description": "Transporteure zahlen je nach Abo-Tier",
+        "tiers": {
+          "free": "Kostenlos: 14%",
+          "starter": "Starter: 10%",
+          "professional": "Professional: 8%",
+          "enterprise": "Enterprise: 6%"
+        }
+      },
+      "wallet_fee": {
+        "title": "Wallet-Gebühr",
+        "percent": "3,5%",
+        "description": "Für Ein- und Auszahlungen"
       }
     },
     "commission": {

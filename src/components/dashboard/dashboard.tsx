@@ -33,6 +33,13 @@ import {
   Moon,
   Sun,
   ChevronRight,
+  HeadphonesIcon,
+  Megaphone,
+  Target,
+  DollarSign,
+  Eye,
+  MousePointer,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuthStore, type User as UserType } from '@/lib/auth-store';
 
@@ -57,6 +64,10 @@ export function Dashboard({ onLogout, onNewTransport }: DashboardProps) {
         return <DispatcherDashboard user={user} />;
       case 'ADMIN':
         return <AdminDashboard user={user} />;
+      case 'SUPPORT':
+        return <SupportDashboard user={user} />;
+      case 'MARKETER':
+        return <MarketerDashboard user={user} />;
       default:
         return <ShipperDashboard user={user} onNewTransport={onNewTransport} />;
     }
@@ -661,6 +672,364 @@ function AdminDashboard({ user }: { user: UserType }) {
                   <Badge variant="default">Online</Badge>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Support Dashboard
+function SupportDashboard({ user }: { user: UserType }) {
+  const supportStats = [
+    { label: 'Offene Tickets', value: '23', icon: <MessageSquare className="w-5 h-5" />, color: 'text-red-500', urgent: true },
+    { label: 'In Bearbeitung', value: '15', icon: <Clock className="w-5 h-5" />, color: 'text-yellow-500' },
+    { label: 'Heute gelöst', value: '42', icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-green-500' },
+    { label: 'Ø Antwortzeit', value: '8 Min', icon: <HeadphonesIcon className="w-5 h-5" />, color: 'text-primary' },
+  ];
+
+  const openTickets = [
+    { id: '#892', subject: 'Streitfall Transport #4518 - Schaden an Ladung', priority: 'high', user: 'Müller GmbH', time: 'vor 5 Min.' },
+    { id: '#891', subject: 'Rückerstattung angefordert - Stornierung', priority: 'medium', user: 'Thomas Weber', time: 'vor 12 Min.' },
+    { id: '#890', subject: 'Verifizierung fehlgeschlagen - Dokumente unklar', priority: 'low', user: 'Anna Schmidt', time: 'vor 25 Min.' },
+    { id: '#889', subject: 'Fahrer beschwert sich über verspätete Zahlung', priority: 'high', user: 'Peter Fahrer', time: 'vor 45 Min.' },
+  ];
+
+  const aiAssistStats = [
+    { label: 'KI-gelöste Anfragen', value: '156', percent: '68%' },
+    { label: 'An Menschen weitergeleitet', value: '73', percent: '32%' },
+    { label: 'ÿ Zufriedenheit', value: '4.7/5', percent: '94%' },
+  ];
+
+  return (
+    <div className="space-y-8">
+      {/* Welcome */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Support Dashboard</h1>
+          <p className="text-muted-foreground">Kundensupport & Ticket-Verwaltung</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" className="gap-2">
+            <Bot className="w-4 h-4" />
+            KI-Assistent
+          </Button>
+          <Button className="gap-2">
+            <HeadphonesIcon className="w-4 h-4" />
+            Live-Chat
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {supportStats.map((stat, i) => (
+          <Card key={i} className={stat.urgent ? 'border-red-200 dark:border-red-900' : ''}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                  <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                </div>
+                <div className={`w-12 h-12 rounded-xl bg-muted flex items-center justify-center ${stat.color}`}>
+                  {stat.icon}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Two Column Layout */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Open Tickets */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Offene Tickets</CardTitle>
+              <CardDescription>Priorisierte Support-Anfragen</CardDescription>
+            </div>
+            <Button variant="outline" size="sm">Alle Tickets</Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {openTickets.map((ticket, i) => (
+                <div key={i} className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      ticket.priority === 'high' ? 'bg-red-500/10' :
+                      ticket.priority === 'medium' ? 'bg-yellow-500/10' : 'bg-blue-500/10'
+                    }`}>
+                      <MessageSquare className={`w-5 h-5 ${
+                        ticket.priority === 'high' ? 'text-red-500' :
+                        ticket.priority === 'medium' ? 'text-yellow-500' : 'text-blue-500'
+                      }`} />
+                    </div>
+                    <div>
+                      <div className="font-medium text-sm">{ticket.id} - {ticket.subject}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {ticket.user} • {ticket.time}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge variant={ticket.priority === 'high' ? 'destructive' : ticket.priority === 'medium' ? 'default' : 'secondary'}>
+                      {ticket.priority === 'high' ? 'Hoch' : ticket.priority === 'medium' ? 'Mittel' : 'Niedrig'}
+                    </Badge>
+                    <Button size="sm">Bearbeiten</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* AI Stats & Quick Actions */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bot className="w-5 h-5" />
+                KI-Support Statistik
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {aiAssistStats.map((stat, i) => (
+                  <div key={i}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-muted-foreground">{stat.label}</span>
+                      <span className="font-medium">{stat.value}</span>
+                    </div>
+                    <Progress value={parseInt(stat.percent)} className="h-2" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Schnellaktionen</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                Streitfälle (5)
+              </Button>
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <Wallet className="w-4 h-4" />
+                Rückerstattungen (8)
+              </Button>
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                Verifizierungen (12)
+              </Button>
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <FileText className="w-4 h-4" />
+                Wissensdatenbank
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Marketer Dashboard
+function MarketerDashboard({ user }: { user: UserType }) {
+  const campaignStats = [
+    { label: 'Aktive Kampagnen', value: '8', icon: <Megaphone className="w-5 h-5" />, color: 'text-purple-500' },
+    { label: 'Impressionen (Monat)', value: '245K', icon: <Eye className="w-5 h-5" />, color: 'text-blue-500' },
+    { label: 'Klicks', value: '12.4K', icon: <MousePointer className="w-5 h-5" />, color: 'text-green-500' },
+    { label: 'Conversions', value: '892', icon: <Target className="w-5 h-5" />, color: 'text-primary' },
+  ];
+
+  const activeCampaigns = [
+    { name: 'Neukunden-Special 10%', type: 'Banner', status: 'active', impressions: '45.2K', clicks: '2.3K', ctr: '5.1%', conversions: 156 },
+    { name: 'Professional Upgrade', type: 'Email', status: 'active', impressions: '12.5K', clicks: '1.8K', ctr: '14.4%', conversions: 89 },
+    { name: 'Treueprogramm Q2', type: 'In-App', status: 'paused', impressions: '8.9K', clicks: '412', ctr: '4.6%', conversions: 23 },
+    { name: 'Sommer-Kampagne', type: 'Banner', status: 'scheduled', impressions: '-', clicks: '-', ctr: '-', conversions: 0 },
+  ];
+
+  const revenueStats = [
+    { label: 'Werbeeinnahmen', value: '€18,450', change: '+24%' },
+    { label: 'Affiliate-Provision', value: '€3,200', change: '+18%' },
+    { label: 'ROI Ø', value: '3.2x', change: '+0.4' },
+  ];
+
+  return (
+    <div className="space-y-8">
+      {/* Welcome */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Marketing Dashboard</h1>
+          <p className="text-muted-foreground">Kampagnen-Verwaltung & Performance</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" className="gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Berichte
+          </Button>
+          <Button className="gap-2">
+            <Plus className="w-4 h-4" />
+            Neue Kampagne
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {campaignStats.map((stat, i) => (
+          <Card key={i}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                  <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                </div>
+                <div className={`w-12 h-12 rounded-xl bg-muted flex items-center justify-center ${stat.color}`}>
+                  {stat.icon}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Two Column Layout */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Active Campaigns */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Aktive Kampagnen</CardTitle>
+              <CardDescription>Übersicht aller Marketing-Kampagnen</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm">Alle</Button>
+              <Button variant="ghost" size="sm">Banner</Button>
+              <Button variant="ghost" size="sm">Email</Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left text-sm text-muted-foreground border-b">
+                    <th className="pb-3 font-medium">Kampagne</th>
+                    <th className="pb-3 font-medium">Status</th>
+                    <th className="pb-3 font-medium">Impressionen</th>
+                    <th className="pb-3 font-medium">Klicks</th>
+                    <th className="pb-3 font-medium">CTR</th>
+                    <th className="pb-3 font-medium">Conversions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeCampaigns.map((campaign, i) => (
+                    <tr key={i} className="border-b last:border-0 hover:bg-muted/50 cursor-pointer">
+                      <td className="py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                            <Megaphone className="w-4 h-4 text-purple-500" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-sm">{campaign.name}</div>
+                            <div className="text-xs text-muted-foreground">{campaign.type}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <Badge variant={campaign.status === 'active' ? 'default' : campaign.status === 'paused' ? 'secondary' : 'outline'}>
+                          {campaign.status === 'active' ? 'Aktiv' : campaign.status === 'paused' ? 'Pausiert' : 'Geplant'}
+                        </Badge>
+                      </td>
+                      <td className="text-sm">{campaign.impressions}</td>
+                      <td className="text-sm">{campaign.clicks}</td>
+                      <td className="text-sm">{campaign.ctr}</td>
+                      <td className="text-sm font-medium">{campaign.conversions}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Revenue & Quick Actions */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5" />
+                Werbeeinnahmen
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {revenueStats.map((stat, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{stat.label}</p>
+                      <p className="text-xl font-bold">{stat.value}</p>
+                    </div>
+                    <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                      {stat.change}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ausstehende Genehmigungen</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {[
+                  { name: 'Spedition Müller Banner', type: 'Banner', date: 'Heute' },
+                  { name: 'Logistik Weber Promo', type: 'In-App', date: 'Gestern' },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 rounded-lg border">
+                    <div>
+                      <div className="font-medium text-sm">{item.name}</div>
+                      <div className="text-xs text-muted-foreground">{item.type} • {item.date}</div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-green-500">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500">
+                        <XCircle className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Schnellaktionen</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <Megaphone className="w-4 h-4" />
+                Kampagne erstellen
+              </Button>
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <BarChart3 className="w-4 h-4" />
+                Performance-Bericht
+              </Button>
+              <Button variant="outline" className="w-full justify-start gap-2">
+                <Users className="w-4 h-4" />
+                Zielgruppen
+              </Button>
             </CardContent>
           </Card>
         </div>

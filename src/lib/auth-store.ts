@@ -102,6 +102,32 @@ const demoUsers: User[] = [
     totalTransports: 0,
     subscriptionPlan: 'ENTERPRISE',
   },
+  {
+    id: '5',
+    email: 'support@cargobit.eu',
+    firstName: 'Lisa',
+    lastName: 'Support',
+    role: 'SUPPORT',
+    language: 'de',
+    emailVerified: true,
+    identityVerified: true,
+    rating: 4.9,
+    totalTransports: 0,
+    subscriptionPlan: 'ENTERPRISE',
+  },
+  {
+    id: '6',
+    email: 'marketer@cargobit.eu',
+    firstName: 'Peter',
+    lastName: 'Marketing',
+    role: 'MARKETER',
+    language: 'de',
+    emailVerified: true,
+    identityVerified: true,
+    rating: 5.0,
+    totalTransports: 0,
+    subscriptionPlan: 'ENTERPRISE',
+  },
 ];
 
 export const useAuthStore = create<AuthState>()(
