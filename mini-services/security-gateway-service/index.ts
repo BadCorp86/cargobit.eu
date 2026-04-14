@@ -1,6 +1,7 @@
 // ============================================
-// CARGOBIT SECURITY GATEWAY MICROSERVICE
+// CARGOBIT SECURITY GATEWAY MICROSERVICE v2.0
 // Hybrid Security Layer: Permission + Risk
+// With Error Codes, Auth, Rate-Limits, Fallback
 // Port: 3004
 // ============================================
 
@@ -14,10 +15,13 @@ type SystemRole = "ADMIN" | "SUPPORT" | "SHIPPER_COMPANY" | "SHIPPER_PRIVATE" | 
 type RiskLevel = "GREEN" | "YELLOW" | "RED";
 
 interface SecurityCheckRequest {
-  userId: string;
-  email?: string;
-  role: SystemRole;
-  companyId?: string;
+  requestId?: string;  // Correlation ID
+  user: {
+    id: string;
+    role: SystemRole;
+    companyId?: string;
+    email?: string;
+  };
   action: SecurityAction;
   entity: {
     type: "user" | "company" | "transaction" | "transport" | "wallet" | "vehicle";
@@ -29,25 +33,34 @@ interface SecurityCheckRequest {
 interface SecurityCheckResult {
   allowed: boolean;
   decision: "allowed" | "allowed_with_mitigation" | "blocked" | "permission_denied";
-  riskLevel?: RiskLevel;
-  riskScore?: number;
-  reason?: string;
+  risk?: {
+    score: number;
+    level: RiskLevel;
+    triggeredRules: string[];
+  };
   mitigations?: string[];
-  supportTicketCreated?: boolean;
-  triggeredRules?: string[];
-  auditId?: string;
+  supportTicketId?: string;
+  correlationId?: string;
+  errorCode?: SecurityErrorCode;
+  message?: string;
 }
 
-interface AuditLogEntry {
-  id: string;
-  timestamp: Date;
-  userId: string;
-  action: string;
-  result: string;
-  riskScore?: number;
-  riskLevel?: RiskLevel;
-  reason?: string;
+interface ErrorResponse {
+  allowed: false;
+  decision: "permission_denied" | "blocked" | "error";
+  errorCode: SecurityErrorCode;
+  message: string;
+  correlationId?: string;
 }
+
+type SecurityErrorCode =
+  | "PERMISSION_DENIED"
+  | "HIGH_RISK_BLOCKED"
+  | "SECURITY_SERVICE_UNAVAILABLE"
+  | "INVALID_REQUEST"
+  | "RATE_LIMIT_EXCEEDED"
+  | "UNAUTHORIZED"
+  | "INTERNAL_ERROR";
 
 type SecurityAction =
   | "CREATE_TRANSPORT"
@@ -62,6 +75,87 @@ type SecurityAction =
   | "MANAGE_VEHICLES"
   | "MANAGE_USERS"
   | "MANAGE_PLANS";
+
+interface AuditLogEntry {
+  id: string;
+  timestamp: Date;
+  correlationId?: string;
+  clientId?: string;
+  userId: string;
+  action: string;
+  result: string;
+  errorCode?: SecurityErrorCode;
+  riskScore?: number;
+  riskLevel?: RiskLevel;
+  reason?: string;
+}
+
+// ============================================
+// CONFIGURATION
+// ============================================
+
+const CONFIG = {
+  // Rate limiting
+  RATE_LIMITS: {
+    DEFAULT: { requests: 100, windowMs: 10000 },      // 100 req / 10s
+    SENSITIVE: { requests: 20, windowMs: 10000 },     // 20 req / 10s for sensitive actions
+  },
+
+  // Sensitive actions that have stricter rate limits
+  SENSITIVE_ACTIONS: ["INITIATE_PAYOUT", "ACCEPT_OFFER", "ASSIGN_DRIVER"],
+
+  // Fallback behavior when Risk Engine is unavailable
+  FALLBACK_MODE: "PERMISSION_ONLY" as "PERMISSION_ONLY" | "BLOCK_ALL",  // Allow with permission-only check or block everything
+
+  // Service tokens for internal services
+  VALID_SERVICE_TOKENS: new Set([
+    "srv_transport_service_token_xxx",
+    "srv_wallet_service_token_yyy",
+    "srv_matching_service_token_zzz",
+    // Add more service tokens as needed
+  ]),
+
+  // Risk Engine URL
+  RISK_ENGINE_URL: "http://localhost:3003",
+
+  // Risk Engine timeout (ms)
+  RISK_ENGINE_TIMEOUT: 2000,
+};
+
+// ============================================
+// ERROR CODE DEFINITIONS
+// ============================================
+
+const ERROR_MESSAGES: Record<SecurityErrorCode, { httpStatus: number; message: string }> = {
+  PERMISSION_DENIED: {
+    httpStatus: 403,
+    message: "User role does not have permission for this action",
+  },
+  HIGH_RISK_BLOCKED: {
+    httpStatus: 403,
+    message: "Action blocked due to high risk. Case forwarded to support.",
+  },
+  SECURITY_SERVICE_UNAVAILABLE: {
+    httpStatus: 503,
+    message: "Security service temporarily unavailable. Please retry.",
+  },
+  INVALID_REQUEST: {
+    httpStatus: 400,
+    message: "Invalid request format or missing required fields",
+  },
+  RATE_LIMIT_EXCEEDED: {
+    httpStatus: 429,
+    message: "Rate limit exceeded. Please slow down your requests.",
+  },
+  UNAUTHORIZED: {
+    httpStatus: 401,
+    message: "Missing or invalid service token",
+  },
+  INTERNAL_ERROR: {
+    httpStatus: 500,
+    message: "Internal server error. Please contact support.",
+  },
+};
 
 // ============================================
 // PERMISSION MATRIX
@@ -174,8 +268,8 @@ const PERMISSION_MATRIX: Record<SystemRole, Record<SecurityAction, boolean>> = {
 
 const MITIGATION_ACTIONS: Record<RiskLevel, string[]> = {
   GREEN: [],
-  YELLOW: ["DELAY_24H", "EXTRA_LOGGING", "SUPPORT_NOTIFICATION"],
-  RED: ["MANUAL_REVIEW_REQUIRED", "SUPPORT_NOTIFICATION", "CREATE_TICKET"],
+  YELLOW: ["delay_payout_24h", "extra_logging", "support_notification"],
+  RED: ["manual_review_required", "support_notification", "create_ticket"],
 };
 
 // ============================================
@@ -194,11 +288,93 @@ const supportTickets: Array<{
   createdAt: Date;
 }> = [];
 
+// Rate limit tracking
+const rateLimitStore: Map<string, { count: number; resetAt: number }> = new Map();
+
+// Risk engine availability
+let riskEngineAvailable = true;
+let lastRiskEngineCheck = 0;
+
 // ============================================
-// RISK ENGINE CLIENT
+// RATE LIMITING
 // ============================================
 
-const RISK_ENGINE_URL = "http://localhost:3003";
+function checkRateLimit(clientId: string, action: SecurityAction): { allowed: boolean; retryAfter?: number } {
+  const isSensitive = CONFIG.SENSITIVE_ACTIONS.includes(action);
+  const limits = isSensitive ? CONFIG.RATE_LIMITS.SENSITIVE : CONFIG.RATE_LIMITS.DEFAULT;
+  const key = `${clientId}:${action}`;
+  const now = Date.now();
+
+  const current = rateLimitStore.get(key);
+
+  if (!current || now > current.resetAt) {
+    // Window expired or first request
+    rateLimitStore.set(key, { count: 1, resetAt: now + limits.windowMs });
+    return { allowed: true };
+  }
+
+  if (current.count >= limits.requests) {
+    return { allowed: false, retryAfter: Math.ceil((current.resetAt - now) / 1000) };
+  }
+
+  current.count++;
+  return { allowed: true };
+}
+
+// ============================================
+// AUTHENTICATION
+// ============================================
+
+function validateServiceToken(authHeader: string | null): { valid: boolean; clientId?: string } {
+  if (!authHeader) {
+    return { valid: false };
+  }
+
+  // Extract Bearer token
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    return { valid: false };
+  }
+
+  const token = match[1];
+
+  if (CONFIG.VALID_SERVICE_TOKENS.has(token)) {
+    // Extract client ID from token (simplified)
+    return { valid: true, clientId: token.split("_")[1] || "unknown" };
+  }
+
+  return { valid: false };
+}
+
+// ============================================
+// RISK ENGINE CLIENT WITH FALLBACK
+// ============================================
+
+async function checkRiskEngineHealth(): Promise<boolean> {
+  const now = Date.now();
+  // Only check every 30 seconds
+  if (now - lastRiskEngineCheck < 30000) {
+    return riskEngineAvailable;
+  }
+
+  lastRiskEngineCheck = now;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1000);
+
+    const response = await fetch(`${CONFIG.RISK_ENGINE_URL}/health`, {
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    riskEngineAvailable = response.ok;
+    return riskEngineAvailable;
+  } catch {
+    riskEngineAvailable = false;
+    return false;
+  }
+}
 
 async function callRiskEngine(
   entityType: string,
@@ -209,9 +385,26 @@ async function callRiskEngine(
   level: RiskLevel;
   triggeredRules: string[];
   recommendation: string;
+  available: boolean;
 }> {
+  const isAvailable = await checkRiskEngineHealth();
+
+  if (!isAvailable) {
+    console.warn("Risk Engine unavailable, using fallback");
+    return {
+      score: 0,
+      level: "GREEN",
+      triggeredRules: [],
+      recommendation: "ALLOW",
+      available: false,
+    };
+  }
+
   try {
-    const response = await fetch(`${RISK_ENGINE_URL}/risk/evaluate`, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CONFIG.RISK_ENGINE_TIMEOUT);
+
+    const response = await fetch(`${CONFIG.RISK_ENGINE_URL}/risk/evaluate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -219,19 +412,27 @@ async function callRiskEngine(
         entityId,
         context,
       }),
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      // Return default low risk if risk engine unavailable
-      return { score: 0, level: "GREEN", triggeredRules: [], recommendation: "ALLOW" };
+      throw new Error(`Risk Engine returned ${response.status}`);
     }
 
     const data = await response.json();
-    return data.data;
+    return { ...data.data, available: true };
   } catch (error) {
     console.error("Risk Engine call failed:", error);
-    // Return default low risk if risk engine unavailable
-    return { score: 0, level: "GREEN", triggeredRules: [], recommendation: "ALLOW" };
+    riskEngineAvailable = false;
+    return {
+      score: 0,
+      level: "GREEN",
+      triggeredRules: [],
+      recommendation: "ALLOW",
+      available: false,
+    };
   }
 }
 
@@ -243,24 +444,31 @@ function checkPermission(role: SystemRole, action: SecurityAction): boolean {
   return PERMISSION_MATRIX[role]?.[action] === true;
 }
 
+function generateCorrelationId(): string {
+  return `corr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
 function createAuditLog(
   userId: string,
   action: string,
   result: string,
-  riskScore?: number,
-  riskLevel?: RiskLevel,
-  reason?: string
+  options: {
+    correlationId?: string;
+    clientId?: string;
+    errorCode?: SecurityErrorCode;
+    riskScore?: number;
+    riskLevel?: RiskLevel;
+    reason?: string;
+  } = {}
 ): string {
   const id = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   auditLogs.push({
     id,
     timestamp: new Date(),
+    ...options,
     userId,
     action,
     result,
-    riskScore,
-    riskLevel,
-    reason,
   });
   return id;
 }
@@ -272,7 +480,7 @@ function createSupportTicket(
   riskLevel: RiskLevel,
   reason: string
 ): string {
-  const id = `ticket_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const id = `st_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   supportTickets.push({
     id,
     userId,
@@ -286,21 +494,52 @@ function createSupportTicket(
   return id;
 }
 
+function createErrorResponse(
+  errorCode: SecurityErrorCode,
+  correlationId?: string,
+  additionalMessage?: string
+): ErrorResponse {
+  const errorInfo = ERROR_MESSAGES[errorCode];
+  return {
+    allowed: false,
+    decision: errorCode === "PERMISSION_DENIED" ? "permission_denied" : errorCode === "HIGH_RISK_BLOCKED" ? "blocked" : "error",
+    errorCode,
+    message: additionalMessage || errorInfo.message,
+    correlationId,
+  };
+}
+
 // ============================================
 // MAIN SECURITY CHECK
 // ============================================
 
-async function performSecurityCheck(request: SecurityCheckRequest): Promise<SecurityCheckResult> {
-  const { userId, role, action, entity } = request;
+async function performSecurityCheck(
+  request: SecurityCheckRequest,
+  clientId: string
+): Promise<SecurityCheckResult | ErrorResponse> {
+  const correlationId = request.requestId || generateCorrelationId();
+
+  // Validate request
+  if (!request.user?.id || !request.user?.role || !request.action || !request.entity?.type || !request.entity?.id) {
+    return createErrorResponse("INVALID_REQUEST", correlationId, "Missing required fields: user.id, user.role, action, entity.type, entity.id");
+  }
+
+  const { user, action, entity } = request;
 
   // Step 1: Permission Check (hard, binary)
-  if (!checkPermission(role, action)) {
-    const auditId = createAuditLog(userId, action, "permission_denied", undefined, undefined, `Role ${role} not allowed for ${action}`);
+  if (!checkPermission(user.role, action)) {
+    createAuditLog(user.id, action, "permission_denied", {
+      correlationId,
+      clientId,
+      errorCode: "PERMISSION_DENIED",
+      reason: `Role ${user.role} not allowed for ${action}`,
+    });
     return {
       allowed: false,
       decision: "permission_denied",
-      reason: `Rolle '${role}' hat keine Berechtigung für '${action}'`,
-      auditId,
+      errorCode: "PERMISSION_DENIED",
+      message: `Role '${user.role}' is not allowed to perform action '${action}'.`,
+      correlationId,
     };
   }
 
@@ -308,55 +547,94 @@ async function performSecurityCheck(request: SecurityCheckRequest): Promise<Secu
   const entityType = entity.type.toUpperCase();
   const riskResult = await callRiskEngine(entityType, entity.id, entity.context || {});
 
+  // Handle fallback mode when Risk Engine is unavailable
+  if (!riskResult.available && CONFIG.FALLBACK_MODE === "BLOCK_ALL") {
+    createAuditLog(user.id, action, "blocked", {
+      correlationId,
+      clientId,
+      errorCode: "SECURITY_SERVICE_UNAVAILABLE",
+      reason: "Risk Engine unavailable",
+    });
+    return {
+      allowed: false,
+      decision: "blocked",
+      errorCode: "SECURITY_SERVICE_UNAVAILABLE",
+      message: "Security service temporarily unavailable. Please retry.",
+      correlationId,
+    };
+  }
+
   // Step 3: Decision based on risk level
   if (riskResult.level === "GREEN") {
     // Low risk - allow
-    const auditId = createAuditLog(userId, action, "allowed", riskResult.score, riskResult.level);
+    createAuditLog(user.id, action, "allowed", {
+      correlationId,
+      clientId,
+      riskScore: riskResult.score,
+      riskLevel: riskResult.level,
+    });
     return {
       allowed: true,
       decision: "allowed",
-      riskLevel: riskResult.level,
-      riskScore: riskResult.score,
-      triggeredRules: riskResult.triggeredRules,
-      auditId,
+      risk: {
+        score: riskResult.score,
+        level: riskResult.level,
+        triggeredRules: riskResult.triggeredRules,
+      },
+      correlationId,
     };
   }
 
   if (riskResult.level === "YELLOW") {
     // Medium risk - allow with mitigations
-    const mitigations = MITIGATION_ACTIONS.YELLOW;
-    const auditId = createAuditLog(userId, action, "allowed_with_mitigation", riskResult.score, riskResult.level);
+    createAuditLog(user.id, action, "allowed_with_mitigation", {
+      correlationId,
+      clientId,
+      riskScore: riskResult.score,
+      riskLevel: riskResult.level,
+    });
     return {
       allowed: true,
       decision: "allowed_with_mitigation",
-      riskLevel: riskResult.level,
-      riskScore: riskResult.score,
-      mitigations,
-      triggeredRules: riskResult.triggeredRules,
-      auditId,
+      risk: {
+        score: riskResult.score,
+        level: riskResult.level,
+        triggeredRules: riskResult.triggeredRules,
+      },
+      mitigations: MITIGATION_ACTIONS.YELLOW,
+      correlationId,
     };
   }
 
   // High risk - block
   const ticketId = createSupportTicket(
-    userId,
+    user.id,
     action,
     riskResult.score,
     riskResult.level,
     `High risk detected for action ${action}`
   );
-  const auditId = createAuditLog(userId, action, "blocked", riskResult.score, riskResult.level, "High risk");
+  createAuditLog(user.id, action, "blocked", {
+    correlationId,
+    clientId,
+    errorCode: "HIGH_RISK_BLOCKED",
+    riskScore: riskResult.score,
+    riskLevel: riskResult.level,
+    reason: "High risk score",
+  });
 
   return {
     allowed: false,
     decision: "blocked",
-    riskLevel: riskResult.level,
-    riskScore: riskResult.score,
-    reason: "Hohes Risiko erkannt - Aktion vorübergehend gesperrt",
-    mitigations: MITIGATION_ACTIONS.RED,
-    supportTicketCreated: true,
-    triggeredRules: riskResult.triggeredRules,
-    auditId,
+    risk: {
+      score: riskResult.score,
+      level: riskResult.level,
+      triggeredRules: riskResult.triggeredRules,
+    },
+    errorCode: "HIGH_RISK_BLOCKED",
+    message: "Action blocked due to high risk. Case forwarded to support.",
+    supportTicketId: ticketId,
+    correlationId,
   };
 }
 
@@ -373,7 +651,7 @@ async function handleRequest(request: Request): Promise<Response> {
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Service-Token",
   };
 
   if (method === "OPTIONS") {
@@ -381,33 +659,95 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   try {
+    // ============================================
     // POST /security/check - Main Hybrid Security Check
+    // ============================================
     if (path === "/security/check" && method === "POST") {
-      const body = await request.json();
-      const result = await performSecurityCheck(body as SecurityCheckRequest);
-      return Response.json({ success: true, data: result }, { headers: corsHeaders });
+      // Validate service token
+      const authHeader = request.headers.get("Authorization") || request.headers.get("X-Service-Token");
+      const { valid, clientId } = validateServiceToken(authHeader);
+
+      if (!valid) {
+        return Response.json(
+          createErrorResponse("UNAUTHORIZED"),
+          { status: 401, headers: corsHeaders }
+        );
+      }
+
+      // Parse request
+      let body: SecurityCheckRequest;
+      try {
+        body = await request.json();
+      } catch {
+        return Response.json(
+          createErrorResponse("INVALID_REQUEST"),
+          { status: 400, headers: corsHeaders }
+        );
+      }
+
+      // Check rate limit
+      const rateLimitResult = checkRateLimit(clientId!, body.action);
+      if (!rateLimitResult.allowed) {
+        return Response.json(
+          createErrorResponse("RATE_LIMIT_EXCEEDED", body.requestId, `Retry after ${rateLimitResult.retryAfter} seconds`),
+          {
+            status: 429,
+            headers: {
+              ...corsHeaders,
+              "Retry-After": String(rateLimitResult.retryAfter),
+              "X-RateLimit-Remaining": "0",
+            },
+          }
+        );
+      }
+
+      // Perform security check
+      const result = await performSecurityCheck(body, clientId!);
+
+      // Determine HTTP status based on result
+      let httpStatus = 200;
+      if (!result.allowed) {
+        if (result.errorCode) {
+          httpStatus = ERROR_MESSAGES[result.errorCode]?.httpStatus || 403;
+        }
+      }
+
+      return Response.json(result, { status: httpStatus, headers: corsHeaders });
     }
 
+    // ============================================
+    // GET /security/health - Service health check
+    // ============================================
+    if (path === "/security/health") {
+      const riskEngineHealthy = await checkRiskEngineHealth();
+      return Response.json({
+        status: "ok",
+        service: "security-gateway",
+        port: 3004,
+        dependencies: {
+          riskEngine: riskEngineHealthy ? "healthy" : "unavailable",
+        },
+        fallbackMode: CONFIG.FALLBACK_MODE,
+      }, { headers: corsHeaders });
+    }
+
+    // ============================================
     // GET /security/permissions - Get permission matrix
+    // ============================================
     if (path === "/security/permissions" && method === "GET") {
       return Response.json({ success: true, data: PERMISSION_MATRIX }, { headers: corsHeaders });
     }
 
-    // GET /security/permissions/:role - Get permissions for a role
-    const rolePermsMatch = path.match(/^\/security\/permissions\/([A-Z_]+)$/);
-    if (rolePermsMatch && method === "GET") {
-      const role = rolePermsMatch[1] as SystemRole;
-      const perms = PERMISSION_MATRIX[role];
-      if (!perms) {
-        return Response.json({ error: "Invalid role" }, { status: 400, headers: corsHeaders });
-      }
-      const allowedActions = Object.entries(perms)
-        .filter(([_, allowed]) => allowed)
-        .map(([action]) => action);
-      return Response.json({ success: true, data: { role, allowedActions, permissions: perms } }, { headers: corsHeaders });
+    // ============================================
+    // GET /security/error-codes - Get error code definitions
+    // ============================================
+    if (path === "/security/error-codes" && method === "GET") {
+      return Response.json({ success: true, data: ERROR_MESSAGES }, { headers: corsHeaders });
     }
 
+    // ============================================
     // GET /security/audit - Get audit logs
+    // ============================================
     if (path === "/security/audit" && method === "GET") {
       const limit = parseInt(url.searchParams.get("limit") || "100", 10);
       const userId = url.searchParams.get("userId");
@@ -418,7 +758,9 @@ async function handleRequest(request: Request): Promise<Response> {
       return Response.json({ success: true, data: logs.slice(-limit).reverse() }, { headers: corsHeaders });
     }
 
+    // ============================================
     // GET /security/tickets - Get support tickets
+    // ============================================
     if (path === "/security/tickets" && method === "GET") {
       const limit = parseInt(url.searchParams.get("limit") || "100", 10);
       const status = url.searchParams.get("status");
@@ -429,24 +771,25 @@ async function handleRequest(request: Request): Promise<Response> {
       return Response.json({ success: true, data: tickets.slice(-limit).reverse() }, { headers: corsHeaders });
     }
 
-    // PUT /security/tickets/:id - Update ticket status
-    const ticketUpdateMatch = path.match(/^\/security\/tickets\/(.+)$/);
-    if (ticketUpdateMatch && method === "PUT") {
-      const ticketId = ticketUpdateMatch[1];
-      const body = await request.json();
-      const ticket = supportTickets.find((t) => t.id === ticketId);
-      if (!ticket) {
-        return Response.json({ error: "Ticket not found" }, { status: 404, headers: corsHeaders });
-      }
-      if (body.status) {
-        ticket.status = body.status;
-      }
-      return Response.json({ success: true, data: ticket }, { headers: corsHeaders });
-    }
-
+    // ============================================
     // GET /security/mitigations - Get mitigation definitions
+    // ============================================
     if (path === "/security/mitigations" && method === "GET") {
       return Response.json({ success: true, data: MITIGATION_ACTIONS }, { headers: corsHeaders });
+    }
+
+    // ============================================
+    // GET /security/rate-limits - Get rate limit config
+    // ============================================
+    if (path === "/security/rate-limits" && method === "GET") {
+      return Response.json({
+        success: true,
+        data: {
+          default: CONFIG.RATE_LIMITS.DEFAULT,
+          sensitive: CONFIG.RATE_LIMITS.SENSITIVE,
+          sensitiveActions: CONFIG.SENSITIVE_ACTIONS,
+        },
+      }, { headers: corsHeaders });
     }
 
     // Health check
@@ -458,7 +801,7 @@ async function handleRequest(request: Request): Promise<Response> {
   } catch (error) {
     console.error("Security Gateway Error:", error);
     return Response.json(
-      { error: "Internal Server Error", message: String(error) },
+      createErrorResponse("INTERNAL_ERROR", undefined, String(error)),
       { status: 500, headers: corsHeaders }
     );
   }
@@ -472,16 +815,24 @@ const PORT = 3004;
 
 console.log(`
 ╔══════════════════════════════════════════════════════════╗
-║       CARGOBIT SECURITY GATEWAY MICROSERVICE             ║
+║       CARGOBIT SECURITY GATEWAY MICROSERVICE v2.0        ║
 ║       Hybrid Security Layer: Permission + Risk           ║
 ║       Port: ${PORT}                                         ║
 ╠══════════════════════════════════════════════════════════╣
+║  Features:                                               ║
+║  • Error Codes (PERMISSION_DENIED, HIGH_RISK_BLOCKED,..) ║
+║  • Service Token Auth                                    ║
+║  • Rate Limiting (100/10s default, 20/10s sensitive)     ║
+║  • Risk Engine Fallback                                  ║
+╠══════════════════════════════════════════════════════════╣
 ║  Endpoints:                                              ║
 ║  • POST /security/check       - Hybrid Security Check    ║
+║  • GET  /security/health      - Health + Dependencies    ║
+║  • GET  /security/error-codes - Error Definitions        ║
+║  • GET  /security/rate-limits - Rate Limit Config        ║
 ║  • GET  /security/permissions - Permission Matrix        ║
 ║  • GET  /security/audit       - Audit Logs               ║
 ║  • GET  /security/tickets     - Support Tickets          ║
-║  • GET  /security/mitigations - Mitigation Definitions   ║
 ╚══════════════════════════════════════════════════════════╝
 `);
 

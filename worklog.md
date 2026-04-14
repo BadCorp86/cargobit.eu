@@ -480,3 +480,161 @@ Security Gateway → localhost:3003/risk/evaluate → Risk Engine
 ```
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: risk-dashboard-ui
+Agent: Main Agent
+Task: Risk Dashboard UI Wireframes + Security Gateway API v2.0
+
+## Work Log:
+
+### 1. Risk Overview Dashboard
+- Datei: `/src/components/dashboard/risk-overview-dashboard.tsx` - NEU
+- KPI-Leiste mit 4 Kacheln:
+  - Total Risk Entities
+  - High Risk (Red)
+  - Medium Risk (Yellow)
+  - New High-Risk Today
+- Top High-Risk Entities Tabelle
+- Risk Trend Chart (SVG Line Chart)
+- Recent Events Timeline
+
+### 2. Risk Profile Detailseite
+- Datei: `/src/components/dashboard/risk-profile-detail.tsx` - NEU
+- Header mit Score Display (großer Kreis)
+- Summary Cards (Triggered Rules, Security Flags, Support Tickets)
+- Tabs:
+  - Triggered Rules (Tabelle)
+  - Score History (Chart)
+  - Events (Timeline)
+  - Security Flags (mit Severity)
+- Actions: Security Flag setzen / Entsperren
+
+### 3. Rules Management
+- Datei: `/src/components/dashboard/rules-management.tsx` - NEU
+- Regeln-Liste mit Filter (Entity Type, Category)
+- Edit-View mit:
+  - JSON Condition Editor
+  - Weight/Priority Slider
+  - Active Toggle
+- Test Rule Funktion mit Context
+- Create Rule Dialog
+
+### 4. Security Gateway API v2.0
+- Datei: `/mini-services/security-gateway-service/index.ts` - Aktualisiert
+- Error Codes:
+  - PERMISSION_DENIED (403)
+  - HIGH_RISK_BLOCKED (403)
+  - SECURITY_SERVICE_UNAVAILABLE (503)
+  - INVALID_REQUEST (400)
+  - RATE_LIMIT_EXCEEDED (429)
+  - UNAUTHORIZED (401)
+  - INTERNAL_ERROR (500)
+- Auth: Service Token (Bearer)
+- Rate Limits:
+  - Default: 100 req / 10s
+  - Sensitive Actions: 20 req / 10s
+- Fallback: PERMISSION_ONLY oder BLOCK_ALL
+
+## Stage Summary:
+
+### UI Wireframes:
+
+**Dashboard Startseite:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Risk Overview                                              │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐           │
+│  │ Total   │ │ RED     │ │ YELLOW  │ │ New     │           │
+│  │ 1,284   │ │   37    │ │  142    │ │   5     │           │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────┘           │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────┐ ┌──────────────────────┐          │
+│  │ Top High-Risk        │ │ Risk Trend           │          │
+│  │ ─────────────────    │ │ ──────────────────   │          │
+│  │ Type │Name│Score│... │ │ Line Chart 30 Tage   │          │
+│  │ USER │Max │ 78  │... │ │ GREEN ─ YELLOW ─ RED │          │
+│  │ COMP │LG  │ 72  │... │ └──────────────────────┘          │
+│  └──────────────────────┘                                    │
+├─────────────────────────────────────────────────────────────┤
+│  Recent Risk Events                                         │
+│  Timestamp │ Entity │ Rule │ Weight │ Level                 │
+│  14:32:15  │ usr_.. │ fraud│  +30   │ HIGH                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Detailseite:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Risk Profile: Max Mustermann                               │
+│  ID: usr_7a8b9c │ Type: USER                                │
+├─────────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  Score: 78                                            │  │
+│  │  [RED] │ Status: ACTIVE │ [Security Flag setzen]      │  │
+│  └───────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│  [Triggered Rules] [Score History] [Events] [Flags]         │
+├─────────────────────────────────────────────────────────────┤
+│  Rule ID      │ Description              │ Weight │ Count   │
+│  fraud_flag   │ Betrugsverdacht          │  +30   │ 1       │
+│  kyc_missing  │ KYC nicht abgeschlossen  │  +20   │ 3       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Security Gateway API v2.0:
+
+**Request:**
+```json
+POST /security/check
+Authorization: Bearer srv_transport_service_token_xxx
+
+{
+  "requestId": "uuid-123",
+  "user": { "id": "u_123", "role": "SHIPPER", "companyId": "c_456" },
+  "action": "ACCEPT_OFFER",
+  "entity": {
+    "type": "transaction",
+    "id": "tx_987",
+    "context": { "amount": 52000, "international": true }
+  }
+}
+```
+
+**Response (Allowed with Mitigation):**
+```json
+{
+  "allowed": true,
+  "decision": "allowed_with_mitigation",
+  "risk": { "score": 52, "level": "yellow", "triggeredRules": ["tx_high_amount"] },
+  "mitigations": ["delay_payout_24h", "extra_logging"],
+  "correlationId": "uuid-123"
+}
+```
+
+**Response (Permission Denied):**
+```json
+{
+  "allowed": false,
+  "decision": "permission_denied",
+  "errorCode": "PERMISSION_DENIED",
+  "message": "Role SHIPPER is not allowed to perform action MAKE_OFFER.",
+  "correlationId": "uuid-123"
+}
+```
+
+**Response (Blocked - High Risk):**
+```json
+{
+  "allowed": false,
+  "decision": "blocked",
+  "risk": { "score": 81, "level": "red", "triggeredRules": ["tx_high_amount", "user_new_iban"] },
+  "errorCode": "HIGH_RISK_BLOCKED",
+  "message": "Action blocked due to high risk. Case forwarded to support.",
+  "supportTicketId": "st_999",
+  "correlationId": "uuid-123"
+}
+```
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
