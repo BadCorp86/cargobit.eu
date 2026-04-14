@@ -1,0 +1,440 @@
+{
+  "$schema": "https://cargbit.com/ui-copywriting",
+  "name": "CargoBit Risk Dashboard - UI Copywriting",
+  "version": "1.0.0",
+  "language": "de-DE",
+  "description": "Vollständige UI-Texte für Risk Dashboard und Hybrid Security Layer",
+
+  "dashboard": {
+    "title": "Risk Dashboard",
+    "subtitle": "Security Cockpit für Admin/Support/Compliance",
+    "header": {
+      "lastUpdated": "Letzte Aktualisierung: {timestamp}",
+      "refresh": "Aktualisieren",
+      "export": "Export"
+    },
+    
+    "kpiCards": {
+      "totalEntities": {
+        "title": "Gesamt Entities",
+        "tooltip": "Alle überwachten Nutzer, Firmen und Transaktionen im System",
+        "subtitle": "Users, Companies, Transactions"
+      },
+      "greenEntities": {
+        "title": "GREEN Entities",
+        "tooltip": "Niedriges Risiko (Score 0-30). Normale Aktionen ohne Einschränkungen.",
+        "subtitle": "Niedriges Risiko"
+      },
+      "yellowEntities": {
+        "title": "YELLOW Entities",
+        "tooltip": "Mittleres Risiko (Score 31-60). Aktionen mit Mitigations ausgeführt.",
+        "subtitle": "Mittleres Risiko"
+      },
+      "redEntities": {
+        "title": "RED Entities",
+        "tooltip": "Hohes Risiko (Score 61-100). Aktionen blockiert, Support-Ticket erstellt.",
+        "subtitle": "Hohes Risiko"
+      }
+    },
+
+    "riskDistribution": {
+      "title": "Global Risk Distribution",
+      "subtitle": "Verteilung der Risk-Scores nach Level",
+      "green": "GREEN (0-30) - Allow",
+      "yellow": "YELLOW (31-60) - Allow + Mitigations",
+      "red": "RED (61-100) - Block + Support Ticket",
+      "byEntity": "Nach Entity-Typ"
+    },
+
+    "riskTrend": {
+      "title": "Risk Trend",
+      "subtitle": "Entwicklung der Risk-Scores über Zeit",
+      "period": {
+        "7days": "7 Tage",
+        "30days": "30 Tage",
+        "90days": "90 Tage"
+      }
+    },
+
+    "topRiskEntities": {
+      "title": "Top Risk Entities",
+      "subtitle": "Entities mit höchstem Risk-Score",
+      "viewAll": "Alle anzeigen",
+      "columns": {
+        "entity": "Entity",
+        "type": "Typ",
+        "score": "Score",
+        "level": "Level",
+        "lastEvent": "Letztes Event",
+        "actions": "Aktionen"
+      },
+      "emptyState": "Keine Entities mit hohem Risiko gefunden"
+    },
+
+    "recentEvents": {
+      "title": "Recent Risk Events",
+      "subtitle": "Die zuletzt ausgelösten Risiko-Ereignisse",
+      "columns": {
+        "time": "Zeit",
+        "entity": "Entity",
+        "rule": "Regel",
+        "weight": "Gewicht",
+        "score": "Score",
+        "level": "Level"
+      },
+      "emptyState": "Keine Risk-Events vorhanden"
+    },
+
+    "quickActions": {
+      "title": "Quick Actions",
+      "manageRules": "Rules verwalten",
+      "setFlag": "Security Flag setzen",
+      "blockUser": "User sperren",
+      "newRule": "Neue Regel"
+    }
+  },
+
+  "riskProfile": {
+    "header": {
+      "backButton": "Zurück",
+      "title": "Risk Profile: {entityType} {entityId}"
+    },
+
+    "scoreCard": {
+      "riskScore": "RISK SCORE",
+      "lastUpdated": "Last updated: {timestamp}",
+      "levelActions": {
+        "green": "Allow",
+        "yellow": "Allow + Mitigations",
+        "red": "Block + Support Ticket"
+      }
+    },
+
+    "actions": {
+      "title": "Actions",
+      "blockUser": {
+        "label": "Security Flag setzen",
+        "confirmTitle": "User sperren?",
+        "confirmDescription": "Diese Aktion wird den User sperren und alle laufenden Aktionen blockieren.",
+        "confirmButton": "Sperren"
+      },
+      "unblock": {
+        "label": "Entsperren",
+        "tooltip": "Hebt die Sperre auf und erlaubt Aktionen wieder"
+      },
+      "recalculate": {
+        "label": "Score neu berechnen",
+        "tooltip": "Berechnet den Risk-Score basierend auf den aktuellen Daten neu",
+        "loading": "Berechne..."
+      },
+      "override": {
+        "label": "Manueller Override",
+        "title": "Manuellen Score setzen",
+        "description": "Überschreibe den automatisch berechneten Risk-Score manuell.",
+        "newScore": "Neuer Score",
+        "reason": "Grund",
+        "reasonPlaceholder": "Begründung für den manuellen Override...",
+        "save": "Speichern"
+      }
+    },
+
+    "details": {
+      "title": "Details",
+      "entityId": "Entity ID",
+      "email": "Email",
+      "phone": "Telefon",
+      "company": "Unternehmen",
+      "walletBalance": "Wallet Balance",
+      "transactionCount": "Transaktionen",
+      "memberSince": "Member Since",
+      "verification": "Verification Status"
+    },
+
+    "triggeredRules": {
+      "title": "Triggered Rules",
+      "subtitle": "{count} Regeln haben zu diesem Score beigetragen",
+      "totalWeight": "Total Weight",
+      "weight": "weight",
+      "context": "Context",
+      "expandMore": "Mehr",
+      "expandLess": "Weniger"
+    },
+
+    "scoreHistory": {
+      "title": "Score History",
+      "subtitle": "Entwicklung des Risk-Scores über Zeit",
+      "thresholds": {
+        "red": "RED Zone (61-100)",
+        "yellow": "YELLOW Zone (31-60)",
+        "green": "GREEN Zone (0-30)"
+      }
+    },
+
+    "eventTimeline": {
+      "title": "Event Timeline",
+      "subtitle": "Chronologischer Ablauf der Risiko-Ereignisse",
+      "eventTypes": {
+        "rule_triggered": "Rule triggered",
+        "score_change": "Score changed",
+        "status_change": "Status changed",
+        "manual_override": "Manual override"
+      }
+    },
+
+    "supportTicket": {
+      "title": "Support Ticket",
+      "ticketId": "Ticket ID",
+      "status": "Status",
+      "priority": "Priority",
+      "assignedTo": "Assigned To",
+      "created": "Created",
+      "sla": "SLA",
+      "openTicket": "Ticket öffnen",
+      "openInFreshdesk": "Im Freshdesk öffnen"
+    }
+  },
+
+  "rulesManagement": {
+    "header": {
+      "backButton": "Zurück",
+      "title": "Rules Management",
+      "subtitle": "Verwalte Risk-Engine Regeln (Admin/Security only)"
+    },
+
+    "stats": {
+      "total": "Total Rules",
+      "active": "Active",
+      "testing": "Testing",
+      "inactive": "Inactive",
+      "totalTriggers": "Total Triggers"
+    },
+
+    "filters": {
+      "search": "Regeln suchen...",
+      "category": "Kategorie",
+      "status": "Status",
+      "all": "Alle"
+    },
+
+    "table": {
+      "columns": {
+        "rule": "Rule",
+        "category": "Category",
+        "weight": "Weight",
+        "status": "Status",
+        "triggers": "Triggers",
+        "lastTriggered": "Last Triggered",
+        "actions": "Actions"
+      },
+      "emptyState": "Keine Regeln gefunden"
+    },
+
+    "actions": {
+      "toggleActive": "Aktivieren/Deaktivieren",
+      "test": "Testen",
+      "edit": "Bearbeiten",
+      "delete": "Löschen",
+      "duplicate": "Duplizieren"
+    },
+
+    "editModal": {
+      "title": "Regel bearbeiten: {ruleName}",
+      "createTitle": "Neue Regel erstellen",
+      "version": "Version {version} • Zuletzt aktualisiert: {date}",
+      
+      "fields": {
+        "ruleName": "Rule Name",
+        "ruleNamePlaceholder": "z.B. new_iban",
+        "category": "Category",
+        "status": "Status",
+        "weight": "Weight (Score Impact)",
+        "weightHint": "1-50 Punkte",
+        "description": "Description",
+        "descriptionPlaceholder": "Beschreibung der Regel...",
+        "conditions": "Conditions (JSON)",
+        "conditionsHint": "Operators: equals, not_equals, greater_than, less_than, contains, exists"
+      },
+
+      "buttons": {
+        "cancel": "Abbrechen",
+        "save": "Regel speichern"
+      }
+    },
+
+    "testModal": {
+      "title": "Test Rule: {ruleName}",
+      "subtitle": "Führe diese Regel mit einem Test-Context aus",
+      "testContext": "Test Context (JSON)",
+      "runTest": "Test ausführen",
+      "result": {
+        "title": "Test Ergebnis",
+        "matchedRules": "Matched Rules",
+        "totalScore": "Total Score",
+        "riskLevel": "Risk Level",
+        "duration": "Duration",
+        "details": "Details"
+      }
+    },
+
+    "deleteConfirm": {
+      "title": "Regel löschen?",
+      "description": "Möchtest du die Regel \"{ruleName}\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "cancel": "Abbrechen",
+      "confirm": "Löschen"
+    },
+
+    "infoBox": {
+      "title": "Regeln werden in Echtzeit angewendet",
+      "description": "Änderungen an Regeln werden sofort wirksam. Neuen Regeln sollten immer im Status \"Testing\" gestartet werden, bevor sie auf \"Active\" gesetzt werden."
+    }
+  },
+
+  "tooltips": {
+    "riskScoreCircle": "Der Risk Score bewertet das Sicherheitsrisiko basierend auf Regeln, Verhalten und Kontext. Score 0-30 = GREEN (Allow), 31-60 = YELLOW (Allow + Mitigations), 61-100 = RED (Block).",
+    "triggeredRules": "Diese Regeln wurden ausgelöst und beeinflussen den aktuellen Score. Jede Regel addiert oder subtrahiert Punkte.",
+    "mitigationApplied": "Die Aktion wurde ausgeführt, aber zusätzliche Sicherheitsmaßnahmen wurden angewendet (z.B. verzögerter Payout, erweitertes Logging).",
+    "highRiskBlock": "Diese Aktion wurde blockiert, da der Risk Score über dem Grenzwert von 60 liegt. Ein Support-Ticket wurde automatisch erstellt.",
+    "ruleWeight": "Gewichtung der Regel. Höhere Werte haben größeren Einfluss auf den Gesamtscore.",
+    "ruleTesting": "Regel ist im Test-Modus. Wird nur für interne Evaluierung verwendet, nicht für Produktionsentscheidungen.",
+    "manualOverride": "Erlaubt es Administratoren, den automatisch berechneten Score manuell zu überschreiben. Wird im Audit-Log protokolliert.",
+    "entityType": "Art der Entität: USER (Nutzer), COMPANY (Unternehmen), oder TRANSACTION (Transaktion).",
+    "correlationId": "Eindeutige ID zur Nachverfolgung dieser Entscheidung im gesamten System.",
+    "slaTimer": "Verbleibende Zeit bis zum Ablauf des Service Level Agreements für dieses Ticket."
+  },
+
+  "errorMessages": {
+    "permissionDenied": {
+      "title": "Keine Berechtigung",
+      "message": "Du hast keine Berechtigung, diese Aktion auszuführen.",
+      "action": "Kontaktiere einen Administrator, falls du Zugriff benötigst."
+    },
+    "highRiskBlocked": {
+      "title": "Aktion blockiert",
+      "message": "Diese Aktion wurde aus Sicherheitsgründen blockiert. Unser Team prüft den Fall.",
+      "action": "Du wirst per E-Mail benachrichtigt, sobald die Prüfung abgeschlossen ist."
+    },
+    "securityServiceUnavailable": {
+      "title": "Dienst nicht verfügbar",
+      "message": "Der Sicherheitsdienst ist momentan nicht erreichbar. Bitte versuche es später erneut.",
+      "action": "Falls das Problem besteht, kontaktiere den Support."
+    },
+    "invalidRequest": {
+      "title": "Ungültige Anfrage",
+      "message": "Die übermittelten Daten reichen nicht aus, um eine Risikoanalyse durchzuführen.",
+      "action": "Überprüfe deine Eingaben und versuche es erneut."
+    },
+    "rateLimitExceeded": {
+      "title": "Zu viele Anfragen",
+      "message": "Du hast das Anfragelimit überschritten. Bitte warte einen Moment.",
+      "action": "Versuche es in {seconds} Sekunden erneut."
+    },
+    "riskEngineError": {
+      "title": "Fehler bei der Risikoanalyse",
+      "message": "Die Risikoanalyse konnte nicht durchgeführt werden.",
+      "action": "Das System hat einen Fallback-Modus aktiviert. Kontaktiere den Support."
+    },
+    "ruleNotFound": {
+      "title": "Regel nicht gefunden",
+      "message": "Die angeforderte Regel existiert nicht oder wurde gelöscht."
+    },
+    "invalidJson": {
+      "title": "Ungültiges JSON",
+      "message": "Das JSON-Format ist ungültig. Bitte überprüfe die Syntax.",
+      "hint": "Stelle sicher, dass alle Klammern und Anführungszeichen korrekt sind."
+    }
+  },
+
+  "mitigationMessages": {
+    "delayed": "Diese Aktion wurde verzögert, um zusätzliche Sicherheitsprüfungen durchzuführen.",
+    "logging": "Wir haben zusätzliche Logs erstellt, um die Aktivität zu überwachen.",
+    "verification": "Bitte bestätige deine Identität, um fortzufahren.",
+    "manualReview": "Diese Transaktion wird manuell überprüft.",
+    "delayedPayout": "Der Payout wurde um 24 Stunden verzögert.",
+    "supportNotification": "Das Support-Team wurde über diese Aktion informiert.",
+    "twoFactorRequired": "Zwei-Faktor-Authentifizierung ist für diese Aktion erforderlich."
+  },
+
+  "supportMessages": {
+    "ticket": {
+      "title": "High-Risk Fall erkannt – Aktion blockiert",
+      "description": "Eine sicherheitsrelevante Aktion wurde aufgrund eines hohen Risk Scores blockiert. Bitte prüfen Sie die Details und entscheiden Sie über das weitere Vorgehen."
+    },
+    "emailSubject": "[High Risk] Aktion blockiert – Score {score} – {entityType} {entityId}",
+    "userNotification": "Wir haben deine Anfrage erhalten und prüfen den Fall. Du wirst informiert, sobald die Überprüfung abgeschlossen ist.",
+    "resolution": {
+      "approved": "Deine Anfrage wurde nach Überprüfung genehmigt. Du kannst jetzt fortfahren.",
+      "rejected": "Deine Anfrage konnte nicht genehmigt werden. Bei Fragen kontaktiere bitte unseren Support.",
+      "needsInfo": "Wir benötigen weitere Informationen, um deine Anfrage zu prüfen. Bitte lade die angeforderten Dokumente hoch."
+    }
+  },
+
+  "userFeedback": {
+    "blocked": "Diese Aktion wurde aus Sicherheitsgründen blockiert. Unser Team prüft den Fall.",
+    "mitigation": "Diese Aktion wurde ausgeführt, aber zusätzliche Sicherheitsmaßnahmen wurden angewendet.",
+    "allowed": null
+  },
+
+  "validation": {
+    "required": "Dieses Feld ist erforderlich",
+    "minValue": "Wert muss mindestens {min} sein",
+    "maxValue": "Wert darf höchstens {max} sein",
+    "minLength": "Mindestens {min} Zeichen erforderlich",
+    "maxLength": "Höchstens {max} Zeichen erlaubt",
+    "pattern": "Format ist ungültig",
+    "score": "Score muss zwischen 0 und 100 liegen"
+  },
+
+  "statusLabels": {
+    "riskLevel": {
+      "green": "GREEN",
+      "yellow": "YELLOW", 
+      "red": "RED",
+      "grey": "UNKNOWN"
+    },
+    "entityType": {
+      "user": "USER",
+      "company": "COMPANY",
+      "transaction": "TRANSACTION"
+    },
+    "ruleStatus": {
+      "active": "ACTIVE",
+      "testing": "TESTING",
+      "inactive": "INACTIVE"
+    },
+    "ticketStatus": {
+      "open": "OPEN",
+      "in_progress": "IN PROGRESS",
+      "resolved": "RESOLVED",
+      "closed": "CLOSED"
+    },
+    "priority": {
+      "low": "LOW",
+      "medium": "MEDIUM",
+      "high": "HIGH",
+      "critical": "CRITICAL"
+    }
+  },
+
+  "timeLabels": {
+    "justNow": "Gerade eben",
+    "minutesAgo": "vor {count} Minute{n}",
+    "hoursAgo": "vor {count} Stunde{n}",
+    "daysAgo": "vor {count} Tag{en}",
+    "today": "Heute",
+    "yesterday": "Gestern",
+    "thisWeek": "Diese Woche",
+    "lastWeek": "Letzte Woche"
+  },
+
+  "accessibility": {
+    "close": "Schließen",
+    "open": "Öffnen",
+    "expand": "Erweitern",
+    "collapse": "Einklappen",
+    "loading": "Wird geladen...",
+    "success": "Erfolgreich",
+    "error": "Fehler",
+    "warning": "Warnung",
+    "info": "Information"
+  }
+}

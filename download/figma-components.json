@@ -1,0 +1,561 @@
+{
+  "$schema": "https://figma.com/components-spec",
+  "name": "CargoBit Risk Dashboard Components",
+  "version": "1.0.0",
+  "components": {
+    
+    "Button": {
+      "description": "Primary action button with multiple variants",
+      "variants": {
+        "type": ["primary", "secondary", "danger", "ghost"],
+        "size": ["sm", "md", "lg"],
+        "state": ["default", "hover", "active", "disabled", "loading"],
+        "icon": ["none", "left", "right", "iconOnly"]
+      },
+      "baseStyles": {
+        "borderRadius": "{radius.md}",
+        "fontFamily": "{typography.fontFamily.primary}",
+        "fontWeight": "{typography.fontWeight.medium}",
+        "cursor": "pointer",
+        "transition": "all {animation.duration.normal} {animation.easing.default}"
+      },
+      "styles": {
+        "primary": {
+          "default": {
+            "background": "{colors.ui.primary}",
+            "color": "#FFFFFF",
+            "border": "none"
+          },
+          "hover": {
+            "background": "{colors.ui.primaryDark}",
+            "color": "#FFFFFF"
+          },
+          "active": {
+            "background": "#1457A6",
+            "transform": "scale(0.98)"
+          },
+          "disabled": {
+            "background": "{colors.ui.primaryLight}",
+            "color": "#FFFFFF",
+            "cursor": "not-allowed"
+          },
+          "loading": {
+            "background": "{colors.ui.primary}",
+            "color": "#FFFFFF",
+            "cursor": "wait"
+          }
+        },
+        "secondary": {
+          "default": {
+            "background": "#FFFFFF",
+            "color": "{colors.ui.primary}",
+            "border": "1px solid {colors.ui.primary}"
+          },
+          "hover": {
+            "background": "{colors.ui.primaryBg}",
+            "color": "{colors.ui.primary}"
+          },
+          "active": {
+            "background": "#D4E6FF",
+            "transform": "scale(0.98)"
+          },
+          "disabled": {
+            "background": "#FFFFFF",
+            "color": "{colors.ui.textDisabled}",
+            "border": "1px solid {colors.ui.border}",
+            "cursor": "not-allowed"
+          }
+        },
+        "danger": {
+          "default": {
+            "background": "{colors.risk.red}",
+            "color": "#FFFFFF",
+            "border": "none"
+          },
+          "hover": {
+            "background": "#C0392B",
+            "color": "#FFFFFF"
+          },
+          "active": {
+            "background": "#922B21",
+            "transform": "scale(0.98)"
+          },
+          "disabled": {
+            "background": "#F5B7B1",
+            "color": "#FFFFFF",
+            "cursor": "not-allowed"
+          }
+        },
+        "ghost": {
+          "default": {
+            "background": "transparent",
+            "color": "{colors.ui.textSecondary}",
+            "border": "none"
+          },
+          "hover": {
+            "background": "{colors.ui.background}",
+            "color": "{colors.ui.textPrimary}"
+          },
+          "active": {
+            "background": "{colors.ui.border}",
+            "transform": "scale(0.98)"
+          },
+          "disabled": {
+            "background": "transparent",
+            "color": "{colors.ui.textDisabled}",
+            "cursor": "not-allowed"
+          }
+        }
+      },
+      "sizes": {
+        "sm": {
+          "padding": "6px 12px",
+          "fontSize": "12px",
+          "height": "32px"
+        },
+        "md": {
+          "padding": "10px 20px",
+          "fontSize": "14px",
+          "height": "40px"
+        },
+        "lg": {
+          "padding": "12px 24px",
+          "fontSize": "16px",
+          "height": "48px"
+        }
+      }
+    },
+
+    "RiskBadge": {
+      "description": "Badge showing risk level with color coding",
+      "variants": {
+        "level": ["green", "yellow", "red", "grey"],
+        "size": ["sm", "md"]
+      },
+      "baseStyles": {
+        "borderRadius": "{radius.sm}",
+        "fontWeight": "{typography.fontWeight.medium}",
+        "display": "inline-flex",
+        "alignItems": "center",
+        "gap": "6px"
+      },
+      "styles": {
+        "green": {
+          "background": "{colors.risk.greenBg}",
+          "color": "{colors.risk.green}"
+        },
+        "yellow": {
+          "background": "{colors.risk.yellowBg}",
+          "color": "{colors.risk.yellow}"
+        },
+        "red": {
+          "background": "{colors.risk.redBg}",
+          "color": "{colors.risk.red}"
+        },
+        "grey": {
+          "background": "{colors.risk.greyBg}",
+          "color": "{colors.risk.grey}"
+        }
+      },
+      "sizes": {
+        "sm": {
+          "padding": "2px 6px",
+          "fontSize": "10px",
+          "dotSize": "6px"
+        },
+        "md": {
+          "padding": "4px 10px",
+          "fontSize": "12px",
+          "dotSize": "8px"
+        }
+      },
+      "icons": {
+        "dot": "circle filled",
+        "green": "check-circle",
+        "yellow": "alert-circle",
+        "red": "alert-triangle"
+      }
+    },
+
+    "EntityBadge": {
+      "description": "Badge showing entity type (User, Company, Transaction)",
+      "variants": {
+        "type": ["user", "company", "transaction"]
+      },
+      "baseStyles": {
+        "borderRadius": "{radius.sm}",
+        "padding": "4px 10px",
+        "fontSize": "12px",
+        "fontWeight": "{typography.fontWeight.medium}",
+        "display": "inline-flex",
+        "alignItems": "center",
+        "gap": "6px"
+      },
+      "styles": {
+        "user": {
+          "background": "{colors.entity.userBg}",
+          "color": "{colors.entity.user}",
+          "icon": "users"
+        },
+        "company": {
+          "background": "{colors.entity.companyBg}",
+          "color": "{colors.entity.company}",
+          "icon": "building-2"
+        },
+        "transaction": {
+          "background": "{colors.entity.transactionBg}",
+          "color": "{colors.entity.transaction}",
+          "icon": "truck"
+        }
+      }
+    },
+
+    "RiskScoreCircle": {
+      "description": "Circular progress indicator for risk score (0-100)",
+      "variants": {
+        "level": ["green", "yellow", "red"],
+        "size": ["sm", "md", "lg"]
+      },
+      "baseStyles": {
+        "display": "flex",
+        "alignItems": "center",
+        "justifyContent": "center",
+        "fontWeight": "{typography.fontWeight.bold}"
+      },
+      "styles": {
+        "green": {
+          "strokeColor": "{colors.risk.green}",
+          "textColor": "{colors.ui.textPrimary}"
+        },
+        "yellow": {
+          "strokeColor": "{colors.risk.yellow}",
+          "textColor": "{colors.ui.textPrimary}"
+        },
+        "red": {
+          "strokeColor": "{colors.risk.red}",
+          "textColor": "{colors.ui.textPrimary}"
+        }
+      },
+      "sizes": {
+        "sm": {
+          "diameter": 48,
+          "fontSize": 14,
+          "strokeWidth": 3
+        },
+        "md": {
+          "diameter": 64,
+          "fontSize": 18,
+          "strokeWidth": 4
+        },
+        "lg": {
+          "diameter": 96,
+          "fontSize": 28,
+          "strokeWidth": 6
+        },
+        "xl": {
+          "diameter": 120,
+          "fontSize": 36,
+          "strokeWidth": 8
+        }
+      }
+    },
+
+    "KPICard": {
+      "description": "Key performance indicator card for dashboard",
+      "variants": {
+        "trend": ["up", "down", "neutral", "none"]
+      },
+      "baseStyles": {
+        "background": "{colors.ui.card}",
+        "border": "1px solid {colors.ui.border}",
+        "borderRadius": "{radius.lg}",
+        "boxShadow": "{shadow.card}",
+        "padding": "{spacing.lg}",
+        "cursor": "pointer",
+        "transition": "all {animation.duration.normal} {animation.easing.default}"
+      },
+      "hoverStyles": {
+        "boxShadow": "{shadow.cardHover}",
+        "borderColor": "{colors.ui.primary}"
+      },
+      "children": {
+        "title": {
+          "fontSize": "12px",
+          "fontWeight": "{typography.fontWeight.medium}",
+          "color": "{colors.ui.textSecondary}",
+          "marginBottom": "{spacing.sm}"
+        },
+        "value": {
+          "fontSize": "32px",
+          "fontWeight": "{typography.fontWeight.bold}",
+          "color": "{colors.ui.textPrimary}",
+          "lineHeight": 1
+        },
+        "subtitle": {
+          "fontSize": "14px",
+          "color": "{colors.ui.textSecondary}",
+          "marginLeft": "{spacing.sm}"
+        },
+        "trend": {
+          "up": {
+            "color": "{colors.risk.green}",
+            "icon": "trending-up"
+          },
+          "down": {
+            "color": "{colors.risk.red}",
+            "icon": "trending-down"
+          },
+          "neutral": {
+            "color": "{colors.ui.textSecondary}",
+            "icon": "minus"
+          }
+        }
+      }
+    },
+
+    "TableRow": {
+      "description": "Table row with hover and selection states",
+      "variants": {
+        "state": ["default", "hover", "selected"]
+      },
+      "baseStyles": {
+        "background": "{colors.ui.card}",
+        "borderBottom": "1px solid {colors.ui.border}",
+        "transition": "background {animation.duration.fast} {animation.easing.default}"
+      },
+      "styles": {
+        "default": {
+          "background": "{colors.ui.card}"
+        },
+        "hover": {
+          "background": "#F2F6FA"
+        },
+        "selected": {
+          "background": "{colors.ui.primaryBg}",
+          "borderLeft": "3px solid {colors.ui.primary}"
+        }
+      }
+    },
+
+    "Card": {
+      "description": "Base card container",
+      "variants": {
+        "variant": ["default", "elevated", "bordered"],
+        "state": ["default", "hover"]
+      },
+      "baseStyles": {
+        "background": "{colors.ui.card}",
+        "borderRadius": "{radius.lg}",
+        "padding": "{spacing.lg}"
+      },
+      "styles": {
+        "default": {
+          "border": "1px solid {colors.ui.border}",
+          "boxShadow": "{shadow.sm}"
+        },
+        "elevated": {
+          "border": "none",
+          "boxShadow": "{shadow.md}"
+        },
+        "bordered": {
+          "border": "2px solid {colors.ui.border}",
+          "boxShadow": "none"
+        }
+      }
+    },
+
+    "Input": {
+      "description": "Text input field",
+      "variants": {
+        "state": ["default", "focus", "error", "disabled"],
+        "size": ["sm", "md", "lg"],
+        "icon": ["none", "left", "right"]
+      },
+      "baseStyles": {
+        "background": "#FFFFFF",
+        "border": "1px solid {colors.ui.border}",
+        "borderRadius": "{radius.md}",
+        "fontFamily": "{typography.fontFamily.primary}",
+        "fontSize": "14px",
+        "color": "{colors.ui.textPrimary}",
+        "transition": "all {animation.duration.fast} {animation.easing.default}"
+      },
+      "styles": {
+        "default": {
+          "borderColor": "{colors.ui.border}"
+        },
+        "focus": {
+          "borderColor": "{colors.ui.primary}",
+          "boxShadow": "0 0 0 3px {colors.ui.primaryBg}"
+        },
+        "error": {
+          "borderColor": "{colors.risk.red}",
+          "boxShadow": "0 0 0 3px {colors.risk.redBg}"
+        },
+        "disabled": {
+          "background": "{colors.ui.background}",
+          "color": "{colors.ui.textDisabled}",
+          "cursor": "not-allowed"
+        }
+      }
+    },
+
+    "Tooltip": {
+      "description": "Information tooltip on hover",
+      "variants": {
+        "position": ["top", "bottom", "left", "right"]
+      },
+      "baseStyles": {
+        "background": "{colors.ui.textPrimary}",
+        "color": "#FFFFFF",
+        "borderRadius": "{radius.sm}",
+        "padding": "8px 12px",
+        "fontSize": "12px",
+        "maxWidth": "250px",
+        "boxShadow": "{shadow.md}"
+      }
+    },
+
+    "Alert": {
+      "description": "Alert message box",
+      "variants": {
+        "type": ["info", "success", "warning", "error"]
+      },
+      "baseStyles": {
+        "borderRadius": "{radius.md}",
+        "padding": "{spacing.md} {spacing.lg}",
+        "display": "flex",
+        "alignItems": "flex-start",
+        "gap": "{spacing.md}"
+      },
+      "styles": {
+        "info": {
+          "background": "{colors.ui.primaryBg}",
+          "border": "1px solid {colors.ui.primary}",
+          "iconColor": "{colors.ui.primary}"
+        },
+        "success": {
+          "background": "{colors.risk.greenBg}",
+          "border": "1px solid {colors.risk.green}",
+          "iconColor": "{colors.risk.green}"
+        },
+        "warning": {
+          "background": "{colors.risk.yellowBg}",
+          "border": "1px solid {colors.risk.yellow}",
+          "iconColor": "{colors.risk.yellow}"
+        },
+        "error": {
+          "background": "{colors.risk.redBg}",
+          "border": "1px solid {colors.risk.red}",
+          "iconColor": "{colors.risk.red}"
+        }
+      }
+    },
+
+    "Modal": {
+      "description": "Overlay modal dialog",
+      "variants": {
+        "size": ["sm", "md", "lg", "xl", "full"]
+      },
+      "baseStyles": {
+        "background": "{colors.ui.card}",
+        "borderRadius": "{radius.xl}",
+        "boxShadow": "{shadow.lg}",
+        "maxHeight": "90vh"
+      },
+      "sizes": {
+        "sm": { "maxWidth": "400px" },
+        "md": { "maxWidth": "600px" },
+        "lg": { "maxWidth": "800px" },
+        "xl": { "maxWidth": "1000px" },
+        "full": { "maxWidth": "95vw" }
+      },
+      "overlay": {
+        "background": "rgba(0, 0, 0, 0.5)",
+        "backdropFilter": "blur(4px)"
+      }
+    },
+
+    "RuleCard": {
+      "description": "Card displaying a triggered risk rule",
+      "variants": {
+        "weight": ["low", "medium", "high"]
+      },
+      "baseStyles": {
+        "background": "{colors.ui.card}",
+        "border": "1px solid {colors.ui.border}",
+        "borderRadius": "{radius.md}",
+        "padding": "{spacing.lg}",
+        "transition": "background {animation.duration.fast}"
+      },
+      "hoverStyles": {
+        "background": "{colors.ui.background}"
+      },
+      "weightStyles": {
+        "low": {
+          "iconBackground": "#F2F4F7",
+          "iconColor": "{colors.ui.textSecondary}"
+        },
+        "medium": {
+          "iconBackground": "{colors.risk.yellowBg}",
+          "iconColor": "{colors.risk.yellow}"
+        },
+        "high": {
+          "iconBackground": "{colors.risk.redBg}",
+          "iconColor": "{colors.risk.red}"
+        }
+      }
+    },
+
+    "SupportTicketCard": {
+      "description": "Card showing support ticket information",
+      "variants": {
+        "status": ["open", "in_progress", "resolved"],
+        "priority": ["low", "medium", "high", "critical"]
+      },
+      "baseStyles": {
+        "borderRadius": "{radius.lg}",
+        "padding": "{spacing.lg}"
+      },
+      "statusStyles": {
+        "open": {
+          "border": "2px solid {colors.risk.red}",
+          "background": "{colors.risk.redBg}"
+        },
+        "in_progress": {
+          "border": "2px solid {colors.risk.yellow}",
+          "background": "{colors.risk.yellowBg}"
+        },
+        "resolved": {
+          "border": "2px solid {colors.risk.green}",
+          "background": "{colors.risk.greenBg}"
+        }
+      }
+    }
+
+  },
+
+  "templates": {
+    "DashboardOverview": {
+      "layout": "grid",
+      "columns": 12,
+      "gutter": 24,
+      "margin": 24,
+      "sections": ["Header", "KPI Row", "Main Content", "Events Table", "Quick Actions"]
+    },
+    "RiskProfileDetail": {
+      "layout": "two-column",
+      "leftColumn": {
+        "width": "320px",
+        "sections": ["Score Card", "Actions", "Details"]
+      },
+      "rightColumn": {
+        "sections": ["Triggered Rules", "Score History", "Event Timeline", "Support Ticket"]
+      }
+    },
+    "RulesManagement": {
+      "layout": "single-column",
+      "sections": ["Header", "Stats Row", "Filters", "Rules Table", "Info Box"]
+    }
+  }
+}

@@ -1,0 +1,172 @@
+{
+  "$schema": "https://trunk.design/figma-tokens",
+  "name": "CargoBit Risk Dashboard",
+  "version": "1.0.0",
+  "description": "Design Tokens for CargoBit Risk Dashboard - Hybrid Security Layer",
+  
+  "tokens": {
+    "colors": {
+      "risk": {
+        "green": { "value": "#2ECC71", "description": "Low Risk (0-30)" },
+        "greenBg": { "value": "#E8F8F0", "description": "GREEN Badge Background" },
+        "yellow": { "value": "#F1C40F", "description": "Medium Risk (31-60)" },
+        "yellowBg": { "value": "#FFF9E6", "description": "YELLOW Badge Background" },
+        "red": { "value": "#E74C3C", "description": "High Risk (61-100)" },
+        "redBg": { "value": "#FDEDEC", "description": "RED Badge Background" },
+        "grey": { "value": "#BDC3C7", "description": "Neutral/Unknown" },
+        "greyBg": { "value": "#F2F4F7", "description": "GREY Badge Background" }
+      },
+      
+      "ui": {
+        "primary": { "value": "#2D8CFF", "description": "Primary brand color" },
+        "primaryDark": { "value": "#1B6ED6", "description": "Primary hover state" },
+        "primaryLight": { "value": "#AFCBFF", "description": "Primary disabled state" },
+        "primaryBg": { "value": "#EAF3FF", "description": "Primary background tint" },
+        
+        "background": { "value": "#F7F9FB", "description": "Page background" },
+        "card": { "value": "#FFFFFF", "description": "Card background" },
+        "border": { "value": "#E0E6ED", "description": "Default border" },
+        
+        "textPrimary": { "value": "#1F2D3D", "description": "Primary text" },
+        "textSecondary": { "value": "#6B7C93", "description": "Secondary text" },
+        "textDisabled": { "value": "#AFCBFF", "description": "Disabled text" }
+      },
+      
+      "entity": {
+        "user": { "value": "#2D8CFF", "description": "User entity color" },
+        "userBg": { "value": "#E8F4FD", "description": "User badge background" },
+        "company": { "value": "#8B5CF6", "description": "Company entity color" },
+        "companyBg": { "value": "#F3E8FD", "description": "Company badge background" },
+        "transaction": { "value": "#F59E0B", "description": "Transaction entity color" },
+        "transactionBg": { "value": "#FEF3E8", "description": "Transaction badge background" }
+      },
+      
+      "semantic": {
+        "success": { "value": "#2ECC71" },
+        "warning": { "value": "#F1C40F" },
+        "error": { "value": "#E74C3C" },
+        "info": { "value": "#2D8CFF" }
+      }
+    },
+    
+    "spacing": {
+      "xs": { "value": "4px" },
+      "sm": { "value": "8px" },
+      "md": { "value": "12px" },
+      "lg": { "value": "16px" },
+      "xl": { "value": "24px" },
+      "xxl": { "value": "32px" },
+      "xxxl": { "value": "48px" }
+    },
+    
+    "radius": {
+      "sm": { "value": "4px" },
+      "md": { "value": "8px" },
+      "lg": { "value": "12px" },
+      "xl": { "value": "16px" },
+      "full": { "value": "9999px" }
+    },
+    
+    "borderWidth": {
+      "thin": { "value": "1px" },
+      "medium": { "value": "2px" },
+      "thick": { "value": "4px" }
+    },
+    
+    "shadow": {
+      "sm": { "value": "0 1px 3px rgba(0, 0, 0, 0.05)" },
+      "md": { "value": "0 4px 12px rgba(0, 0, 0, 0.08)" },
+      "lg": { "value": "0 8px 24px rgba(0, 0, 0, 0.12)" },
+      "card": { "value": "0 1px 3px rgba(0, 0, 0, 0.05)" },
+      "cardHover": { "value": "0 4px 12px rgba(0, 0, 0, 0.1)" }
+    },
+    
+    "typography": {
+      "fontFamily": {
+        "primary": { "value": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+        "mono": { "value": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }
+      },
+      
+      "fontSize": {
+        "xs": { "value": "12px" },
+        "sm": { "value": "14px" },
+        "md": { "value": "16px" },
+        "lg": { "value": "18px" },
+        "xl": { "value": "20px" },
+        "xxl": { "value": "24px" },
+        "xxxl": { "value": "32px" }
+      },
+      
+      "fontWeight": {
+        "regular": { "value": "400" },
+        "medium": { "value": "500" },
+        "semibold": { "value": "600" },
+        "bold": { "value": "700" }
+      },
+      
+      "lineHeight": {
+        "tight": { "value": "1.2" },
+        "normal": { "value": "1.5" },
+        "relaxed": { "value": "1.75" }
+      }
+    },
+    
+    "animation": {
+      "duration": {
+        "fast": { "value": "100ms" },
+        "normal": { "value": "150ms" },
+        "slow": { "value": "300ms" }
+      },
+      "easing": {
+        "default": { "value": "ease-in-out" },
+        "in": { "value": "ease-in" },
+        "out": { "value": "ease-out" }
+      }
+    }
+  },
+  
+  "typographyStyles": {
+    "h1": {
+      "fontFamily": "{typography.fontFamily.primary}",
+      "fontSize": "{typography.fontSize.xxxl}",
+      "fontWeight": "{typography.fontWeight.bold}",
+      "lineHeight": "{typography.lineHeight.tight}",
+      "color": "{colors.ui.textPrimary}"
+    },
+    "h2": {
+      "fontFamily": "{typography.fontFamily.primary}",
+      "fontSize": "{typography.fontSize.xxl}",
+      "fontWeight": "{typography.fontWeight.semibold}",
+      "lineHeight": "{typography.lineHeight.tight}",
+      "color": "{colors.ui.textPrimary}"
+    },
+    "h3": {
+      "fontFamily": "{typography.fontFamily.primary}",
+      "fontSize": "{typography.fontSize.xl}",
+      "fontWeight": "{typography.fontWeight.semibold}",
+      "lineHeight": "{typography.lineHeight.normal}",
+      "color": "{colors.ui.textPrimary}"
+    },
+    "body": {
+      "fontFamily": "{typography.fontFamily.primary}",
+      "fontSize": "{typography.fontSize.sm}",
+      "fontWeight": "{typography.fontWeight.regular}",
+      "lineHeight": "{typography.lineHeight.normal}",
+      "color": "{colors.ui.textPrimary}"
+    },
+    "caption": {
+      "fontFamily": "{typography.fontFamily.primary}",
+      "fontSize": "{typography.fontSize.xs}",
+      "fontWeight": "{typography.fontWeight.regular}",
+      "lineHeight": "{typography.lineHeight.normal}",
+      "color": "{colors.ui.textSecondary}"
+    },
+    "mono": {
+      "fontFamily": "{typography.fontFamily.mono}",
+      "fontSize": "{typography.fontSize.xs}",
+      "fontWeight": "{typography.fontWeight.regular}",
+      "lineHeight": "{typography.lineHeight.normal}",
+      "color": "{colors.ui.textPrimary}"
+    }
+  }
+}
