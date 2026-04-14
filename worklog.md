@@ -97,16 +97,48 @@ Task: Implementation der Rollen- und Berechtigungslogik sowie Sicherheitsarchite
 
 ### Architektur:
 ```
-Request → Middleware → Hybrid Security Layer
-         ↓
-    Permission Check (Role-based)
-         ↓ Passed
-    Risk Scoring (Context-sensitive)
-         ↓
-    Decision: ALLOW / FLAG / BLOCK
-         ↓
-    Audit Log → Action
+                ┌──────────────────────────┐
+                │        User Action       │
+                │   (z.B. Accept Offer)    │
+                └─────────────┬────────────┘
+                              │
+                              ▼
+                ┌──────────────────────────┐
+                │   Permission Matrix       │
+                │  (Role → Allowed?)        │
+                └─────────────┬────────────┘
+                        NO ───▶│ 403 Forbidden
+                              │
+                        YES   ▼
+                ┌──────────────────────────┐
+                │       Risk Engine        │
+                │ UserRisk + CompanyRisk + │
+                │ TransactionRisk → Score  │
+                └─────────────┬────────────┘
+                              │
+        ┌─────────────────────┼──────────────────────────┐
+        │                     │                          │
+        ▼                     ▼                          ▼
+   GREEN (0–30)         YELLOW (31–60)              RED (61–100)
+   Allow Action         Allow + Mitigation          Block + Review
+        │                     │                          │
+        ▼                     ▼                          ▼
+┌──────────────┐     ┌──────────────┐          ┌────────────────┐
+│ ActionExec   │     │ Mitigations: │          │ Support Ticket │
+│ (execute)    │     │ • 24h Delay  │          │ + Audit Log    │
+└──────────────┘     │ • 2FA Check  │          │ + Notify User  │
+                     │ • GPS Verify │          └────────────────┘
+                     │ • Extra Log  │
+                     └──────────────┘
 ```
+
+### Mitigation Actions (YELLOW):
+- DELAY_24H: 24h Wartezeit bei Payouts
+- EXTRA_LOGGING: Erweitertes Logging aktiviert
+- GPS_VERIFICATION: GPS-Verifikation erforderlich
+- TWO_FACTOR_CHALLENGE: 2FA-Verifizierung erforderlich
+- DOCUMENT_RECHECK: Dokumente werden erneut geprüft
+- SUPPORT_NOTIFICATION: Support-Team benachrichtigt
 
 ### Risk Factors:
 **UserRiskScore:**
