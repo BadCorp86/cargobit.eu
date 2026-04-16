@@ -1,0 +1,39 @@
+{
+  "name": "cargobit-microservices",
+  "version": "1.0.0",
+  "description": "CargoBit Microservices Platform",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "auth-service",
+    "order-service",
+    "insurance-service",
+    "ad-service",
+    "risk-engine",
+    "audit-service",
+    "notification-service",
+    "partner-service",
+    "api-gateway"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "docker:up": "docker-compose -f docker-compose.yml up -d",
+    "docker:down": "docker-compose -f docker-compose.yml down",
+    "docker:build": "docker-compose -f docker-compose.yml build",
+    "docker:logs": "docker-compose -f docker-compose.yml logs -f",
+    "kafka:up": "docker-compose -f docker-compose.yml --profile kafka up -d",
+    "monitoring:up": "docker-compose -f docker-compose.yml --profile monitoring up -d",
+    "db:migrate": "for dir in */; do cd \"$dir\" && npx prisma migrate deploy && cd ..; done",
+    "db:seed": "for dir in */; do cd \"$dir\" && npx prisma db seed && cd ..; done"
+  },
+  "devDependencies": {
+    "turbo": "^1.11.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

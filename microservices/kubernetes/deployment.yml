@@ -1,0 +1,301 @@
+# CargoBit Kubernetes Deployment
+# ================================
+# Production-ready Kubernetes manifests
+
+# ============================================
+# NAMESPACE
+# ============================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cargobit
+  labels:
+    app: cargobit
+    environment: production
+---
+# ============================================
+# CONFIG MAP
+# ============================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cargobit-config
+  namespace: cargobit
+data:
+  NODE_ENV: "production"
+  JWT_EXPIRY: "15m"
+  REFRESH_TOKEN_EXPIRY: "7d"
+  SERVICE_TOKEN_EXPIRY: "5m"
+---
+# ============================================
+# SECRETS
+# ============================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cargobit-secrets
+  namespace: cargobit
+type: Opaque
+stringData:
+  JWT_SECRET: "change-me-in-production"
+  SERVICE_SHARED_SECRET: "change-me-in-production"
+  DATABASE_URL: "postgresql://cargobit:password@postgres:5432/cargobit"
+  REDIS_URL: "redis://redis:6379"
+---
+# ============================================
+# API GATEWAY DEPLOYMENT
+# ============================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: cargobit
+  labels:
+    app: api-gateway
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: cargobit/api-gateway:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: cargobit-config
+            - secretRef:
+                name: cargobit-secrets
+          env:
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service:3001"
+            - name: ORDER_SERVICE_URL
+              value: "http://order-service:3002"
+            - name: INSURANCE_SERVICE_URL
+              value: "http://insurance-service:3003"
+            - name: AD_SERVICE_URL
+              value: "http://ad-service:3004"
+            - name: RISK_SERVICE_URL
+              value: "http://risk-engine:3005"
+            - name: AUDIT_SERVICE_URL
+              value: "http://audit-service:3006"
+            - name: NOTIFICATION_SERVICE_URL
+              value: "http://notification-service:3007"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+# ============================================
+# API GATEWAY SERVICE
+# ============================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: cargobit
+spec:
+  type: LoadBalancer
+  selector:
+    app: api-gateway
+  ports:
+    - port: 80
+      targetPort: 3000
+---
+# ============================================
+# AUTH SERVICE DEPLOYMENT
+# ============================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: cargobit
+  labels:
+    app: auth-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: cargobit/auth-service:latest
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: cargobit-config
+            - secretRef:
+                name: cargobit-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+# ============================================
+# AUTH SERVICE SERVICE
+# ============================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: cargobit
+spec:
+  type: ClusterIP
+  selector:
+    app: auth-service
+  ports:
+    - port: 3001
+      targetPort: 3001
+---
+# ============================================
+# ORDER SERVICE DEPLOYMENT
+# ============================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  namespace: cargobit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+    spec:
+      containers:
+        - name: order-service
+          image: cargobit/order-service:latest
+          ports:
+            - containerPort: 3002
+          envFrom:
+            - configMapRef:
+                name: cargobit-config
+            - secretRef:
+                name: cargobit-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+# ============================================
+# ORDER SERVICE SERVICE
+# ============================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+  namespace: cargobit
+spec:
+  type: ClusterIP
+  selector:
+    app: order-service
+  ports:
+    - port: 3002
+      targetPort: 3002
+---
+# ============================================
+# HORIZONTAL POD AUTOSCALER
+# ============================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: cargobit
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+---
+# ============================================
+# INGRESS
+# ============================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cargobit-ingress
+  namespace: cargobit
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+spec:
+  tls:
+    - hosts:
+        - api.cargobit.eu
+      secretName: cargobit-tls
+  rules:
+    - host: api.cargobit.eu
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 80

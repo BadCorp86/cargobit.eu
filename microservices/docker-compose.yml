@@ -1,0 +1,338 @@
+# CargoBit Microservices - Docker Compose
+# ==========================================
+# Development environment configuration
+
+version: '3.8'
+
+services:
+  # ============================================
+  # API GATEWAY
+  # ============================================
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: cargobit-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - ORDER_SERVICE_URL=http://order-service:3002
+      - INSURANCE_SERVICE_URL=http://insurance-service:3003
+      - AD_SERVICE_URL=http://ad-service:3004
+      - RISK_SERVICE_URL=http://risk-engine:3005
+      - AUDIT_SERVICE_URL=http://audit-service:3006
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3007
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+    depends_on:
+      - auth-service
+      - order-service
+      - insurance-service
+      - ad-service
+      - risk-engine
+      - audit-service
+      - notification-service
+    networks:
+      - cargobit-network
+    restart: unless-stopped
+
+  # ============================================
+  # AUTH SERVICE
+  # ============================================
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: cargobit-auth
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:-cargobit-jwt-secret-key-change-in-production}
+      - JWT_EXPIRY=15m
+      - REFRESH_TOKEN_EXPIRY=7d
+      - SERVICE_TOKEN_EXPIRY=5m
+      - SERVICE_SHARED_SECRET=${SERVICE_SHARED_SECRET:-internal-service-secret}
+      - DATABASE_URL=postgresql://cargobit:password@postgres:5432/cargobit_auth
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - cargobit-network
+    restart: unless-stopped
+
+  # ============================================
+  # ORDER SERVICE
+  # ============================================
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    container_name: cargobit-orders
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - DATABASE_URL=postgresql://cargobit:password@postgres:5432/cargobit_orders
+      - RISK_SERVICE_URL=http://risk-engine:3005
+      - AUDIT_SERVICE_URL=http://audit-service:3006
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - cargobit-network
+    restart: unless-stopped
+
+  # ============================================
+  # INSURANCE SERVICE
+  # ============================================
+  insurance-service:
+    build:
+      context: ./insurance-service
+      dockerfile: Dockerfile
+    container_name: cargobit-insurance
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - DATABASE_URL=postgresql://cargobit:password@postgres:5432/cargobit_insurance
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3007
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - cargobit-network
+    restart: unless-stopped
+
+  # ============================================
+  # AD SERVICE
+  # ============================================
+  ad-service:
+    build:
+      context: ./ad-service
+      dockerfile: Dockerfile
+    container_name: cargobit-ads
+    ports:
+      - "3004:3004"
+    environment:
+      - NODE_ENV=development
+      - PORT=3004
+      - DATABASE_URL=postgresql://cargobit:password@postgres:5432/cargobit_ads
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - cargobit-network
+    restart: unless-stopped
+
+  # ============================================
+  # RISK ENGINE
+  # ============================================
+  risk-engine:
+    build:
+      context: ./risk-engine
+      dockerfile: Dockerfile
+    container_name: cargobit-risk
+    ports:
+      - "3005:3005"
+    environment:
+      - NODE_ENV=development
+      - PORT=3005
+      - DATABASE_URL=postgresql://cargobit:password@postgres:5432/cargobit_risk
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - cargobit-network
+    restart: unless-stopped
+
+  # ============================================
+  # AUDIT SERVICE
+  # ============================================
+  audit-service:
+    build:
+      context: ./audit-service
+      dockerfile: Dockerfile
+    container_name: cargobit-audit
+    ports:
+      - "3006:3006"
+    environment:
+      - NODE_ENV=development
+      - PORT=3006
+      - DATABASE_URL=postgresql://cargobit:password@postgres:5432/cargobit_audit
+    depends_on:
+      - postgres
+    networks:
+      - cargobit-network
+    restart: unless-stopped
+
+  # ============================================
+  # NOTIFICATION SERVICE
+  # ============================================
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: cargobit-notifications
+    ports:
+      - "3007:3007"
+    environment:
+      - NODE_ENV=development
+      - PORT=3007
+      - DATABASE_URL=postgresql://cargobit:password@postgres:5432/cargobit_notifications
+      - REDIS_URL=redis://redis:6379
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - cargobit-network
+    restart: unless-stopped
+
+  # ============================================
+  # POSTGRESQL DATABASE
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: cargobit-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=cargobit
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=cargobit
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    networks:
+      - cargobit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cargobit"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # REDIS (Caching + Rate Limiting)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: cargobit-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - cargobit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # KAFKA (Event Streaming) - Optional
+  # ============================================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: cargobit-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - cargobit-network
+    profiles:
+      - kafka
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: cargobit-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - cargobit-network
+    profiles:
+      - kafka
+
+  # ============================================
+  # PROMETHEUS (Monitoring)
+  # ============================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cargobit-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - cargobit-network
+    profiles:
+      - monitoring
+
+  # ============================================
+  # GRAFANA (Dashboards)
+  # ============================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cargobit-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    networks:
+      - cargobit-network
+    profiles:
+      - monitoring
+
+# ============================================
+# NETWORKS
+# ============================================
+networks:
+  cargobit-network:
+    driver: bridge
+
+# ============================================
+# VOLUMES
+# ============================================
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
