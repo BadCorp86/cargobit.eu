@@ -1,0 +1,752 @@
+openapi: 3.0.3
+info:
+  title: CargoBit Execution Service API
+  description: |
+    Transport-Lifecycle Management - Status, Tracking, POD
+    
+    ## Responsibilities
+    - Execution creation and lifecycle management
+    - Status transitions with validation
+    - Real-time tracking
+    - Proof of Delivery (POD) management
+    - Completion and cancellation handling
+    
+    ## Events Published
+    - `execution.created`
+    - `execution.status_changed`
+    - `execution.pod_uploaded`
+    - `execution.completed`
+    
+    ## Events Consumed
+    - `matching.completed`
+  version: 1.0.0
+  contact:
+    name: CargoBit Platform Team
+    
+servers:
+  - url: https://api.cargobit.com/v1
+    description: Production
+  - url: https://api-staging.cargobit.com/v1
+    description: Staging
+
+tags:
+  - name: Executions
+    description: Execution lifecycle operations
+  - name: Tracking
+    description: Real-time tracking operations
+  - name: POD
+    description: Proof of Delivery operations
+
+paths:
+  /executions:
+    post:
+      tags: [Executions]
+      summary: Create new execution
+      description: |
+        Creates a new execution after matching is completed.
+        Typically called by Execution-Service when `matching.completed` event is received.
+      operationId: createExecution
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExecutionRequest'
+      responses:
+        '201':
+          description: Execution created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Execution already exists for this order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      tags: [Executions]
+      summary: List executions
+      description: List executions with optional filters
+      operationId: listExecutions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: carrierId
+          in: query
+          schema:
+            type: string
+        - name: orderId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ExecutionStatus'
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: toDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: List of executions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionListResponse'
+
+  /executions/{executionId}:
+    get:
+      tags: [Executions]
+      summary: Get execution details
+      operationId: getExecution
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      responses:
+        '200':
+          description: Execution details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /executions/order/{orderId}:
+    get:
+      tags: [Executions]
+      summary: Get execution by order ID
+      operationId: getExecutionByOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Execution details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /executions/{executionId}/status:
+    post:
+      tags: [Executions]
+      summary: Update execution status
+      description: |
+        Update the status of an execution with location and notes.
+        
+        ## Valid Transitions
+        - ASSIGNED → ACCEPTED | CANCELLED
+        - ACCEPTED → PICKED_UP | CANCELLED
+        - PICKED_UP → IN_TRANSIT
+        - IN_TRANSIT → DELIVERED
+        - DELIVERED → POD_SUBMITTED
+        - POD_SUBMITTED → COMPLETED
+        
+        Publishes `execution.status_changed` event.
+      operationId: updateStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusUpdateRequest'
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '400':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /executions/{executionId}/pod:
+    post:
+      tags: [POD]
+      summary: Upload Proof of Delivery
+      description: |
+        Upload POD document (photo, signed document, or delivery note).
+        Publishes `execution.pod_uploaded` event.
+      operationId: uploadPOD
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PODUploadRequest'
+      responses:
+        '200':
+          description: POD uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PODResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    get:
+      tags: [POD]
+      summary: Get POD details
+      operationId: getPOD
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      responses:
+        '200':
+          description: POD details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PODResponse'
+        '404':
+          description: POD not found
+
+  /executions/{executionId}/tracking:
+    get:
+      tags: [Tracking]
+      summary: Get tracking data
+      description: Get all tracking points for an execution
+      operationId: getTracking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Tracking data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackingResponse'
+
+    post:
+      tags: [Tracking]
+      summary: Add tracking point
+      description: Add a new GPS tracking point (typically from Carrier app)
+      operationId: addTrackingPoint
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackingPointRequest'
+      responses:
+        '201':
+          description: Tracking point added
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /executions/carrier/{carrierId}/active:
+    get:
+      tags: [Executions]
+      summary: Get active executions for carrier
+      operationId: getActiveExecutionsForCarrier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: carrierId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Active executions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionListResponse'
+
+  /executions/{executionId}/complete:
+    post:
+      tags: [Executions]
+      summary: Complete execution
+      description: |
+        Mark execution as completed with optional rating.
+        Publishes `execution.completed` event.
+      operationId: completeExecution
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompletionRequest'
+      responses:
+        '200':
+          description: Execution completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '400':
+          description: Execution not in completable state
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /executions/{executionId}/cancel:
+    post:
+      tags: [Executions]
+      summary: Cancel execution
+      operationId: cancelExecution
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/executionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+      responses:
+        '200':
+          description: Execution cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '400':
+          description: Cannot cancel execution in current state
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    executionId:
+      name: executionId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique execution identifier
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    ExecutionStatus:
+      type: string
+      enum:
+        - CREATED
+        - ASSIGNED
+        - ACCEPTED
+        - PICKED_UP
+        - IN_TRANSIT
+        - DELIVERED
+        - POD_SUBMITTED
+        - COMPLETED
+        - CANCELLED
+      description: |
+        Status Machine:
+        ```
+        CREATED → ASSIGNED → ACCEPTED → PICKED_UP → IN_TRANSIT → DELIVERED → POD_SUBMITTED → COMPLETED
+                                                                              ↓
+                                                                          CANCELLED
+        ```
+
+    CreateExecutionRequest:
+      type: object
+      required:
+        - orderId
+        - carrierId
+        - driverId
+        - vehicleId
+        - agreedPrice
+        - currency
+        - scheduledPickup
+      properties:
+        orderId:
+          type: string
+        carrierId:
+          type: string
+        driverId:
+          type: string
+        vehicleId:
+          type: string
+        agreedPrice:
+          type: number
+          format: decimal
+          minimum: 0
+        currency:
+          type: string
+          default: EUR
+        scheduledPickup:
+          type: string
+          format: date-time
+        estimatedDelivery:
+          type: string
+          format: date-time
+        matchResult:
+          $ref: '#/components/schemas/MatchResultSummary'
+
+    MatchResultSummary:
+      type: object
+      properties:
+        score:
+          type: number
+          format: float
+        explanation:
+          type: array
+          items:
+            type: string
+
+    Execution:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        transportId:
+          type: string
+        carrierId:
+          type: string
+        driverId:
+          type: string
+        vehicleId:
+          type: string
+        agreedPrice:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        status:
+          $ref: '#/components/schemas/ExecutionStatus'
+        scheduledPickup:
+          type: string
+          format: date-time
+        estimatedDelivery:
+          type: string
+          format: date-time
+        actualPickup:
+          type: string
+          format: date-time
+        actualDelivery:
+          type: string
+          format: date-time
+        currentLocation:
+          $ref: '#/components/schemas/GeoLocation'
+        podUrl:
+          type: string
+          format: uri
+        podMetadata:
+          $ref: '#/components/schemas/PODMetadata'
+        shipperRating:
+          type: number
+          minimum: 1
+          maximum: 5
+        shipperComment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    GeoLocation:
+      type: object
+      properties:
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        timestamp:
+          type: string
+          format: date-time
+        accuracy:
+          type: number
+          description: Accuracy in meters
+
+    PODMetadata:
+      type: object
+      properties:
+        uploadedAt:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum:
+            - delivery_note
+            - photo
+            - signed_document
+        signed:
+          type: boolean
+        recipientName:
+          type: string
+
+    ExecutionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Execution'
+
+    ExecutionListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Execution'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    StatusUpdateRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/ExecutionStatus'
+        location:
+          $ref: '#/components/schemas/GeoLocation'
+        notes:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    PODUploadRequest:
+      type: object
+      required:
+        - file
+        - type
+      properties:
+        file:
+          type: string
+          format: binary
+        type:
+          type: string
+          enum:
+            - delivery_note
+            - photo
+            - signed_document
+        signed:
+          type: boolean
+          default: false
+        recipientName:
+          type: string
+
+    PODResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            executionId:
+              type: string
+            documentId:
+              type: string
+            url:
+              type: string
+              format: uri
+            metadata:
+              $ref: '#/components/schemas/PODMetadata'
+
+    TrackingPointRequest:
+      type: object
+      required:
+        - lat
+        - lng
+      properties:
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        accuracy:
+          type: number
+        speed:
+          type: number
+        heading:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+
+    TrackingPoint:
+      type: object
+      properties:
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        accuracy:
+          type: number
+        speed:
+          type: number
+        heading:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+
+    TrackingResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            executionId:
+              type: string
+            currentLocation:
+              $ref: '#/components/schemas/GeoLocation'
+            trackingPoints:
+              type: array
+              items:
+                $ref: '#/components/schemas/TrackingPoint'
+
+    CompletionRequest:
+      type: object
+      properties:
+        rating:
+          type: number
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          maxLength: 1000
+
+    CancelRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+        details:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          default: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object

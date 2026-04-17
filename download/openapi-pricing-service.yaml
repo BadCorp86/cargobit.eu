@@ -1,0 +1,778 @@
+openapi: 3.0.3
+info:
+  title: CargoBit Pricing Service API
+  description: |
+    Marktpreis, Startpreis, Mindestpreis, Kostenaufschlüsselung, Bid-Validation
+    
+    ## Responsibilities
+    - Calculate market prices for transport orders
+    - Provide price breakdown (fuel, toll, labor, risk)
+    - Validate carrier bids against minimum thresholds
+    - Manage pricing configuration
+    
+    ## Events Published
+    - `pricing.calculated`
+    - `pricing.updated`
+    - `bid.validated`
+    
+    ## Events Consumed
+    - `order.created`
+    - `order.updated`
+    - `bid.submitted`
+  version: 1.0.0
+  contact:
+    name: CargoBit Platform Team
+    
+servers:
+  - url: https://api.cargobit.com/v1
+    description: Production
+  - url: https://api-staging.cargobit.com/v1
+    description: Staging
+
+tags:
+  - name: Pricing
+    description: Price calculation operations
+  - name: Bid Validation
+    description: Carrier bid validation
+  - name: Configuration
+    description: Pricing configuration management
+  - name: Market Data
+    description: Fuel prices, toll costs, labor rates
+
+paths:
+  /pricing/market-price:
+    post:
+      tags: [Pricing]
+      summary: Calculate market price
+      description: |
+        Calculate comprehensive market price for a transport order.
+        Returns market price, start price, min price, and full cost breakdown.
+        Publishes `pricing.calculated` event.
+      operationId: calculateMarketPrice
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarketPriceRequest'
+      responses:
+        '200':
+          description: Price calculated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketPriceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /pricing/orders/{orderId}:
+    get:
+      tags: [Pricing]
+      summary: Get pricing for order
+      description: Retrieve stored pricing data for a specific order
+      operationId: getOrderPricing
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order pricing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPricingResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /pricing/orders/{orderId}/bid/validate:
+    post:
+      tags: [Bid Validation]
+      summary: Validate carrier bid
+      description: |
+        Validate a carrier's bid against pricing thresholds.
+        
+        ## Validation Rules
+        - **Minimum Price Check**: bid >= minPrice × minFactor
+        - **Hard Floor**: bid >= absoluteMinimum (e.g., 20 EUR)
+        - **Max Discount**: discount <= maxDiscountPct
+        - **Risk Level**: Block if risk level is red
+        
+        Returns price score (0-1) for matching engine.
+        Publishes `bid.validated` event.
+      operationId: validateBid
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BidValidationRequest'
+      responses:
+        '200':
+          description: Bid validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidValidationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /pricing/config:
+    get:
+      tags: [Configuration]
+      summary: Get pricing configuration
+      operationId: getPricingConfig
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Pricing configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingConfigResponse'
+
+    put:
+      tags: [Configuration]
+      summary: Update pricing configuration
+      description: |
+        Update pricing configuration parameters.
+        Publishes `pricing.updated` event.
+      operationId: updatePricingConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PricingConfigUpdate'
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingConfigResponse'
+        '403':
+          description: Admin access required
+
+  /pricing/fuel-prices:
+    get:
+      tags: [Market Data]
+      summary: Get fuel prices
+      description: Get current fuel prices by region
+      operationId: getFuelPrices
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: country
+          in: query
+          schema:
+            type: string
+        - name: region
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Fuel prices
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FuelPricesResponse'
+
+    put:
+      tags: [Market Data]
+      summary: Update fuel prices
+      operationId: updateFuelPrices
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FuelPricesUpdate'
+      responses:
+        '200':
+          description: Fuel prices updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FuelPricesResponse'
+
+  /pricing/toll-costs:
+    get:
+      tags: [Market Data]
+      summary: Get toll costs
+      description: Get toll costs by route or country
+      operationId: getTollCosts
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: country
+          in: query
+          schema:
+            type: string
+        - name: routeType
+          in: query
+          schema:
+            type: string
+            enum:
+              - highway
+              - national
+              - all
+      responses:
+        '200':
+          description: Toll costs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TollCostsResponse'
+
+  /pricing/labor-rates:
+    get:
+      tags: [Market Data]
+      summary: Get labor rates
+      description: Get driver labor rates by region
+      operationId: getLaborRates
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: country
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Labor rates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborRatesResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    MarketPriceRequest:
+      type: object
+      required:
+        - orderId
+        - pickupAddress
+        - deliveryAddress
+        - transportType
+      properties:
+        orderId:
+          type: string
+        pickupAddress:
+          $ref: '#/components/schemas/Address'
+        deliveryAddress:
+          $ref: '#/components/schemas/Address'
+        transportType:
+          type: string
+          enum:
+            - FTL
+            - LTL
+            - FTL_HAZMAT
+            - LTL_HAZMAT
+            - FTL_TEMP
+            - LTL_TEMP
+        distanceKm:
+          type: number
+        weightKg:
+          type: number
+        volumeM3:
+          type: number
+        isInternational:
+          type: boolean
+        transitCountries:
+          type: array
+          items:
+            type: string
+        scheduledPickup:
+          type: string
+          format: date-time
+        specialRequirements:
+          type: array
+          items:
+            type: string
+
+    Address:
+      type: object
+      required:
+        - country
+      properties:
+        street:
+          type: string
+        city:
+          type: string
+        postalCode:
+          type: string
+        country:
+          type: string
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+
+    CostBreakdown:
+      type: object
+      properties:
+        baseCost:
+          type: number
+          format: decimal
+          description: Base transport cost
+        fuelCost:
+          type: number
+          format: decimal
+          description: Fuel cost estimate
+        tollCost:
+          type: number
+          format: decimal
+          description: Toll and road charges
+        laborCost:
+          type: number
+          format: decimal
+          description: Driver and handling labor
+        riskCost:
+          type: number
+          format: decimal
+          description: Risk premium based on route
+        total:
+          type: number
+          format: decimal
+          description: Sum of all costs
+
+    MarketPriceResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            orderId:
+              type: string
+            marketPrice:
+              type: number
+              format: decimal
+              description: Fair market price
+            startPrice:
+              type: number
+              format: decimal
+              description: Recommended starting price for auction
+            minPrice:
+              type: number
+              format: decimal
+              description: Anti-dumping floor price
+            costBreakdown:
+              $ref: '#/components/schemas/CostBreakdown'
+            adjustments:
+              type: object
+              properties:
+                riskAdjustment:
+                  type: number
+                demandAdjustment:
+                  type: number
+                routeComplexityFactor:
+                  type: number
+            currency:
+              type: string
+            validUntil:
+              type: string
+              format: date-time
+            calculatedBy:
+              type: string
+              enum:
+                - rule
+                - ml
+                - hybrid
+            marketContext:
+              type: object
+              properties:
+                medianPrice:
+                  type: number
+                priceRange:
+                  type: object
+                  properties:
+                    min:
+                      type: number
+                    max:
+                      type: number
+                confidence:
+                  type: number
+                dataPoints:
+                  type: integer
+            configVersion:
+              type: string
+
+    OrderPricing:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        marketPrice:
+          type: number
+        startPrice:
+          type: number
+        minPrice:
+          type: number
+        costBreakdown:
+          $ref: '#/components/schemas/CostBreakdown'
+        currency:
+          type: string
+        validUntil:
+          type: string
+          format: date-time
+        calculatedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    OrderPricingResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/OrderPricing'
+
+    BidValidationRequest:
+      type: object
+      required:
+        - bidId
+        - carrierId
+        - bidPrice
+      properties:
+        bidId:
+          type: string
+        carrierId:
+          type: string
+        bidPrice:
+          type: number
+          format: decimal
+        currency:
+          type: string
+          default: EUR
+
+    BidValidationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            valid:
+              type: boolean
+              description: Whether bid passes all validation checks
+            reason:
+              type: string
+              enum:
+                - VALID
+                - BID_BELOW_MIN_PRICE
+                - BID_BELOW_HARD_FLOOR
+                - EXCEEDS_MAX_DISCOUNT
+                - RISK_BLOCKED
+                - ORDER_NOT_FOUND
+                - PRICING_EXPIRED
+              description: Validation result reason
+            priceScore:
+              type: number
+              format: float
+              minimum: 0
+              maximum: 1
+              description: |
+                Normalized price score for matching engine.
+                1.0 = perfect (at or below market price)
+                0.5 = acceptable (close to market)
+                0.0 = poor (at minimum threshold)
+            details:
+              type: object
+              properties:
+                marketPrice:
+                  type: number
+                startPrice:
+                  type: number
+                minPrice:
+                  type: number
+                bidPrice:
+                  type: number
+                currency:
+                  type: string
+                riskLevel:
+                  type: string
+                  enum:
+                    - green
+                    - yellow
+                    - red
+                discountPct:
+                  type: number
+                  description: Percentage discount from market price
+            warnings:
+              type: array
+              items:
+                type: string
+              description: Non-blocking warnings
+
+    PricingConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        # Base factors
+        baseCostPerKm:
+          type: number
+        baseCostPerKg:
+          type: number
+        # Minimum thresholds
+        minPriceFactor:
+          type: number
+          description: Factor applied to market price for minimum
+          default: 0.85
+        hardFloorEur:
+          type: number
+          description: Absolute minimum price in EUR
+          default: 20
+        maxDiscountPct:
+          type: number
+          description: Maximum allowed discount from market price
+          default: 35
+        # Weights
+        fuelWeight:
+          type: number
+        tollWeight:
+          type: number
+        laborWeight:
+          type: number
+        riskWeight:
+          type: number
+        # Adjustments
+        demandFactors:
+          type: object
+          additionalProperties:
+            type: number
+        routeComplexityFactors:
+          type: object
+          additionalProperties:
+            type: number
+        # Validity
+        validFrom:
+          type: string
+          format: date-time
+        validUntil:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PricingConfigResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/PricingConfig'
+
+    PricingConfigUpdate:
+      type: object
+      properties:
+        minPriceFactor:
+          type: number
+        hardFloorEur:
+          type: number
+        maxDiscountPct:
+          type: number
+        fuelWeight:
+          type: number
+        tollWeight:
+          type: number
+        laborWeight:
+          type: number
+        riskWeight:
+          type: number
+        demandFactors:
+          type: object
+        validUntil:
+          type: string
+          format: date-time
+
+    FuelPrice:
+      type: object
+      properties:
+        country:
+          type: string
+        region:
+          type: string
+        fuelType:
+          type: string
+          enum:
+            - diesel
+            - gasoline
+            - lpg
+        pricePerLiter:
+          type: number
+        currency:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+
+    FuelPricesResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/FuelPrice'
+
+    FuelPricesUpdate:
+      type: object
+      required:
+        - prices
+      properties:
+        prices:
+          type: array
+          items:
+            type: object
+            required:
+              - country
+              - fuelType
+              - pricePerLiter
+            properties:
+              country:
+                type: string
+              region:
+                type: string
+              fuelType:
+                type: string
+              pricePerLiter:
+                type: number
+
+    TollCost:
+      type: object
+      properties:
+        country:
+          type: string
+        routeType:
+          type: string
+        costPerKm:
+          type: number
+        currency:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+
+    TollCostsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TollCost'
+
+    LaborRate:
+      type: object
+      properties:
+        country:
+          type: string
+        region:
+          type: string
+        hourlyRate:
+          type: number
+        currency:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+
+    LaborRatesResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LaborRate'
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          default: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object

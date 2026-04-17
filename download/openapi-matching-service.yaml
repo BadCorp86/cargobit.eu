@@ -1,0 +1,772 @@
+openapi: 3.0.3
+info:
+  title: CargoBit Matching Service API
+  description: |
+    Carrier-Scoring & Auswahl auf Basis von Bids, Pricing, Risk, Capacity, Reliability
+    
+    ## Responsibilities
+    - Aggregate data from multiple sources (pricing, bids, carrier stats, risk)
+    - Compute weighted scores for each carrier
+    - Determine winning carrier based on scoring algorithm
+    - Publish matching results for downstream services
+    
+    ## Scoring Formula
+    ```
+    Score = w_p × S_price + w_r × S_reliability + w_k × S_capacity + w_d × S_distance + w_s × S_risk
+    ```
+    
+    Default Weights:
+    - Price: 25%
+    - Reliability: 25%
+    - Capacity: 20%
+    - Distance: 15%
+    - Risk: 15%
+    
+    ## Events Consumed
+    - `bid.validated` - Register bid for matching
+    - `pricing.calculated` - Store pricing context
+    - `order.created` - Store order context
+    - `carrier.stats.updated` - Update carrier stats cache
+    - `carrier.capacity.updated` - Update capacity cache
+    
+    ## Events Published
+    - `matching.completed` - Matching result ready
+    - `matching.failed` - Matching failed (no valid bids, etc.)
+    
+    ## Matching Mode
+    This service is **primarily event-driven**. REST endpoints are for:
+    - Admin queries and debugging
+    - Manual overrides
+    - Configuration management
+  version: 1.0.0
+  contact:
+    name: CargoBit Platform Team
+    
+servers:
+  - url: https://api.cargobit.com/v1
+    description: Production
+  - url: https://api-staging.cargobit.com/v1
+    description: Staging
+
+tags:
+  - name: Matching
+    description: Matching operations (mostly event-driven)
+  - name: Results
+    description: Query matching results
+  - name: Configuration
+    description: Scoring weights and thresholds
+  - name: Admin
+    description: Admin operations (manual override)
+
+paths:
+  /matching/orders/{orderId}/status:
+    get:
+      tags: [Matching]
+      summary: Get matching status for order
+      description: |
+        Check if matching is in progress, completed, or failed for an order.
+        This is primarily for debugging and monitoring.
+      operationId: getMatchingStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matching status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingStatusResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matching/orders/{orderId}/candidates:
+    get:
+      tags: [Matching]
+      summary: Get matching candidates
+      description: Get all candidates registered for matching (for debugging)
+      operationId: getMatchingCandidates
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matching candidates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CandidatesResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matching/results/{resultId}:
+    get:
+      tags: [Results]
+      summary: Get matching result by ID
+      operationId: getMatchingResult
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matching result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingResultResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matching/orders/{orderId}/result:
+    get:
+      tags: [Results]
+      summary: Get matching result for order
+      operationId: getMatchingResultByOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matching result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingResultResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matching/results:
+    get:
+      tags: [Results]
+      summary: List matching results
+      operationId: listMatchingResults
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: carrierId
+          in: query
+          schema:
+            type: string
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: toDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - completed
+              - failed
+              - overridden
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: List of matching results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingResultListResponse'
+
+  /matching/config:
+    get:
+      tags: [Configuration]
+      summary: Get matching configuration
+      description: Get current scoring weights and thresholds
+      operationId: getMatchingConfig
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Matching configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingConfigResponse'
+
+    put:
+      tags: [Configuration]
+      summary: Update matching configuration
+      description: Update scoring weights and thresholds
+      operationId: updateMatchingConfig
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MatchingConfigUpdate'
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingConfigResponse'
+        '403':
+          description: Admin access required
+
+  /matching/orders/{orderId}/override:
+    post:
+      tags: [Admin]
+      summary: Manual matching override
+      description: |
+        Admin-only endpoint to manually override the matching result.
+        This should be used sparingly and will be fully audited.
+        
+        Publishes `matching.completed` with override flag.
+      operationId: overrideMatching
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MatchingOverrideRequest'
+      responses:
+        '200':
+          description: Override applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingResultResponse'
+        '400':
+          description: Invalid override request
+        '403':
+          description: Admin access required
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matching/orders/{orderId}/trigger:
+    post:
+      tags: [Admin]
+      summary: Trigger matching manually
+      description: |
+        Admin-only endpoint to manually trigger matching for an order.
+        Normally matching is triggered automatically when all required data is available.
+      operationId: triggerMatching
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  default: false
+                  description: Force re-matching even if already completed
+      responses:
+        '200':
+          description: Matching triggered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingStatusResponse'
+        '400':
+          description: Matching already completed (use force=true to override)
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matching/stats:
+    get:
+      tags: [Results]
+      summary: Get matching statistics
+      description: Get aggregate statistics about matching performance
+      operationId: getMatchingStats
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: toDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum:
+              - day
+              - week
+              - month
+              - carrier
+      responses:
+        '200':
+          description: Matching statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingStatsResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    MatchingStatus:
+      type: string
+      enum:
+        - PENDING
+        - WAITING_FOR_BIDS
+        - IN_PROGRESS
+        - COMPLETED
+        - FAILED
+        - OVERRIDDEN
+
+    MatchingStatusResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            orderId:
+              type: string
+            status:
+              $ref: '#/components/schemas/MatchingStatus'
+            bidsReceived:
+              type: integer
+            bidsValidated:
+              type: integer
+            dataReady:
+              type: object
+              properties:
+                pricing:
+                  type: boolean
+                bids:
+                  type: boolean
+                carrierStats:
+                  type: boolean
+            startedAt:
+              type: string
+              format: date-time
+            completedAt:
+              type: string
+              format: date-time
+            failureReason:
+              type: string
+            resultId:
+              type: string
+
+    Score:
+      type: object
+      properties:
+        total:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        priceScore:
+          type: number
+          format: float
+        reliabilityScore:
+          type: number
+          format: float
+        capacityScore:
+          type: number
+          format: float
+        distanceScore:
+          type: number
+          format: float
+        riskScore:
+          type: number
+          format: float
+
+    MatchResult:
+      type: object
+      properties:
+        carrierId:
+          type: string
+        driverId:
+          type: string
+        vehicleId:
+          type: string
+        bidId:
+          type: string
+        bidPrice:
+          type: number
+          format: decimal
+        currency:
+          type: string
+        score:
+          $ref: '#/components/schemas/Score'
+        rank:
+          type: integer
+          description: Position in ranking (1 = winner)
+        explanation:
+          type: array
+          items:
+            type: string
+          description: Human-readable reasons for the score
+        warnings:
+          type: array
+          items:
+            type: string
+        autoMatchEligible:
+          type: boolean
+          description: True if gap to 2nd place exceeds threshold
+
+    MatchingResult:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        winner:
+          $ref: '#/components/schemas/MatchResult'
+        allCandidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchResult'
+        config:
+          $ref: '#/components/schemas/MatchingConfigSnapshot'
+        isOverride:
+          type: boolean
+        overriddenBy:
+          type: string
+          description: Admin user ID if overridden
+        overrideReason:
+          type: string
+        matchedAt:
+          type: string
+          format: date-time
+        processingTimeMs:
+          type: integer
+
+    MatchingResultResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/MatchingResult'
+
+    MatchingResultListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchingResult'
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            total:
+              type: integer
+            totalPages:
+              type: integer
+
+    CandidatesResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            orderId:
+              type: string
+            pricing:
+              type: object
+              properties:
+                available:
+                  type: boolean
+                marketPrice:
+                  type: number
+                minPrice:
+                  type: number
+            bids:
+              type: array
+              items:
+                type: object
+                properties:
+                  bidId:
+                    type: string
+                  carrierId:
+                    type: string
+                  bidPrice:
+                    type: number
+                  validated:
+                    type: boolean
+                  priceScore:
+                    type: number
+            carrierStats:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  onTimeRate:
+                    type: number
+                  cancelRate:
+                    type: number
+                  avgRating:
+                    type: number
+
+    MatchingConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        weights:
+          type: object
+          properties:
+            price:
+              type: number
+              default: 0.25
+            reliability:
+              type: number
+              default: 0.25
+            capacity:
+              type: number
+              default: 0.20
+            distance:
+              type: number
+              default: 0.15
+            risk:
+              type: number
+              default: 0.15
+        thresholds:
+          type: object
+          properties:
+            minScore:
+              type: number
+              default: 0.6
+              description: Minimum score to qualify for matching
+            autoMatchGap:
+              type: number
+              default: 0.15
+              description: Gap to 2nd place for automatic matching
+            minBidsRequired:
+              type: integer
+              default: 1
+              description: Minimum bids before matching can proceed
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MatchingConfigResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/MatchingConfig'
+
+    MatchingConfigSnapshot:
+      type: object
+      properties:
+        version:
+          type: string
+        weights:
+          type: object
+          properties:
+            price:
+              type: number
+            reliability:
+              type: number
+            capacity:
+              type: number
+            distance:
+              type: number
+            risk:
+              type: number
+        thresholds:
+          type: object
+          properties:
+            minScore:
+              type: number
+            autoMatchGap:
+              type: number
+
+    MatchingConfigUpdate:
+      type: object
+      properties:
+        weights:
+          type: object
+          properties:
+            price:
+              type: number
+            reliability:
+              type: number
+            capacity:
+              type: number
+            distance:
+              type: number
+            risk:
+              type: number
+        thresholds:
+          type: object
+          properties:
+            minScore:
+              type: number
+            autoMatchGap:
+              type: number
+            minBidsRequired:
+              type: integer
+
+    MatchingOverrideRequest:
+      type: object
+      required:
+        - carrierId
+        - reason
+      properties:
+        carrierId:
+          type: string
+          description: Carrier to force-select as winner
+        driverId:
+          type: string
+        vehicleId:
+          type: string
+        reason:
+          type: string
+          minLength: 10
+          description: Required explanation for audit
+        internalNotes:
+          type: string
+          description: Additional internal notes
+
+    MatchingStats:
+      type: object
+      properties:
+        period:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+        totals:
+          type: object
+          properties:
+            totalMatches:
+              type: integer
+            successfulMatches:
+              type: integer
+            failedMatches:
+              type: integer
+            overriddenMatches:
+              type: integer
+            avgProcessingTimeMs:
+              type: number
+        byCarrier:
+          type: array
+          items:
+            type: object
+            properties:
+              carrierId:
+                type: string
+              wins:
+                type: integer
+              avgScore:
+                type: number
+              avgBidPrice:
+                type: number
+
+    MatchingStatsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/MatchingStats'
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          default: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
