@@ -386,6 +386,13 @@ class SecurityConfigService {
     return this.getConfig().rateLimits;
   }
 
+  /**
+   * Check if service is ready (config loaded)
+   */
+  isReady(): boolean {
+    return this.config !== null;
+  }
+
   // ===========================================================================
   // AUTHORIZATION CHECK
   // ===========================================================================
@@ -677,6 +684,38 @@ const server = serve({
       }
 
       // ==========================================
+      // GET /ready - Readiness Probe
+      // ==========================================
+      if (method === 'GET' && path === '/ready') {
+        const isReady = securityConfigService.isReady();
+        
+        if (!isReady) {
+          return new Response(JSON.stringify({
+            status: 'not_ready',
+            reason: 'Configuration not loaded',
+          }), {
+            status: 503,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const version = securityConfigService.getVersion();
+        const config = securityConfigService.getConfig();
+
+        return new Response(JSON.stringify({
+          status: 'ready',
+          configVersion: version.version,
+          loadedAt: version.loadedAt,
+          rolesConfigured: Object.keys(config.roles).length,
+          abacRulesConfigured: config.abac.rules.length,
+          fraudConfigured: true,
+          rateLimitsConfigured: config.rateLimits.length,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // ==========================================
       // 404 Not Found
       // ==========================================
       return new Response(JSON.stringify({
@@ -690,6 +729,7 @@ const server = serve({
           'GET  /fraud/config',
           'GET  /rate-limits',
           'GET  /health',
+          'GET  /ready',
         ],
       }), {
         status: 404,
