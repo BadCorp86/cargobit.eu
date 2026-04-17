@@ -992,3 +992,102 @@ Ads Partner (Spedition Schmidt):
 | `billing:read` | Rechnungen einsehen |
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: service-landscape-architecture
+Agent: Main Agent
+Task: Service-Landscape Architektur mit Core Domain Services, Event-Bus, Data Ownership
+
+## Work Log:
+
+### 1. High-Level Architecture Overview
+- Datei: `/download/service-landscape-architecture.md` - NEU
+- Vollständige Microservices-Architektur dokumentiert
+- 4-Layer Architecture:
+  - Frontend Layer (Shipper App, Carrier App, Admin Dashboard)
+  - API Gateway (Auth, Rate Limiting, Routing)
+  - Service Mesh / Event Bus (Kafka, NATS, Redis)
+  - Core Domain Services (8 Services)
+  - Data Layer (PostgreSQL, Redis, S3, TimescaleDB)
+
+### 2. Core Domain Services Definition
+Jeder Service dokumentiert mit:
+- Responsibility
+- Database Tables
+- REST API Endpoints
+- Events Published
+- Events Consumed
+- TypeScript Schemas
+
+**Services:**
+1. Order-Service: Aufträge, Status, Business-Logik
+2. Pricing-Service: Marktpreis, Bid-Validation
+3. Bidding-Service: Gebote-Lifecycle
+4. Matching-Service: Event-driven Scoring
+5. Execution-Service: Transport-Lifecycle
+6. Risk-Service: Risk-Level, Fraud
+7. Carrier-Service: Stammdaten, Stats, Capacity
+8. Notification-Service: Email, Push, In-App
+
+### 3. Event-Bus & Topics Registry
+- 13 Topics definiert mit Publisher/Subscribers
+- Event Flow Patterns dokumentiert
+- Pattern 1: Command → REST, Domain-Event → Bus
+- Pattern 2: Matching & Analytics → rein Event-getrieben
+
+### 4. Data Ownership Model
+- Database per Service Pattern
+- Cross-Service Data Access:
+  - Option 1: Event-Driven (Cache)
+  - Option 2: REST API Call (Circuit Breaker)
+
+### 5. Main Flow Diagrams
+- Order → Pricing → Bidding → Matching → Execution
+- Sequence Diagram mit allen Services
+- Frontend Integration Points
+
+### 6. Frontend Integration
+- Shipper-App: Order, Pricing, Execution APIs
+- Carrier-App: Bidding, Execution, Carrier APIs
+- UI Components Mapping
+
+### 7. Deployment Architecture
+- Kubernetes Namespace Struktur
+- Service Mesh Integration
+- Ingress / Load Balancer Setup
+
+### 8. Monitoring & Observability
+- Service Metrics
+- Business Metrics
+- ML Model Performance
+- Grafana Dashboards
+
+## Stage Summary:
+
+### Service Matrix:
+| Service | REST API | Events In | Events Out |
+|---------|----------|-----------|------------|
+| Order-Service | ✓ | matching.completed | order.created |
+| Pricing-Service | ✓ | order.created, bid.submitted | pricing.calculated, bid.validated |
+| Bidding-Service | ✓ | bid.validated | bid.submitted, bid.accepted |
+| Matching-Service | ✗ | bid.validated, pricing.calculated | matching.completed |
+| Execution-Service | ✓ | matching.completed | execution.created, execution.status_changed |
+| Risk-Service | ✓ | order.created | risk.updated |
+| Carrier-Service | ✓ | - | carrier.stats.updated |
+| Notification-Service | ✗ | matching.completed, execution.status_changed | - |
+
+### Event Flow:
+```
+order.created → pricing.calculated → bid.submitted → bid.validated
+                                                           ↓
+                                             matching.completed
+                                                           ↓
+                                             execution.created → execution.status_changed
+```
+
+### Data Ownership:
+- Jeder Service ist Owner seiner DB
+- Cross-Service Access via Events oder REST
+- CQRS Pattern für Read-Heavy Workloads
+
+### Status: ✅ VOLLSTÄNDIG DOKUMENTIERT
