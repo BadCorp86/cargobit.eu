@@ -1,0 +1,396 @@
+# ============================================
+# CARGOBIT SECURITY CONFIGURATION
+# Zentrale Konfiguration für RBAC, ABAC & Fraud
+# ============================================
+# Version: 1.0.0
+# Letzte Änderung: 2026-04-18
+# Verantwortlich: Security Team
+
+# ============================================
+# 1. ROLLEN & PERMISSIONS (RBAC)
+# ============================================
+
+roles:
+  SHIPPER:
+    description: "Auftraggeber - kann Transporte erstellen und beobachten"
+    can:
+      - orders:create
+      - orders:read_own
+      - orders:update_own
+      - orders:cancel_own
+      - pricing:read_own
+      - pricing:context:read_own
+      - bids:read_aggregated        # Anonymisierte Bids zu eigenen Orders
+      - matching:read_own
+      - executions:read_own
+      - wallet:read_own
+      - wallet:deposit
+      - wallet:withdraw_own
+    cannot:
+      - pricing:config:write
+      - carriers:read_all
+      - bids:read_own               # Shipper sieht keine Carrier-Identitäten
+
+  CARRIER:
+    description: "Transporteur - kann Bids erstellen und Aufträge ausführen"
+    can:
+      - bids:create
+      - bids:read_own
+      - bids:update_own
+      - bids:withdraw_own
+      - pricing:validate_bid        # Live-Bid-Validierung
+      - executions:read_own
+      - executions:update_status_own
+      - executions:upload_pod_own
+      - matching:read_own           # Nur wenn im Ergebnis
+      - wallet:read_own
+      - wallet:withdraw_own
+    cannot:
+      - orders:create
+      - orders:read_all
+      - pricing:config:read
+
+  ADMIN:
+    description: "System-Administrator - voller Zugriff"
+    can:
+      - "*"                         # Wildcard für alle Permissions
+    cannot: []
+
+  SUPPORT:
+    description: "Support-Mitarbeiter - read-only Zugriff auf alle Daten"
+    can:
+      - orders:read_all
+      - orders:read_own
+      - pricing:read_all
+      - pricing:context:read_all
+      - bids:read_all
+      - executions:read_all
+      - carriers:read_all
+      - users:read_all
+      - audit:read
+      - flags:read
+      - flags:create
+    cannot:
+      - pricing:config:write        # Support darf Pricing-Config NICHT ändern
+      - orders:create
+      - orders:update
+      - wallet:withdraw
+      - users:delete
+
+  SYSTEM:
+    description: "Interne Service-Accounts für Service-to-Service Kommunikation"
+    can:
+      - internal:service_to_service
+      - internal:events:publish
+      - internal:events:subscribe
+      - internal:audit:write
+    whitelistedEndpoints:
+      - "POST /internal/events"
+      - "POST /internal/audit"
+      - "GET /internal/health"
+      - "POST /pricing/calculate"
+      - "POST /matching/start"
+
+# ============================================
+# 2. ABAC REGELN
+# ============================================
+
+abac:
+  rules:
+    # --- Shipper Ownership ---
+    - name: shipper_owns_order
+      appliesTo:
+        - orders:read_own
+        - orders:update_own
+        - orders:cancel_own
+        - pricing:read_own
+        - pricing:context:read_own
+        - matching:read_own
+        - executions:read_own
+      condition: "resource.shipperId == subject.id"
+      description: "Shipper darf nur auf eigene Orders zugreifen"
+
+    - name: shipper_company_owns_order
+      appliesTo:
+        - orders:read_own
+        - executions:read_own
+      condition: "resource.shipperCompanyId == subject.companyId"
+      description: "Company-Schiffers dürfen auf Orders ihres Unternehmens zugreifen"
+
+    # --- Carrier Ownership ---
+    - name: carrier_owns_bid
+      appliesTo:
+        - bids:read_own
+        - bids:update_own
+        - bids:withdraw_own
+      condition: "resource.carrierId == subject.id"
+      description: "Carrier darf nur auf eigene Bids zugreifen"
+
+    - name: carrier_owns_execution
+      appliesTo:
+        - executions:read_own
+        - executions:update_status_own
+        - executions:upload_pod_own
+      condition: "resource.carrierId == subject.id"
+      description: "Carrier darf nur zugewiesene Executions bearbeiten"
+
+    - name: carrier_in_matching_result
+      appliesTo:
+        - matching:read_own
+      condition: "resource.winnerId == subject.id OR resource.candidates CONTAINS subject.id"
+      description: "Carrier sieht Matching-Ergebnis nur wenn er selbst im Ergebnis ist"
+
+    # --- Support Restrictions ---
+    - name: support_read_only
+      appliesTo:
+        - pricing:config:write
+        - orders:create
+        - orders:update
+        - wallet:withdraw
+      condition: "DENY"             # Explizites DENY
+      description: "Support hat read-only Zugriff, keine Mutierungen"
+
+    # --- System Whitelist ---
+    - name: system_endpoint_whitelist
+      appliesTo:
+        - internal:service_to_service
+      condition: "endpoint IN subject.whitelistedEndpoints"
+      description: "System-Accounts sind pro Endpoint whitelisted"
+
+# ============================================
+# 3. RATE LIMITS
+# ============================================
+
+rateLimits:
+  # --- Orders ---
+  - endpoint: "POST /orders"
+    maxRequests: 60
+    windowMs: 60000
+    scope: "shipper"               # Per Shipper ID
+    keyTemplate: "shipper:{shipperId}"
+
+  - endpoint: "GET /orders"
+    maxRequests: 200
+    windowMs: 60000
+    scope: "user"
+    keyTemplate: "user:{userId}"
+
+  # --- Bidding ---
+  - endpoint: "POST /bids"
+    maxRequests: 120
+    windowMs: 60000
+    scope: "carrier"
+    keyTemplate: "carrier:{carrierId}"
+
+  - endpoint: "POST /pricing/:orderId/bid/validate"
+    maxRequests: 300
+    windowMs: 60000
+    scope: "carrier"
+    keyTemplate: "carrier:{carrierId}:validate"
+    description: "Live-Bid-Validierung braucht höhere Rate"
+
+  # --- Execution ---
+  - endpoint: "POST /executions/:id/status"
+    maxRequests: 60
+    windowMs: 60000
+    scope: "carrier"
+    keyTemplate: "carrier:{carrierId}:status"
+
+  - endpoint: "POST /executions/:id/pod"
+    maxRequests: 10
+    windowMs: 60000
+    scope: "carrier"
+    keyTemplate: "carrier:{carrierId}:pod"
+
+  # --- Global ---
+  - endpoint: "GLOBAL"
+    maxRequests: 10000
+    windowMs: 60000
+    scope: "ip"
+    keyTemplate: "ip:{ip}"
+
+# ============================================
+# 4. FRAUD SCORING CONFIGURATION
+# ============================================
+
+fraud:
+  # --- Carrier Fraud Score (Fc) ---
+  carrierScore:
+    # Gewichtung der Faktoren
+    weights:
+      cancelRate: 0.3               # w1: Stornoquote
+      disputeRate: 0.3              # w2: Dispute-Quote
+      noShowRate: 0.2               # w3: No-Show Rate
+      patternScore: 0.2             # w4: Pattern-Erkennung
+
+    # Schwellwerte für Level
+    thresholds:
+      observe: 0.3                  # Ftotal >= 0.3: beobachten
+      suspect: 0.6                  # Ftotal >= 0.6: fraud_suspected
+
+    # Lookback-Zeiträume für Score-Berechnung
+    lookback:
+      cancelRateDays: 90
+      disputeRateDays: 180
+      noShowRateDays: 90
+      patternScoreDays: 365
+
+    # Normalisierung
+    normalization:
+      cancelRateMax: 0.5            # 50% Storno = Score 1.0
+      disputeRateMax: 0.3           # 30% Disputes = Score 1.0
+      noShowRateMax: 0.2            # 20% No-Shows = Score 1.0
+
+  # --- Bid Fraud Score (Fb) ---
+  bidScore:
+    # Gewichtung der Faktoren
+    weights:
+      dumping: 0.5                  # v1: Dumping-Erkennung
+      spam: 0.3                     # v2: Spam-Erkennung
+      coordination: 0.2             # v3: Koordination/Collusion
+
+    # Dumping-Erkennung
+    dumping:
+      maxDiscountVsMarket: 0.35     # 35% maximaler Rabatt vs Marktpreis
+      warnDiscountVsMarket: 0.25    # 25% Warnungsschwelle
+      hardFloorEur: 20              # Absolutes Minimum 20€
+      minPriceFactor: 0.85          # Min. 85% des kalkulierten Preises
+
+    # Spam-Erkennung
+    spam:
+      maxBidsPerOrderPerHour: 20
+      maxBidsPerMinuteGlobal: 100
+      maxBidsPerCarrierPerDay: 500
+
+    # Koordination/Collusion-Erkennung
+    coordination:
+      similarityWindowMinutes: 5    # Zeitfenster für ähnliche Bids
+      similarityThreshold: 0.95     # 95% Ähnlichkeit = verdächtig
+      minCarriersForCollusion: 2    # Min. 2 Carrier für Collusion-Flag
+      bidSpreadThreshold: 0.02      # 2% Spread = verdächtig eng
+
+  # --- Total Score Berechnung ---
+  totalScore:
+    alphaCarrier: 0.6               # α = 0.6: Carrier-Historie wiegt mehr
+    penaltyFactor: 0.5              # β = 0.5: Penalty-Faktor für Matching
+
+  # --- Matching Integration ---
+  matching:
+    applyPenalty: true
+    capSuspectedScore: 30           # Max Score bei fraud_suspected
+    excludeFromAutoMatch: true      # Kein Auto-Match bei fraud_suspected
+
+  # --- Events ---
+  events:
+    emitFraudSuspected: true        # Event fraud.suspected senden
+    emitFraudFlagged: true          # Event fraud.flagged senden
+    auditAllScores: true            # Alle Scores ins Audit-Log
+
+# ============================================
+# 5. AUDIT CONFIGURATION
+# ============================================
+
+audit:
+  # Welche Events werden geloggt
+  events:
+    - order.created
+    - order.updated
+    - order.cancelled
+    - pricing.calculated
+    - bid.validated
+    - bid.submitted
+    - bid.withdrawn
+    - matching.completed
+    - execution.status_changed
+    - execution.pod_uploaded
+    - fraud.suspected
+    - fraud.flagged
+    - auth.login
+    - auth.logout
+    - permission.denied
+
+  # Audit-Record Schema
+  recordSchema:
+    requiredFields:
+      - id
+      - timestamp
+      - actorType
+      - actorId
+      - service
+      - action
+      - entityType
+      - entityId
+      - correlationId
+    optionalFields:
+      - payloadBefore
+      - payloadAfter
+      - ipAddress
+      - userAgent
+      - configVersion
+
+  # WORM-Store Konfiguration
+  wormStore:
+    enabled: true
+    backend: "s3_glacier"           # oder "azure_archive"
+    immediateReplication: true
+    retentionYears: 10
+
+# ============================================
+# 6. DATA RETENTION
+# ============================================
+
+retention:
+  policies:
+    # Orders & Execution - Lange Aufbewahrung (steuerlich)
+    - category: orders
+      retentionYears: 10
+      archiveAfterYears: 3
+      gdprException: true
+      legalBasis: "§147 AO - Steuerliche Aufbewahrungspflicht"
+
+    - category: executions
+      retentionYears: 10
+      archiveAfterYears: 3
+      gdprException: true
+      legalBasis: "Transportnachweis, steuerlich relevant"
+
+    - category: pod_documents
+      retentionYears: 10
+      archiveAfterYears: 3
+      gdprException: true
+      legalBasis: "Rechtliche Nachweispflicht"
+
+    # Pricing - Mittlere Aufbewahrung
+    - category: order_pricing
+      retentionYears: 7
+      archiveAfterYears: 3
+      gdprException: false
+
+    - category: pricing_config
+      retentionYears: 100           # Permanent
+      gdprException: true
+      legalBasis: "Vollständige Konfigurationshistorie"
+
+    # Bidding - Kurze Aufbewahrung
+    - category: bids
+      retentionYears: 5
+      archiveAfterYears: 2
+      gdprException: false
+
+    - category: matching_results
+      retentionYears: 3
+      archiveAfterYears: 1
+      gdprException: false
+
+    # Audit - Lange Aufbewahrung
+    - category: audit_logs
+      retentionYears: 10
+      archiveAfterYears: 3
+      gdprException: true
+      legalBasis: "Compliance, Betrugsermittlung"
+
+  # Purge-Job Zeitplan
+  purgeJobs:
+    schedule: "0 3 * * *"           # Täglich 03:00 Uhr
+    batchSize: 5000
+    dryRunFirst: true

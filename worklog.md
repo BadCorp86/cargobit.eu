@@ -1091,3 +1091,110 @@ order.created → pricing.calculated → bid.submitted → bid.validated
 - CQRS Pattern für Read-Heavy Workloads
 
 ### Status: ✅ VOLLSTÄNDIG DOKUMENTIERT
+
+---
+Task ID: security-fraud-config-service
+Agent: Main Agent
+Task: Security-Config-Service mit YAML-Konfiguration für RBAC/ABAC/Fraud
+
+## Work Log:
+
+### 1. Zentrale Security-Konfiguration (YAML)
+- Datei: `/config/security-config.yaml` - NEU
+- Vollständige Konfiguration für:
+  - RBAC: 5 Rollen (SHIPPER, CARRIER, ADMIN, SUPPORT, SYSTEM)
+  - ABAC: 6 Regeln mit Conditions
+  - Rate Limits: 7 Endpoints mit Scopes
+  - Fraud Scoring: Carrier/Bid/Total Score Config
+  - Audit: Events, Schema, WORM-Store
+  - Retention: 8 Policies mit GDPR-Exceptions
+
+### 2. Security-Config-Service
+- Datei: `/src/services/security-config.service.ts` - NEU
+- Features:
+  - YAML-Config laden und parsen
+  - Hot-Reload ohne Service-Restart
+  - RBAC Check: `hasPermission(role, permission)`
+  - ABAC Check: `evaluateABACCondition(condition, subject, resource)`
+  - Authorization Check: `checkAuthorization(request)` mit RBAC + ABAC
+  - Fraud Config Getter: `getFraudConfig()`, `getCarrierScoreWeights()`
+  - Rate Limit Getter: `getRateLimit(endpoint)`
+
+### 3. Fraud-Score Calculator
+- Datei: `/src/services/fraud-score-calculator.ts` - NEU
+- Carrier Fraud Score: `Fc = 0.3·Ccancel + 0.3·Cdispute + 0.2·CnoShow + 0.2·Cpattern`
+- Bid Fraud Score: `Fb = 0.5·Bdumping + 0.3·Bspam + 0.2·Bcoordination`
+- Total Score: `Ftotal = 0.6·Fc + 0.4·Fb`
+- Matching Penalty: `Score' = Score · (1 - 0.5·Ftotal)`
+- Thresholds: observe=0.3, suspect=0.6
+- Dumping, Spam, Coordination Detection
+
+### 4. Matching Integration
+- Datei: `/src/services/matching.service.ts` - ERWEITERT
+- Fraud-Score-Berechnung pro Driver
+- Penalty-Applikation auf Match-Score
+- Auto-Match Block bei fraud_suspected
+- Cap Score auf 30 bei Fraud-Verdacht
+
+### 5. Access Control Matrix
+- Datei: `/src/types/access-control.ts` - NEU
+- Domains: orders_pricing, bidding_matching, execution
+- Matrix pro Domain mit RBAC Permissions
+- ABAC Meta Rules:
+  - shipper_owns_order
+  - carrier_owns_execution
+  - carrier_in_matching_result
+  - support_read_only
+  - system_endpoint_whitelist
+
+### 6. Epics & Tickets Dokumentation
+- Datei: `/docs/epics-security-fraud.md` - NEU
+- Epic 1: Security-Config-Service (3 Stories, 18 SP)
+- Epic 2: Fraud-Scoring (4 Stories, 26 SP)
+- Epic 3: Rate-Limiting (1 Story, 5 SP)
+- Epic 4: Data Retention (1 Story, 3 SP)
+- Total: 52 Story Points
+
+## Stage Summary:
+
+### Konfigurierte Rollen:
+| Rolle | Can | Cannot |
+|-------|-----|--------|
+| SHIPPER | orders:create, orders:read_own, bids:read_aggregated | pricing:config:write |
+| CARRIER | bids:create, executions:update_status_own | orders:create |
+| ADMIN | * (Wildcard) | - |
+| SUPPORT | *_read_all, flags:create | pricing:config:write |
+| SYSTEM | internal:service_to_service | - |
+
+### ABAC Regeln:
+```yaml
+shipper_owns_order: resource.shipperId == subject.id
+carrier_owns_execution: resource.carrierId == subject.id
+carrier_in_matching_result: winnerId == subject.id OR candidates CONTAINS subject.id
+support_read_only: DENY (für pricing:config:write)
+```
+
+### Fraud Score Formeln:
+```
+Fc = 0.3·Ccancel + 0.3·Cdispute + 0.2·CnoShow + 0.2·Cpattern
+Fb = 0.5·Bdumping + 0.3·Bspam + 0.2·Bcoordination
+Ftotal = 0.6·Fc + 0.4·Fb
+Score' = Score · (1 - 0.5·Ftotal)
+```
+
+### Fraud Thresholds:
+| Ftotal | Level | Action |
+|--------|-------|--------|
+| < 0.3 | unauffällig | Normal |
+| 0.3 - 0.6 | beobachten | Flag + Penalty |
+| ≥ 0.6 | fraud_suspected | No Auto-Match, Manual Review |
+
+### Dateien:
+1. `/config/security-config.yaml` - Zentrale Config (YAML)
+2. `/src/services/security-config.service.ts` - Config Loader
+3. `/src/services/fraud-score-calculator.ts` - Fc, Fb, Ftotal
+4. `/src/services/matching.service.ts` - Matching + Fraud Penalty
+5. `/src/types/access-control.ts` - RBAC/ABAC Matrix
+6. `/docs/epics-security-fraud.md` - Epics & Tickets
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
