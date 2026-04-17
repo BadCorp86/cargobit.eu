@@ -1,0 +1,15 @@
+apiVersion: v2
+name: pricing-service
+description: CargoBit Pricing Service - Price calculation and bid validation with fraud scoring
+type: application
+version: 1.0.0
+appVersion: "2.0.0"
+keywords:
+  - pricing
+  - fraud-detection
+  - bid-validation
+  - cargobit
+home: https://github.com/cargobit/pricing-service
+maintainers:
+  - name: CargoBit Team
+    email: team@cargobit.io

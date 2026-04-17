@@ -1,0 +1,364 @@
+# =============================================================================
+# API-Gateway Helm Values
+# =============================================================================
+
+# Image configuration
+image:
+  repository: cargobit/api-gateway
+  tag: "2.0.0"
+  pullPolicy: IfNotPresent
+
+# Replica configuration
+replicaCount: 3
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: false
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Service configuration
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 8080
+  annotations: {}
+  # For AWS:
+  # service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:...
+  # service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  hosts:
+    - host: api.cargobit.io
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: api-gateway-tls
+      hosts:
+        - api.cargobit.io
+
+# Resource limits
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-gateway
+          topologyKey: kubernetes.io/hostname
+
+# =============================================================================
+# AUTHENTICATION CONFIGURATION
+# =============================================================================
+
+auth:
+  oidc:
+    issuer: "https://auth.cargobit.io"
+    audience: "cargobit-api"
+    jwksUrl: "https://auth.cargobit.io/.well-known/jwks.json"
+  
+  # JWT secret for HS256 (optional, if not using RS256)
+  jwtSecret:
+    enabled: false
+    # existingSecret: "api-gateway-jwt-secret"
+    # value: "your-secret-key"
+
+# =============================================================================
+# RATE LIMITING CONFIGURATION
+# =============================================================================
+
+rateLimits:
+  enabled: true
+  rules:
+    # Orders
+    - route: /api/orders
+      method: POST
+      limit: 60
+      windowSeconds: 60
+      key: sub
+      description: "Orders creation - 60/min per Shipper"
+    
+    - route: /api/orders
+      method: GET
+      limit: 200
+      windowSeconds: 60
+      key: sub
+      description: "Orders read - 200/min per User"
+    
+    # Bidding
+    - route: /api/bids
+      method: POST
+      limit: 120
+      windowSeconds: 60
+      key: sub
+      description: "Bid submission - 120/min per Carrier"
+    
+    - route: /api/pricing
+      method: POST
+      limit: 300
+      windowSeconds: 60
+      key: sub
+      description: "Pricing/Bid validation - 300/min per Carrier"
+    
+    # Execution
+    - route: /api/executions
+      method: POST
+      limit: 240
+      windowSeconds: 60
+      key: sub
+      description: "Execution updates - 240/min per Carrier"
+    
+    - route: /api/executions
+      method: PUT
+      limit: 240
+      windowSeconds: 60
+      key: sub
+      description: "Execution status - 240/min per Carrier"
+    
+    # Global fallback
+    - route: "*"
+      method: "*"
+      limit: 1000
+      windowSeconds: 60
+      key: ip
+      description: "Global rate limit - 1000/min per IP"
+
+# =============================================================================
+# MTLS CONFIGURATION
+# =============================================================================
+
+mtls:
+  enabled: true
+  
+  # CA certificate for verifying backend services
+  caSecretName: "internal-ca"
+  
+  # Client certificate for gateway-to-service communication
+  clientCertSecretName: "api-gateway-client-cert"
+  
+  # Certificate details (if creating via Helm)
+  createCertificates: false
+
+# =============================================================================
+# ROUTING CONFIGURATION
+# =============================================================================
+
+routes:
+  # SHIPPER Routes
+  - path: /api/orders
+    method: POST
+    target: "http://order-service.domain.svc.cluster.local:3001"
+    requiredRole:
+      - SHIPPER
+      - ADMIN
+    requiredPermission: "orders:create"
+    stripPrefix: "/api"
+  
+  - path: /api/orders
+    method: GET
+    target: "http://order-service.domain.svc.cluster.local:3001"
+    requiredRole:
+      - SHIPPER
+      - CARRIER
+      - ADMIN
+      - SUPPORT
+    stripPrefix: "/api"
+  
+  - path: /api/pricing/calculate
+    method: POST
+    target: "http://pricing-service.domain.svc.cluster.local:3002"
+    requiredRole:
+      - SHIPPER
+      - ADMIN
+    stripPrefix: "/api"
+  
+  # CARRIER Routes
+  - path: /api/bids
+    method: POST
+    target: "http://bidding-service.domain.svc.cluster.local:3006"
+    requiredRole:
+      - CARRIER
+      - ADMIN
+    requiredPermission: "bids:create"
+    stripPrefix: "/api"
+  
+  - path: /api/pricing/orders
+    method: POST
+    target: "http://pricing-service.domain.svc.cluster.local:3002"
+    requiredRole:
+      - CARRIER
+      - ADMIN
+    requiredPermission: "pricing:validate_bid"
+    stripPrefix: "/api"
+  
+  - path: /api/executions
+    method: GET
+    target: "http://execution-service.domain.svc.cluster.local:3004"
+    requiredRole:
+      - CARRIER
+      - ADMIN
+      - SUPPORT
+    stripPrefix: "/api"
+  
+  - path: /api/executions
+    method: PUT
+    target: "http://execution-service.domain.svc.cluster.local:3004"
+    requiredRole:
+      - CARRIER
+      - ADMIN
+    requiredPermission: "executions:update_status_own"
+    stripPrefix: "/api"
+  
+  # ADMIN Routes
+  - path: /api/admin
+    method: "*"
+    target: "http://admin-service.core.svc.cluster.local:3010"
+    requiredRole:
+      - ADMIN
+    stripPrefix: "/api/admin"
+  
+  # SUPPORT Routes
+  - path: /api/support
+    method: GET
+    target: "http://support-service.core.svc.cluster.local:3011"
+    requiredRole:
+      - SUPPORT
+      - ADMIN
+    stripPrefix: "/api/support"
+  
+  # AUTH Routes (Public)
+  - path: /api/auth/login
+    method: POST
+    target: "http://auth-service.core.svc.cluster.local:3001"
+    stripPrefix: "/api"
+  
+  - path: /api/auth/refresh
+    method: POST
+    target: "http://auth-service.core.svc.cluster.local:3001"
+    stripPrefix: "/api"
+
+# =============================================================================
+# NETWORK POLICY
+# =============================================================================
+
+networkPolicy:
+  enabled: true
+  
+  # Ingress: Allow from LoadBalancer/Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+  
+  # Egress: Allow to core and domain namespaces
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              type: core
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              type: domain
+
+# =============================================================================
+# ENVIRONMENT VARIABLES
+# =============================================================================
+
+env:
+  NODE_ENV: "production"
+  PORT: "8080"
+  LOG_LEVEL: "info"
+  SECURITY_CONFIG_URL: "http://security-config-service.core.svc.cluster.local:3005"
+
+# Additional environment variables from secrets
+envFromSecrets: []
+  # - name: JWT_SECRET
+  #   secretName: api-gateway-secrets
+  #   key: jwt-secret
+
+# =============================================================================
+# MONITORING
+# =============================================================================
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  path: /metrics
+  labels:
+    release: prometheus
+
+# =============================================================================
+# LIVENESS & READINESS PROBES
+# =============================================================================
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3

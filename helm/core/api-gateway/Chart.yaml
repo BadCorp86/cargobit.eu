@@ -1,0 +1,16 @@
+apiVersion: v2
+name: api-gateway
+description: CargoBit API-Gateway - Central entry point with Auth, Rate-Limiting, mTLS
+type: application
+version: 1.0.0
+appVersion: "2.0.0"
+keywords:
+  - api-gateway
+  - authentication
+  - rate-limiting
+  - mtls
+  - cargobit
+home: https://github.com/cargobit/api-gateway
+maintainers:
+  - name: CargoBit Team
+    email: team@cargobit.io
