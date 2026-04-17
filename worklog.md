@@ -1982,3 +1982,131 @@ helm/
 | POST /executions/**/status | 240 | 60s | sub |
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: security-architecture-oncall-config-editor
+Agent: Main Agent
+Task: H+I+J Bausteine implementieren (Security Architecture Diagram, On-Call Runbook, Config-Editor UI Design)
+
+## Work Log:
+
+### H) Security Architecture Diagram
+- Datei: `/docs/security-architecture-diagram.md` - NEU
+- Vollständiges Layered Architecture Diagram:
+  - External Access Layer (Shipper/Carrier Apps)
+  - API Gateway Layer (AuthN, Rate Limit, WAF, mTLS)
+  - Domain Services Layer (Order, Pricing, Bidding, Matching, Execution, Risk)
+  - Core Services Layer (Security-Config, Auth Provider)
+  - Data Layer (PostgreSQL, Kafka, Elasticsearch)
+  - Observability Layer (Prometheus, Loki, Tempo, Grafana)
+
+### H.2 Trust Boundaries
+- 4 Trust Boundaries definiert:
+  - B1: Internet → Gateway (TLS, WAF, DDoS)
+  - B2: Gateway → Domain (mTLS, NetworkPolicies)
+  - B3: Domain → Core (Service JWT, Audit)
+  - B4: Core → Data (Private Network, Encryption)
+- Security Controls per Boundary (YAML Config)
+
+### H.3 Security Controls per Layer
+- External Access: TLS 1.3, WAF, DDoS, DNS Security
+- API Gateway: JWT AuthN, Route-Level AuthZ, Rate Limiting, Circuit Breaker
+- Domain Services: RBAC/ABAC, Fraud Scoring, Audit Logging
+- Core Services: Config Validation, Versioning, Hot Reload
+- Data Layer: Encryption at Rest, WORM Audit, Row-Level Security
+
+### H.4-H.8 Additional Diagrams
+- Network Architecture (Kubernetes NetworkPolicies)
+- Authentication Flow (JWT RS256)
+- Authorization Flow (Hybrid RBAC + ABAC + Fraud)
+- Data Flow Diagram (Event-Driven)
+- Quick Reference Card
+
+### I) On-Call Runbook
+- Datei: `/docs/on-call-runbook.md` - NEU
+- 5 Golden Rules:
+  1. User Impact First
+  2. Containment Before Root-Cause
+  3. Rollback > Fix
+  4. Communication Every 15 Minutes
+  5. Document Everything
+
+### I.2 Quick-Checklist
+- Schritt 1: Incident Verification (Alerts, Dashboards, Logs, Synthetic Checks)
+- Schritt 2: Impact Assessment (User Groups, Critical Functions)
+- Schritt 3: Severity Classification (SEV-1 bis SEV-4)
+- Schritt 4: Immediate Actions (Rollback, Restart, Scaling, Rate Limits)
+- Schritt 5: Communication Protocol (Slack, Status Page, Stakeholder)
+- Schritt 6: Handover Checklist (Timeline, Logs, Hypotheses, Workarounds)
+
+### I.3 Service-Specific Runbooks
+- Pricing-Service: Health Checks, Validation Failures, Service Down
+- Matching-Service: Kafka Lag, Matching Stuck
+- Execution-Service: Status Updates Stuck
+- API Gateway: Rate Limit Spikes, JWT Validation Errors
+- Security-Config-Service: Fraud-Config Invalid
+
+### I.4-I.6 Additional Runbook Content
+- Escalation Matrix (Primary/Secondary/Tertiary On-Call)
+- Key Dashboards & Links (Grafana, Loki, Tempo, AlertManager)
+- Quick Command Reference (Kubernetes, Redis, PostgreSQL)
+
+### J) Config-Editor UI Design
+- Datei: `/docs/config-editor-ui-design.md` - NEU
+- Primary Goals:
+  - RBAC/ABAC Rules Management
+  - Fraud-Config Editing
+  - Rate Limits Configuration
+  - Version Comparison
+  - Real-time Validation
+  - Safe Rollout
+
+### J.2-J.4 UI Layout & Editors
+- Main Screen Structure (Sidebar + Main Panel)
+- Navigation Structure (Overview, RBAC, ABAC, Fraud, Rate Limits, Versions, Audit)
+- RBAC Editor (Role Matrix, Permission Matrix)
+- Fraud Configuration Editor (Weights, Thresholds, Sliders)
+- Rate Limits Editor (Global, Endpoint-Specific, User Groups)
+
+### J.5 Dual-Mode Editor
+- JSON/YAML Editor Mode (Monaco-based, Syntax Highlighting)
+- Form Editor Mode (Sliders, Number Inputs, Validation Indicators)
+- Live Validation Integration
+
+### J.6-J.9 Advanced Features
+- Validation Output Panel (Success, Errors, Warnings States)
+- Version History & Diff View (Side-by-Side Comparison)
+- Safe Apply Workflow (Preview, Dry Run, Approvals)
+- Audit Trail (Full Change History, Approval Tracking)
+
+### J.10-J.14 Technical Specifications
+- UI Components (15+ Components defined)
+- Color Palette (Primary, Status, Neutral)
+- Typography (Font Family, Sizes, Weights)
+- API Integration (REST Endpoints, WebSocket Events)
+- Responsive Design (Mobile, Tablet, Desktop)
+- Accessibility (WCAG 2.1 AA, Keyboard Shortcuts)
+- Implementation Checklist (Frontend, Backend, Testing)
+
+## Stage Summary:
+
+### Erstellte Dateien:
+1. `/docs/security-architecture-diagram.md` - Vollständiges Security Architecture Diagram
+2. `/docs/on-call-runbook.md` - Produktreifes On-Call Runbook
+3. `/docs/config-editor-ui-design.md` - UI Design Spezifikation
+
+### Artefakte-Übersicht:
+
+| Baustein | Umfang | Zielgruppe |
+|----------|--------|------------|
+| H) Architecture | Layered Diagram + Trust Boundaries + Security Controls | Architekten, Security |
+| I) Runbook | Golden Rules + Checklists + Service Procedures | On-Call Teams |
+| J) UI Design | Wireframes + Components + API Spec | UI/UX, Frontend Teams |
+
+### Enterprise-Readiness:
+- ✅ Visuell klar (ASCII-Diagramme, Tabellen, Wireframes)
+- ✅ Operational nutzbar (konkrete Commands, Escalation Matrix)
+- ✅ Direkt übernehmbar für Confluence/Jira
+- ✅ Vollständig dokumentiert
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
