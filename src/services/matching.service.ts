@@ -1,6 +1,12 @@
 /**
  * CargoBit Matching Service
  * International transport-driver matching with smart algorithms
+ * 
+ * FEATURES:
+ * - Multi-criteria scoring (price, reliability, capacity, distance, risk)
+ * - Fraud-Score Integration with penalty calculation
+ * - Anti-Collusion Detection
+ * - Rate-Limiting for Bids
  */
 
 import { prisma } from '@/lib/db';
@@ -11,6 +17,13 @@ import {
   MatchType,
   MatchingResult
 } from '@/types/transport';
+import {
+  FraudScoreCalculator,
+  DEFAULT_FRAUD_WEIGHTS,
+  CarrierFraudFactors,
+  BidFraudFactors,
+  FraudScoreResult
+} from './fraud-score-calculator';
 
 // ============================================
 // MAIN MATCHING FUNCTION
@@ -45,14 +58,57 @@ export interface MatchedDriver {
   experienceBonus: number;
   ratingBonus: number;
   returnLoadBonus: number;
+  
+  // Fraud Score Integration
+  fraudScore?: number;              // Ftotal ∈ [0,1]
+  fraudLevel?: 'unauffaellig' | 'beobachten' | 'fraud_suspected';
+  fraudPenalty?: number;            // Applied penalty (0-100%)
+  adjustedScore?: number;           // Score' = Score · (1 - β·Ftotal)
 }
+
+// ============================================
+// MATCHING SCORING FORMULA
+// ============================================
+
+/**
+ * Original Scoring Formula:
+ * Score = 0.25×price + 0.25×reliability + 0.20×capacity + 0.15×distance + 0.15×risk
+ * 
+ * Fraud-Adjusted Score:
+ * Score' = Score · (1 - β·Ftotal)
+ * 
+ * Where:
+ * - β = 0.5 (default)
+ * - Ftotal = α·Fc + (1-α)·Fb
+ * - α = 0.6 (Carrier history weighs more than single bid)
+ */
+
+export interface MatchingScoreWeights {
+  price: number;       // 0.25
+  reliability: number; // 0.25
+  capacity: number;    // 0.20
+  distance: number;    // 0.15
+  risk: number;        // 0.15
+}
+
+export const DEFAULT_MATCHING_WEIGHTS: MatchingScoreWeights = {
+  price: 0.25,
+  reliability: 0.25,
+  capacity: 0.20,
+  distance: 0.15,
+  risk: 0.15,
+};
 
 /**
  * Find matching drivers for a transport
+ * 
+ * Applies fraud penalty to matching scores:
+ * Score' = Score · (1 - β·Ftotal)
  */
 export async function findMatchingDrivers(input: MatchingInput): Promise<MatchedDriver[]> {
   console.log(`[Matching] Finding drivers for transport ${input.transportId}`);
   
+  const fraudCalculator = new FraudScoreCalculator();
   const matches: MatchedDriver[] = [];
   
   // Step 1: Find available drivers with correct vehicle type
@@ -63,17 +119,99 @@ export async function findMatchingDrivers(input: MatchingInput): Promise<Matched
   for (const driver of candidateDrivers) {
     const score = await scoreDriver(driver, input);
     if (score.matchScore > 0) {
+      // Step 2a: Apply Fraud Score Penalty
+      const fraudAnalysis = await analyzeDriverFraud(driver, fraudCalculator);
+      
+      if (fraudAnalysis) {
+        score.fraudScore = fraudAnalysis.totalScore;
+        score.fraudLevel = fraudAnalysis.level;
+        
+        // Apply penalty: Score' = Score · (1 - β·Ftotal)
+        const penaltyResult = fraudCalculator.applyFraudPenalty(
+          score.matchScore,
+          fraudAnalysis.totalScore
+        );
+        
+        score.fraudPenalty = penaltyResult.penaltyPercent;
+        score.adjustedScore = penaltyResult.adjustedScore;
+        
+        // If fraud suspected, do not auto-match
+        if (fraudAnalysis.fraudSuspected) {
+          score.matchReasons.push('⚠️ FRAUD SUSPECTED - Manual review required');
+          // Cap score to prevent auto-matching
+          score.adjustedScore = Math.min(score.adjustedScore, 30);
+        } else if (fraudAnalysis.totalScore >= 0.3) {
+          score.matchReasons.push(`⚠️ Elevated fraud risk (${fraudAnalysis.level})`);
+        }
+      }
+      
       matches.push(score);
     }
   }
   
-  // Step 3: Sort by match score (descending)
-  matches.sort((a, b) => b.matchScore - a.matchScore);
+  // Step 3: Sort by adjusted score (descending)
+  matches.sort((a, b) => (b.adjustedScore ?? b.matchScore) - (a.adjustedScore ?? a.matchScore));
   
   // Step 4: Store matching results
   await storeMatchingResults(input.transportId, matches);
   
   return matches.slice(0, 20); // Return top 20 matches
+}
+
+// ============================================
+// FRAUD ANALYSIS FOR DRIVER
+// ============================================
+
+async function analyzeDriverFraud(
+  driver: any,
+  calculator: FraudScoreCalculator
+): Promise<FraudScoreResult | null> {
+  try {
+    // Get carrier fraud factors from driver statistics
+    const carrierFactors: CarrierFraudFactors = {
+      cancelRate: normalizeRate(driver.cancelRate || 0),
+      disputeRate: normalizeRate(driver.disputeRate || 0),
+      noShowRate: normalizeRate(driver.noShowRate || 0),
+      patternScore: calculateDriverPatternScore(driver),
+    };
+    
+    // Get bid fraud factors (would be calculated from recent bids)
+    const bidFactors: BidFraudFactors = {
+      dumpingScore: driver.recentDumpingScore || 0,
+      spamScore: driver.recentSpamScore || 0,
+      coordinationScore: driver.recentCoordinationScore || 0,
+    };
+    
+    return calculator.analyzeFraud(carrierFactors, bidFactors);
+  } catch (error) {
+    console.error('[Matching] Error analyzing fraud for driver:', error);
+    return null;
+  }
+}
+
+function normalizeRate(rate: number): number {
+  // Normalize to [0, 1] range
+  // Assuming rates are percentages (0-100)
+  return Math.min(Math.max(rate / 100, 0), 1);
+}
+
+function calculateDriverPatternScore(driver: any): number {
+  let patternScore = 0;
+  
+  // Check for suspicious patterns
+  if (driver.winsJustAboveFloorRate && driver.winsJustAboveFloorRate > 0.3) {
+    patternScore += driver.winsJustAboveFloorRate * 0.4;
+  }
+  
+  if (driver.rotationPatternScore && driver.rotationPatternScore > 0.5) {
+    patternScore += driver.rotationPatternScore * 0.3;
+  }
+  
+  if (driver.sameRegionWinRate && driver.sameRegionWinRate > 0.5) {
+    patternScore += (driver.sameRegionWinRate - 0.5) * 0.3;
+  }
+  
+  return Math.min(patternScore, 1);
 }
 
 // ============================================
