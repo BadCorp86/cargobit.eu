@@ -48,6 +48,7 @@ import { AuthModal } from '@/components/auth/auth-modal';
 import { Dashboard } from '@/components/dashboard/dashboard';
 import { TransportForm } from '@/components/transport/transport-form';
 import { PartnerPortal } from '@/components/partner/partner-portal';
+import { TransporteurOnboarding } from '@/components/onboarding/transporteur-onboarding';
 
 // Translation object (simplified - would come from i18n in production)
 const translations = {
@@ -135,6 +136,7 @@ export default function Home() {
   const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
   const [showTransportForm, setShowTransportForm] = useState(false);
   const [showPartnerPortal, setShowPartnerPortal] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -162,6 +164,11 @@ export default function Home() {
       description: 'Ihr Transport wurde veröffentlicht. Sie erhalten Benachrichtigungen über neue Angebote.'
     });
   };
+
+  // If Transporteur Onboarding is active
+  if (showOnboarding) {
+    return <TransporteurOnboarding />;
+  }
 
   // If Partner Portal is active
   if (showPartnerPortal) {
@@ -291,6 +298,15 @@ export default function Home() {
                 >
                   <Building2 className="w-4 h-4" />
                   Partner-Portal
+                </Button>
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setShowOnboarding(true)}
+                >
+                  <Truck className="w-4 h-4" />
+                  Transporteur werden
                 </Button>
                 <Button 
                   size="sm" 
