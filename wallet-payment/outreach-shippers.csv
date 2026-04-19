@@ -1,0 +1,4 @@
+user_id,contact_name,contact_email,contact_phone,company_name,user_type,region,vehicle_type,status,last_contact_date,next_step,notes,lead_source,lead_source_detail,created_at,updated_at
+,Sabine Klein,sabine.klein@example.com,+491734567890,Möbelhaus Klein GmbH,shipper,Frankfurt,,interessiert,2026-04-17,Angebot senden,Regelmäßige Transporte,LinkedIn,LinkedIn Nachricht,2026-04-17,2026-04-19
+,Peter Müller,peter.mueller@example.com,+491745678901,,shipper,Köln,privat,registriert,2026-04-16,Onboarding,Erster Auftrag eingestellt,Kleinanzeigen,Transport gesucht,2026-04-16,2026-04-16
+,Julia Hoffmann,julia.hoffmann@example.com,+491756789012,Baumarkt Hoffmann,shipper,Stuttgart,,kontaktiert,2026-04-18,Call-back,B2B Potenzial hoch,IHK,Netzwerktreffen,2026-04-18,2026-04-18

@@ -1,0 +1,4 @@
+user_id,contact_name,contact_email,contact_phone,company_name,user_type,region,vehicle_type,status,last_contact_date,next_step,notes,lead_source,lead_source_detail,created_at,updated_at
+,Max Mustermann,max@example.com,+491701234567,Spedition Müller GmbH,carrier,Berlin-Brandenburg,LKW 7.5t,neu,2026-04-19,Erste Kontaktaufnahme,Spezialisiert auf Möbeltransporte,LinkedIn,LinkedIn Post,2026-04-19,2026-04-19
+,Anna Schmidt,anna.schmidt@example.com,+491712345678,,shipper,München,privat,neu,2026-04-19,Anruf,Umzug von München nach Hamburg geplant,Kleinanzeigen,Transport gesucht,2026-04-19,2026-04-19
+,Thomas Weber,thomas.weber@example.com,+491723456789,Logistik Weber,carrier,Hamburg,Sprinter,kontaktiert,2026-04-18,Folge-Call,Demo vereinbart für 20.04.,Facebook,Transport-Gruppe,2026-04-18,2026-04-19

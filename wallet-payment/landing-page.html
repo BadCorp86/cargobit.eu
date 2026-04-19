@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CargoBit – Transportaufträge in Minuten statt Stunden</title>
+  <meta name="description" content="Finde Transporteure, spare Zeit und reduziere Kosten. Die Plattform für Verlader und Transporteure.">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/logo.svg">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    /* ================================================
+       RESET & BASE
+       ================================================ */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #3b82f6;
+      --secondary: #10b981;
+      --secondary-dark: #059669;
+      --text: #1f2937;
+      --text-light: #6b7280;
+      --bg: #ffffff;
+      --bg-light: #f9fafb;
+      --bg-dark: #111827;
+      --border: #e5e7eb;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+      --radius: 12px;
+      --radius-lg: 16px;
+    }
+    
+    html {
+      scroll-behavior: smooth;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.6;
+    }
+    
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+    
+    a {
+      color: var(--primary);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    
+    a:hover {
+      color: var(--primary-dark);
+    }
+    
+    /* ================================================
+       LAYOUT
+       ================================================ */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    
+    section {
+      padding: 80px 0;
+    }
+    
+    /* ================================================
+       NAVIGATION
+       ================================================ */
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+      padding: 16px 0;
+    }
+    
+    .nav-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .logo {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      border-radius: 8px;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+    
+    .nav-links a {
+      color: var(--text);
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    
+    .nav-links a:hover {
+      color: var(--primary);
+    }
+    
+    .nav-cta {
+      display: flex;
+      gap: 12px;
+    }
+    
+    /* ================================================
+       BUTTONS
+       ================================================ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      border-radius: var(--radius);
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }
+    
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 2px solid var(--border);
+    }
+    
+    .btn-secondary:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    
+    .btn-large {
+      padding: 16px 32px;
+      font-size: 18px;
+    }
+    
+    .btn-white {
+      background: white;
+      color: var(--primary);
+    }
+    
+    .btn-white:hover {
+      background: var(--bg-light);
+      color: var(--primary-dark);
+    }
+    
+    /* ================================================
+       HERO SECTION
+       ================================================ */
+    .hero {
+      padding: 160px 0 100px;
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f0fdf4 100%);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%232563eb' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+    
+    .hero-content {
+      position: relative;
+      z-index: 1;
+    }
+    
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: white;
+      padding: 8px 16px;
+      border-radius: 50px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--secondary-dark);
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+    
+    .hero-badge-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--secondary);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .hero h1 {
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 24px;
+      color: var(--text);
+    }
+    
+    .hero h1 span {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .hero-subtitle {
+      font-size: 20px;
+      color: var(--text-light);
+      max-width: 600px;
+      margin: 0 auto 40px;
+    }
+    
+    .hero-cta {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    .hero-stats {
+      display: flex;
+      justify-content: center;
+      gap: 48px;
+      margin-top: 60px;
+    }
+    
+    .hero-stat {
+      text-align: center;
+    }
+    
+    .hero-stat-value {
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--primary);
+    }
+    
+    .hero-stat-label {
+      font-size: 14px;
+      color: var(--text-light);
+    }
+    
+    /* ================================================
+       HOW IT WORKS
+       ================================================ */
+    .how-it-works {
+      background: var(--bg-light);
+    }
+    
+    .section-header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+    
+    .section-header h2 {
+      font-size: 40px;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+    
+    .section-header p {
+      font-size: 18px;
+      color: var(--text-light);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 32px;
+    }
+    
+    .step {
+      background: white;
+      padding: 32px;
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      text-align: center;
+      position: relative;
+    }
+    
+    .step-number {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 auto 20px;
+    }
+    
+    .step-icon {
+      width: 64px;
+      height: 64px;
+      background: var(--bg-light);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 28px;
+    }
+    
+    .step h3 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    
+    .step p {
+      color: var(--text-light);
+      font-size: 15px;
+    }
+    
+    /* ================================================
+       BENEFITS
+       ================================================ */
+    .benefits {
+      background: white;
+    }
+    
+    .benefits-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 32px;
+    }
+    
+    .benefit {
+      display: flex;
+      gap: 20px;
+      padding: 24px;
+      border-radius: var(--radius-lg);
+      background: var(--bg-light);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .benefit:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+    }
+    
+    .benefit-icon {
+      width: 56px;
+      height: 56px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 24px;
+    }
+    
+    .benefit h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    
+    .benefit p {
+      color: var(--text-light);
+      font-size: 15px;
+    }
+    
+    /* ================================================
+       PRICING
+       ================================================ */
+    .pricing {
+      background: var(--bg-light);
+    }
+    
+    .pricing-toggle {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    
+    .pricing-toggle-btn {
+      padding: 12px 24px;
+      border: 2px solid var(--border);
+      background: white;
+      border-radius: 50px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .pricing-toggle-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+    
+    .pricing-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    
+    .pricing-card {
+      background: white;
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      box-shadow: var(--shadow);
+      position: relative;
+      border: 2px solid transparent;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    
+    .pricing-card:hover {
+      transform: translateY(-4px);
+    }
+    
+    .pricing-card.featured {
+      border-color: var(--primary);
+    }
+    
+    .pricing-card.featured::before {
+      content: 'Beliebt';
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--primary);
+      color: white;
+      padding: 4px 16px;
+      border-radius: 50px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .pricing-card h3 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    
+    .pricing-card .price {
+      font-size: 48px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    
+    .pricing-card .price span {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-light);
+    }
+    
+    .pricing-card .price-desc {
+      color: var(--text-light);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    
+    .pricing-features {
+      list-style: none;
+      margin-bottom: 32px;
+    }
+    
+    .pricing-features li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+      color: var(--text);
+      font-size: 15px;
+    }
+    
+    .pricing-features li::before {
+      content: '✓';
+      color: var(--secondary);
+      font-weight: 700;
+    }
+    
+    .pricing-features li.disabled {
+      color: var(--text-light);
+    }
+    
+    .pricing-features li.disabled::before {
+      content: '×';
+      color: var(--text-light);
+    }
+    
+    /* ================================================
+       TESTIMONIALS
+       ================================================ */
+    .testimonials {
+      background: white;
+    }
+    
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 32px;
+    }
+    
+    .testimonial {
+      background: var(--bg-light);
+      padding: 32px;
+      border-radius: var(--radius-lg);
+      position: relative;
+    }
+    
+    .testimonial-quote {
+      font-size: 18px;
+      line-height: 1.6;
+      margin-bottom: 24px;
+      font-style: italic;
+    }
+    
+    .testimonial-quote::before {
+      content: '"';
+      font-size: 48px;
+      color: var(--primary);
+      position: absolute;
+      top: 16px;
+      left: 24px;
+      opacity: 0.3;
+    }
+    
+    .testimonial-author {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .testimonial-avatar {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+    }
+    
+    .testimonial-author-name {
+      font-weight: 600;
+    }
+    
+    .testimonial-author-role {
+      font-size: 14px;
+      color: var(--text-light);
+    }
+    
+    /* ================================================
+       CTA SECTION
+       ================================================ */
+    .cta-section {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      text-align: center;
+      padding: 80px 24px;
+    }
+    
+    .cta-section h2 {
+      font-size: 40px;
+      font-weight: 800;
+      margin-bottom: 16px;
+    }
+    
+    .cta-section p {
+      font-size: 18px;
+      opacity: 0.9;
+      max-width: 600px;
+      margin: 0 auto 32px;
+    }
+    
+    /* ================================================
+       FOOTER
+       ================================================ */
+    .footer {
+      background: var(--bg-dark);
+      color: white;
+      padding: 60px 24px 30px;
+    }
+    
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 40px;
+      margin-bottom: 40px;
+    }
+    
+    .footer-brand {
+      max-width: 300px;
+    }
+    
+    .footer-brand .logo {
+      color: white;
+      margin-bottom: 16px;
+    }
+    
+    .footer-brand p {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+    }
+    
+    .footer h4 {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 20px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+    
+    .footer ul {
+      list-style: none;
+    }
+    
+    .footer ul li {
+      margin-bottom: 12px;
+    }
+    
+    .footer ul a {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 15px;
+      transition: color 0.2s;
+    }
+    
+    .footer ul a:hover {
+      color: white;
+    }
+    
+    .footer-bottom {
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      padding-top: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    
+    .footer-bottom p {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 14px;
+    }
+    
+    /* ================================================
+       RESPONSIVE
+       ================================================ */
+    @media (max-width: 768px) {
+      .nav-links {
+        display: none;
+      }
+      
+      .hero h1 {
+        font-size: 36px;
+      }
+      
+      .hero-subtitle {
+        font-size: 16px;
+      }
+      
+      .hero-stats {
+        flex-direction: column;
+        gap: 24px;
+      }
+      
+      section {
+        padding: 60px 0;
+      }
+      
+      .section-header h2 {
+        font-size: 28px;
+      }
+      
+      .pricing-cards {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================================================
+       NAVIGATION
+       ================================================ -->
+  <nav class="nav">
+    <div class="container nav-inner">
+      <a href="/" class="logo">
+        <div class="logo-icon"></div>
+        CargoBit
+      </a>
+      
+      <ul class="nav-links">
+        <li><a href="#how-it-works">So funktioniert's</a></li>
+        <li><a href="#benefits">Vorteile</a></li>
+        <li><a href="#pricing">Preise</a></li>
+        <li><a href="#testimonials">Bewertungen</a></li>
+      </ul>
+      
+      <div class="nav-cta">
+        <a href="/login" class="btn btn-secondary">Anmelden</a>
+        <a href="/register" class="btn btn-primary">Registrieren</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ================================================
+       HERO SECTION
+       ================================================ -->
+  <section class="hero">
+    <div class="container hero-content">
+      <div class="hero-badge">
+        <span class="hero-badge-dot"></span>
+        Jetzt live in Deutschland
+      </div>
+      
+      <h1>Transportaufträge in <span>Minuten</span> statt Stunden</h1>
+      
+      <p class="hero-subtitle">
+        Finde Transporteure, spare Zeit und reduziere Kosten — alles auf einer Plattform. 
+        Sichere Zahlung, geprüfte Partner, transparente Preise.
+      </p>
+      
+      <div class="hero-cta">
+        <a href="/register?type=shipper" class="btn btn-primary btn-large">
+          Als Verlader starten
+        </a>
+        <a href="/register?type=carrier" class="btn btn-secondary btn-large">
+          Als Transporteur anmelden
+        </a>
+      </div>
+      
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="hero-stat-value">500+</div>
+          <div class="hero-stat-label">Transporteure</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">2.000+</div>
+          <div class="hero-stat-label">Transporte</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">-35%</div>
+          <div class="hero-stat-label">Leerkilometer</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">4.8★</div>
+          <div class="hero-stat-label">Bewertung</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================
+       HOW IT WORKS
+       ================================================ -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="container">
+      <div class="section-header">
+        <h2>So funktioniert's</h2>
+        <p>In 4 einfachen Schritten zum passenden Transport</p>
+      </div>
+      
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-icon">📦</div>
+          <h3>Auftrag einstellen</h3>
+          <p>Beschreibe, was transportiert werden soll. Abholort, Zielort, Zeitfenster – fertig in 2 Minuten.</p>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-icon">💬</div>
+          <h3>Angebote erhalten</h3>
+          <p>Transporteure bewerben sich auf deinen Auftrag. Du siehst Preise, Bewertungen und Fahrzeugtypen.</p>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-icon">✅</div>
+          <h3>Buchen & bezahlen</h3>
+          <p>Wähle den besten Anbieter. Sichere Zahlung über Wallet – Geld wird erst nach Lieferung freigegeben.</p>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-icon">📍</div>
+          <h3>Transport verfolgen</h3>
+          <p>Echtzeit-Updates, direkte Kommunikation mit dem Fahrer, digitale Lieferbestätigung.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================
+       BENEFITS
+       ================================================ -->
+  <section class="benefits" id="benefits">
+    <div class="container">
+      <div class="section-header">
+        <h2>Warum CargoBit?</h2>
+        <p>Vorteile für Verlader und Transporteure</p>
+      </div>
+      
+      <div class="benefits-grid">
+        <div class="benefit">
+          <div class="benefit-icon">🚚</div>
+          <div>
+            <h3>Weniger Leerkilometer</h3>
+            <p>Intelligente Routenoptimierung reduziert Leerfahrten um bis zu 35%. Das spart Kosten und schont die Umwelt.</p>
+          </div>
+        </div>
+        
+        <div class="benefit">
+          <div class="benefit-icon">⚡</div>
+          <div>
+            <h3>Schnelle Vermittlung</h3>
+            <p>Erhalte Angebote innerhalb von Stunden statt Tagen. Notfalltransporte möglich.</p>
+          </div>
+        </div>
+        
+        <div class="benefit">
+          <div class="benefit-icon">🔒</div>
+          <div>
+            <h3>Sichere Zahlung</h3>
+            <p>Wallet-System mit Treuhandfunktion. Geld wird erst nach erfolgreicher Lieferung freigegeben.</p>
+          </div>
+        </div>
+        
+        <div class="benefit">
+          <div class="benefit-icon">✓</div>
+          <div>
+            <h3>Gewerbliche Transporteure</h3>
+            <p>Alle Transporteure sind geprüft. Gewerbeschein, Versicherung, Bewertungen einsehbar.</p>
+          </div>
+        </div>
+        
+        <div class="benefit">
+          <div class="benefit-icon">💰</div>
+          <div>
+            <h3>Transparente Preise</h3>
+            <p>Vergleiche Angebote direkt. Keine versteckten Gebühren. Wallet-Gebühr nur 3,5%.</p>
+          </div>
+        </div>
+        
+        <div class="benefit">
+          <div class="benefit-icon">⭐</div>
+          <div>
+            <h3>Bewertungen & Vertrauen</h3>
+            <p>Authentische Bewertungen von echten Kunden. Baue dir einen Ruf auf.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================
+       PRICING
+       ================================================ -->
+  <section class="pricing" id="pricing">
+    <div class="container">
+      <div class="section-header">
+        <h2>Einfache Preise</h2>
+        <p>Transparent, fair, ohne versteckte Kosten</p>
+      </div>
+      
+      <div class="pricing-toggle">
+        <button class="pricing-toggle-btn active" onclick="showPricing('shipper')">Verlader</button>
+        <button class="pricing-toggle-btn" onclick="showPricing('carrier')">Transporteure</button>
+      </div>
+      
+      <!-- Shipper Pricing -->
+      <div id="pricing-shipper" class="pricing-cards">
+        <div class="pricing-card">
+          <h3>Free</h3>
+          <div class="price">0€ <span>/ Monat</span></div>
+          <p class="price-desc">Perfekt zum Ausprobieren</p>
+          <ul class="pricing-features">
+            <li>Bis zu 2 aktive Aufträge</li>
+            <li>Basis-Support</li>
+            <li>Wallet-Gebühr: 3,5%</li>
+            <li class="disabled">Priorisierte Sichtbarkeit</li>
+            <li class="disabled">Premium-Transporteure</li>
+          </ul>
+          <a href="/register?plan=free" class="btn btn-secondary" style="width: 100%;">Kostenlos starten</a>
+        </div>
+        
+        <div class="pricing-card featured">
+          <h3>Pro</h3>
+          <div class="price">9,99€ <span>/ Monat</span></div>
+          <p class="price-desc">Für regelmäßige Versender</p>
+          <ul class="pricing-features">
+            <li>Unbegrenzte Aufträge</li>
+            <li>Priorisierter Support</li>
+            <li>Wallet-Gebühr: 2,5%</li>
+            <li>Priorisierte Sichtbarkeit</li>
+            <li>Premium-Transporteure</li>
+          </ul>
+          <a href="/register?plan=pro" class="btn btn-primary" style="width: 100%;">Jetzt starten</a>
+        </div>
+        
+        <div class="pricing-card">
+          <h3>Business</h3>
+          <div class="price">24,99€ <span>/ Monat</span></div>
+          <p class="price-desc">Für Unternehmen</p>
+          <ul class="pricing-features">
+            <li>Alles aus Pro</li>
+            <li>SLA-Transporteure</li>
+            <li>Wallet-Gebühr: 1,5%</li>
+            <li>Analytics & Reports</li>
+            <li>API-Zugriff</li>
+          </ul>
+          <a href="/register?plan=business" class="btn btn-secondary" style="width: 100%;">Business wählen</a>
+        </div>
+      </div>
+      
+      <!-- Carrier Pricing (hidden by default) -->
+      <div id="pricing-carrier" class="pricing-cards" style="display: none;">
+        <div class="pricing-card">
+          <h3>Starter</h3>
+          <div class="price">0€ <span>/ Monat</span></div>
+          <p class="price-desc">Für Einsteiger</p>
+          <ul class="pricing-features">
+            <li>3 Angebote pro Monat</li>
+            <li>Basis-Sichtbarkeit</li>
+            <li>Wallet-Gebühr: 3,5%</li>
+            <li class="disabled">Premium-Aufträge</li>
+            <li class="disabled">Priorisierte Platzierung</li>
+          </ul>
+          <a href="/register?type=carrier&plan=starter" class="btn btn-secondary" style="width: 100%;">Kostenlos starten</a>
+        </div>
+        
+        <div class="pricing-card featured">
+          <h3>Pro</h3>
+          <div class="price">14,99€ <span>/ Monat</span></div>
+          <p class="price-desc">Für aktive Transporteure</p>
+          <ul class="pricing-features">
+            <li>Unbegrenzte Angebote</li>
+            <li>Premium-Aufträge</li>
+            <li>Wallet-Gebühr: 2,0%</li>
+            <li>Priorisierte Platzierung</li>
+            <li>Bewertungen prominent</li>
+          </ul>
+          <a href="/register?type=carrier&plan=pro" class="btn btn-primary" style="width: 100%;">Jetzt anmelden</a>
+        </div>
+        
+        <div class="pricing-card">
+          <h3>Fleet</h3>
+          <div class="price">39,99€ <span>/ Monat</span></div>
+          <p class="price-desc">Für Logistikunternehmen</p>
+          <ul class="pricing-features">
+            <li>Alles aus Pro</li>
+            <li>Team-Accounts</li>
+            <li>Wallet-Gebühr: 1,0%</li>
+            <li>Analytics Dashboard</li>
+            <li>API-Zugriff</li>
+          </ul>
+          <a href="/register?type=carrier&plan=fleet" class="btn btn-secondary" style="width: 100%;">Fleet wählen</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================
+       TESTIMONIALS
+       ================================================ -->
+  <section class="testimonials" id="testimonials">
+    <div class="container">
+      <div class="section-header">
+        <h2>Das sagen unsere Nutzer</h2>
+        <p>Echte Erfahrungen von Verladern und Transporteuren</p>
+      </div>
+      
+      <div class="testimonials-grid">
+        <div class="testimonial">
+          <p class="testimonial-quote">Ich spare jeden Tag 1–2 Stunden durch die Plattform. Die Abwicklung ist super einfach und die Zahlungen kommen pünktlich.</p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">MK</div>
+            <div>
+              <div class="testimonial-author-name">Michael K.</div>
+              <div class="testimonial-author-role">Transporteur, Berlin</div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="testimonial">
+          <p class="testimonial-quote">Endlich weniger Leerkilometer! Die Routenoptimierung funktioniert richtig gut. Meine Auslastung ist um 30% gestiegen.</p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">TS</div>
+            <div>
+              <div class="testimonial-author-name">Thomas S.</div>
+              <div class="testimonial-author-role">Spedition, Hamburg</div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="testimonial">
+          <p class="testimonial-quote">Super einfache Abwicklung. Ich habe innerhalb von 2 Stunden 3 Angebote bekommen und den günstigsten gewählt. Top!</p>
+          <div class="testimonial-author">
+            <div class="testimonial-avatar">AH</div>
+            <div>
+              <div class="testimonial-author-name">Anna H.</div>
+              <div class="testimonial-author-role">Verlader, München</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================
+       CTA SECTION
+       ================================================ -->
+  <section class="cta-section">
+    <div class="container">
+      <h2>Bereit durchzustarten?</h2>
+      <p>Schließe dich über 500 Transporteuren und tausenden Verladern an. Registrierung dauert nur 2 Minuten.</p>
+      <div class="hero-cta">
+        <a href="/register" class="btn btn-white btn-large">
+          Jetzt kostenlos registrieren
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================
+       FOOTER
+       ================================================ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="/" class="logo">
+            <div class="logo-icon"></div>
+            CargoBit
+          </a>
+          <p>Die moderne Plattform für Transporte. Schnell, sicher, transparent.</p>
+        </div>
+        
+        <div>
+          <h4>Plattform</h4>
+          <ul>
+            <li><a href="/how-it-works">So funktioniert's</a></li>
+            <li><a href="/pricing">Preise</a></li>
+            <li><a href="/transports">Transporte finden</a></li>
+            <li><a href="/carriers">Transporteure</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4>Unternehmen</h4>
+          <ul>
+            <li><a href="/about">Über uns</a></li>
+            <li><a href="/careers">Karriere</a></li>
+            <li><a href="/press">Presse</a></li>
+            <li><a href="/contact">Kontakt</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4>Rechtliches</h4>
+          <ul>
+            <li><a href="/imprint">Impressum</a></li>
+            <li><a href="/privacy">Datenschutz</a></li>
+            <li><a href="/terms">AGB</a></li>
+            <li><a href="/cookies">Cookies</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4>Support</h4>
+          <ul>
+            <li><a href="/help">Hilfe-Center</a></li>
+            <li><a href="/faq">FAQ</a></li>
+            <li><a href="mailto:support@cargobit.de">support@cargobit.de</a></li>
+            <li><a href="tel:+493012345678">+49 30 123 456 78</a></li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="footer-bottom">
+        <p>© 2026 CargoBit GmbH. Alle Rechte vorbehalten.</p>
+        <p>Made with ❤️ in Germany</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ================================================
+       SCRIPTS
+       ================================================ -->
+  <script>
+    // Pricing Toggle
+    function showPricing(type) {
+      document.getElementById('pricing-shipper').style.display = type === 'shipper' ? 'grid' : 'none';
+      document.getElementById('pricing-carrier').style.display = type === 'carrier' ? 'grid' : 'none';
+      
+      document.querySelectorAll('.pricing-toggle-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      event.target.classList.add('active');
+    }
+    
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function(e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+    
+    // Navbar background on scroll
+    window.addEventListener('scroll', () => {
+      const nav = document.querySelector('.nav');
+      if (window.scrollY > 50) {
+        nav.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.1)';
+      } else {
+        nav.style.boxShadow = 'none';
+      }
+    });
+  </script>
+
+</body>
+</html>
