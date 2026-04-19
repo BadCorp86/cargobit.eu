@@ -49,6 +49,7 @@ import { Dashboard } from '@/components/dashboard/dashboard';
 import { TransportForm } from '@/components/transport/transport-form';
 import { PartnerPortal } from '@/components/partner/partner-portal';
 import { TransporteurOnboarding } from '@/components/onboarding/transporteur-onboarding';
+import { ShipperOnboarding } from '@/components/onboarding/shipper-onboarding';
 
 // Translation object (simplified - would come from i18n in production)
 const translations = {
@@ -137,6 +138,7 @@ export default function Home() {
   const [showTransportForm, setShowTransportForm] = useState(false);
   const [showPartnerPortal, setShowPartnerPortal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showShipperOnboarding, setShowShipperOnboarding] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -168,6 +170,11 @@ export default function Home() {
   // If Transporteur Onboarding is active
   if (showOnboarding) {
     return <TransporteurOnboarding />;
+  }
+
+  // If Shipper Onboarding is active
+  if (showShipperOnboarding) {
+    return <ShipperOnboarding />;
   }
 
   // If Partner Portal is active
@@ -307,6 +314,15 @@ export default function Home() {
                 >
                   <Truck className="w-4 h-4" />
                   Transporteur werden
+                </Button>
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setShowShipperOnboarding(true)}
+                >
+                  <Package className="w-4 h-4" />
+                  Verlader werden
                 </Button>
                 <Button 
                   size="sm" 
