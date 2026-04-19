@@ -1,0 +1,457 @@
+# =============================================================================
+# CargoBit ML Inference Service - Kubernetes Deployment
+# =============================================================================
+# Production-ready deployment configuration with:
+# - Resource limits and requests
+# - Horizontal Pod Autoscaler (HPA)
+# - Pod Disruption Budget (PDB)
+# - Liveness and readiness probes
+# - Security context
+# =============================================================================
+
+---
+# =============================================================================
+# DEPLOYMENT
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-inference-service
+  namespace: ml-serving
+  labels:
+    app: ml-inference
+    version: v2
+    team: ml-platform
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ml-inference
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: ml-inference
+        version: v2
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+    spec:
+      serviceAccountName: ml-inference-sa
+      
+      # Security context at pod level
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      
+      # Anti-affinity for HA
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: ml-inference
+                topologyKey: kubernetes.io/hostname
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: ml-inference
+                topologyKey: topology.kubernetes.io/zone
+      
+      # Graceful termination
+      terminationGracePeriodSeconds: 60
+      
+      containers:
+        - name: ml-inference
+          image: cargobit/ml-inference:2.0.0
+          imagePullPolicy: IfNotPresent
+          
+          # Resource configuration (based on sizing recommendations)
+          resources:
+            requests:
+              cpu: "300m"
+              memory: "512Mi"
+            limits:
+              cpu: "800m"
+              memory: "1Gi"
+          
+          # Environment variables
+          env:
+            - name: PORT
+              value: "8000"
+            - name: WORKERS
+              value: "4"
+            - name: MODEL_STORE_TYPE
+              valueFrom:
+                configMapKeyRef:
+                  name: ml-inference-config
+                  key: model_store_type
+            - name: S3_MODEL_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: ml-inference-config
+                  key: s3_model_bucket
+            - name: S3_MODEL_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: ml-inference-config
+                  key: s3_model_prefix
+            - name: LOCAL_MODEL_PATH
+              value: "/app/models"
+            - name: MODEL_TYPE
+              value: "lightgbm"
+            - name: CACHE_TTL_SECONDS
+              value: "3600"
+            - name: REGISTRY_ENABLED
+              value: "true"
+            - name: REGISTRY_DB_CONNECTION
+              valueFrom:
+                secretKeyRef:
+                  name: ml-inference-secrets
+                  key: db_connection_string
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: OTEL_SERVICE_NAME
+              value: "ml-inference-service"
+          
+          # Ports
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: metrics
+              containerPort: 8000
+              protocol: TCP
+          
+          # Health checks
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          
+          # Startup probe (for slow model loading)
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          
+          # Container security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          
+          # Volume mounts
+          volumeMounts:
+            - name: models-cache
+              mountPath: /app/models
+            - name: tmp
+              mountPath: /tmp
+      
+      # Volumes
+      volumes:
+        - name: models-cache
+          emptyDir:
+            sizeLimit: "500Mi"
+        - name: tmp
+          emptyDir:
+            sizeLimit: "100Mi"
+
+---
+# =============================================================================
+# HORIZONTAL POD AUTOSCALER
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ml-inference-hpa
+  namespace: ml-serving
+  labels:
+    app: ml-inference
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ml-inference-service
+  
+  minReplicas: 3
+  maxReplicas: 12
+  
+  metrics:
+    # Primary: CPU utilization
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    
+    # Secondary: Memory utilization
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    
+    # Custom metric: Requests per second per pod
+    - type: Pods
+      pods:
+        metric:
+          name: ml_inference_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "150"
+  
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+      selectPolicy: Min
+    
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max
+
+---
+# =============================================================================
+# POD DISRUPTION BUDGET
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ml-inference-pdb
+  namespace: ml-serving
+  labels:
+    app: ml-inference
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: ml-inference
+
+---
+# =============================================================================
+# SERVICE
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-inference-service
+  namespace: ml-serving
+  labels:
+    app: ml-inference
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: 8000
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    app: ml-inference
+
+---
+# =============================================================================
+# CONFIGMAP
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-inference-config
+  namespace: ml-serving
+data:
+  model_store_type: "s3"
+  s3_model_bucket: "cargobit-ml-models"
+  s3_model_prefix: "suggestion-scoring"
+
+---
+# =============================================================================
+# SERVICE ACCOUNT
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ml-inference-sa
+  namespace: ml-serving
+  labels:
+    app: ml-inference
+
+---
+# =============================================================================
+# SECRET (Template - fill in actual values)
+# =============================================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ml-inference-secrets
+  namespace: ml-serving
+type: Opaque
+stringData:
+  # PostgreSQL connection string for model registry
+  db_connection_string: "postgresql://user:password@postgres.cargobit.internal:5432/ml_registry"
+
+---
+# =============================================================================
+# NETWORK POLICY
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ml-inference-network-policy
+  namespace: ml-serving
+spec:
+  podSelector:
+    matchLabels:
+      app: ml-inference
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow ingress from API gateway
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: api-gateway
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8000
+    
+    # Allow Prometheus scraping
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+    
+    # Allow S3 access
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+    
+    # Allow PostgreSQL access
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# =============================================================================
+# SEPARATE DEPLOYMENT FOR /explain ENDPOINT (Optional)
+# =============================================================================
+# SHAP computation is expensive - consider a separate deployment
+# for the /explain endpoint to isolate resources
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-explain-service
+  namespace: ml-serving
+  labels:
+    app: ml-explain
+    version: v2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ml-explain
+  template:
+    metadata:
+      labels:
+        app: ml-explain
+    spec:
+      containers:
+        - name: ml-explain
+          image: cargobit/ml-inference:2.0.0
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1500m"
+              memory: "2Gi"
+          env:
+            - name: EXPLAIN_ONLY
+              value: "true"
+            - name: WORKERS
+              value: "2"
+          ports:
+            - containerPort: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000

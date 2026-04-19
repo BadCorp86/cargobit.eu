@@ -1,0 +1,533 @@
+# =============================================================================
+# CargoBit ML Inference Service - SLO/SLI Definitions
+# =============================================================================
+# Audit-ready SLO definitions following Google SRE best practices
+# 
+# Contents:
+# 1. Service Level Indicators (SLIs)
+# 2. Service Level Objectives (SLOs)
+# 3. Error Budgets
+# 4. Alerting Rules
+# 5. Recording Rules (Prometheus)
+# =============================================================================
+
+---
+# =============================================================================
+# PROMETHEUS RECORDING RULES
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ml-inference-slo-rules
+  namespace: monitoring
+  labels:
+    role: alerting-rules
+    app: ml-inference
+spec:
+  groups:
+    # =========================================================================
+    # LATENCY SLIs
+    # =========================================================================
+    - name: ml_inference_latency_sli
+      interval: 30s
+      rules:
+        # SLI: Proportion of /score requests with latency < 50ms
+        - record: ml_inference:score_latency_sli:p95_ratio
+          expr: |
+            sum(rate(ml_inference_request_latency_seconds_bucket{endpoint="/score",le="0.05"}[5m]))
+            /
+            sum(rate(ml_inference_request_latency_seconds_count{endpoint="/score"}[5m]))
+        
+        # SLI: Proportion of /explain requests with latency < 200ms
+        - record: ml_inference:explain_latency_sli:p95_ratio
+          expr: |
+            sum(rate(ml_inference_request_latency_seconds_bucket{endpoint="/explain",le="0.2"}[5m]))
+            /
+            sum(rate(ml_inference_request_latency_seconds_count{endpoint="/explain"}[5m]))
+        
+        # P95 latency for /score (rolling 5m)
+        - record: ml_inference:score_latency:p95_5m
+          expr: histogram_quantile(0.95, sum by (le) (rate(ml_inference_request_latency_seconds_bucket{endpoint="/score"}[5m])))
+        
+        # P95 latency for /explain (rolling 5m)
+        - record: ml_inference:explain_latency:p95_5m
+          expr: histogram_quantile(0.95, sum by (le) (rate(ml_inference_request_latency_seconds_bucket{endpoint="/explain"}[5m])))
+        
+        # P99 latency (rolling 5m)
+        - record: ml_inference:score_latency:p99_5m
+          expr: histogram_quantile(0.99, sum by (le) (rate(ml_inference_request_latency_seconds_bucket{endpoint="/score"}[5m])))
+    
+    # =========================================================================
+    # AVAILABILITY SLIs
+    # =========================================================================
+    - name: ml_inference_availability_sli
+      interval: 30s
+      rules:
+        # SLI: Availability rate (2xx responses)
+        - record: ml_inference:availability_sli:ratio
+          expr: |
+            sum(rate(ml_inference_requests_total{status=~"2.."}[5m]))
+            /
+            sum(rate(ml_inference_requests_total[5m]))
+        
+        # SLI: Error rate (non-2xx responses)
+        - record: ml_inference:error_rate:ratio
+          expr: |
+            sum(rate(ml_inference_requests_total{status!~"2.."}[5m]))
+            /
+            sum(rate(ml_inference_requests_total[5m]))
+        
+        # Availability over 30 days (for error budget calculation)
+        - record: ml_inference:availability_sli:30d
+          expr: |
+            (sum(increase(ml_inference_requests_total{status=~"2.."}[30d]))
+            /
+            sum(increase(ml_inference_requests_total[30d])))
+            * 100
+    
+    # =========================================================================
+    # MODEL HEALTH SLIs
+    # =========================================================================
+    - name: ml_inference_model_sli
+      interval: 60s
+      rules:
+        # SLI: Model load success rate
+        - record: ml_inference:model_load_success:ratio
+          expr: |
+            sum(rate(ml_model_loads_total{status="success"}[1h]))
+            /
+            sum(rate(ml_model_loads_total[1h]))
+        
+        # SLI: Prediction drift (difference from heuristic)
+        - record: ml_inference:prediction_drift:ratio
+          expr: |
+            avg(abs(ml_score_ml - ml_score_heuristic))
+            /
+            avg(ml_score_heuristic)
+        
+        # Model prediction rate per version
+        - record: ml_inference:predictions_per_version:rate5m
+          expr: sum by (model_version) (rate(ml_predictions_total[5m]))
+    
+    # =========================================================================
+    # ERROR BUDGET CALCULATIONS
+    # =========================================================================
+    - name: ml_inference_error_budget
+      interval: 60s
+      rules:
+        # Error budget remaining (30-day window, 99.9% target)
+        - record: ml_inference:error_budget_remaining:ratio
+          expr: |
+            (1 - (1 - ml_inference:availability_sli:30d / 100))
+            /
+            (1 - 0.999)
+        
+        # Error budget burn rate
+        - record: ml_inference:error_budget_burn_rate:ratio
+          expr: |
+            (1 - ml_inference:availability_sli:ratio)
+            /
+            (1 - 0.999)
+        
+        # Time until error budget exhausted (hours)
+        - record: ml_inference:error_budget_remaining_hours
+          expr: |
+            ml_inference:error_budget_remaining:ratio
+            /
+            (ml_inference:error_budget_burn_rate:ratio / 720)
+          # 720 = hours in 30 days
+
+---
+# =============================================================================
+# PROMETHEUS ALERTING RULES
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ml-inference-slo-alerts
+  namespace: monitoring
+  labels:
+    role: alerting-rules
+    app: ml-inference
+spec:
+  groups:
+    # =========================================================================
+    # CRITICAL ALERTS (Immediate response required)
+    # =========================================================================
+    - name: ml_inference_critical_alerts
+      rules:
+        # P95 latency > 100ms for 5 minutes
+        - alert: MLP95LatencyCritical
+          expr: ml_inference:score_latency:p95_5m > 0.1
+          for: 5m
+          labels:
+            severity: critical
+            team: ml-platform
+            slo: latency
+          annotations:
+            summary: "ML Inference P95 latency critical"
+            description: "P95 latency for /score is {{ $value | humanizeDuration }}, exceeding 100ms threshold"
+            runbook_url: "https://runbooks.cargobit.internal/ml-inference/latency"
+        
+        # Availability < 99%
+        - alert: MLAvailabilityCritical
+          expr: ml_inference:availability_sli:ratio < 0.99
+          for: 5m
+          labels:
+            severity: critical
+            team: ml-platform
+            slo: availability
+          annotations:
+            summary: "ML Inference availability critical"
+            description: "Availability is {{ $value | humanizePercentage }}, below 99% threshold"
+            runbook_url: "https://runbooks.cargobit.internal/ml-inference/availability"
+        
+        # Model load failures
+        - alert: MLModelLoadFailures
+          expr: |
+            sum(rate(ml_model_loads_total{status="failure"}[5m]))
+            /
+            sum(rate(ml_model_loads_total[5m])) > 0.01
+          for: 5m
+          labels:
+            severity: critical
+            team: ml-platform
+            slo: model_health
+          annotations:
+            summary: "ML model load failures detected"
+            description: "{{ $value | humanizePercentage }} of model loads are failing"
+            runbook_url: "https://runbooks.cargobit.internal/ml-inference/model-load"
+        
+        # Score drift critical
+        - alert: MLScoreDriftCritical
+          expr: ml_inference:prediction_drift:ratio > 0.20
+          for: 5m
+          labels:
+            severity: critical
+            team: ml-platform
+            slo: prediction_quality
+          annotations:
+            summary: "ML score drift critical"
+            description: "Prediction drift is {{ $value | humanizePercentage }}, exceeding 20% threshold"
+            runbook_url: "https://runbooks.cargobit.internal/ml-inference/drift"
+        
+        # Error budget exhausted
+        - alert: MLErrorBudgetExhausted
+          expr: ml_inference:error_budget_remaining:ratio <= 0
+          for: 1m
+          labels:
+            severity: critical
+            team: ml-platform
+            slo: error_budget
+          annotations:
+            summary: "ML Inference error budget exhausted"
+            description: "The 30-day error budget for ML Inference has been exhausted"
+            runbook_url: "https://runbooks.cargobit.internal/ml-inference/error-budget"
+    
+    # =========================================================================
+    # WARNING ALERTS (Attention needed)
+    # =========================================================================
+    - name: ml_inference_warning_alerts
+      rules:
+        # CPU > 80% for 10 minutes
+        - alert: MLCPUHighWarning
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{container="ml-inference"}[5m]))
+            /
+            sum(kube_pod_container_resource_limits{container="ml-inference",resource="cpu"}) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            team: ml-platform
+          annotations:
+            summary: "ML Inference CPU usage high"
+            description: "CPU usage is {{ $value | humanizePercentage }} of limit"
+        
+        # Memory > 80%
+        - alert: MLMemoryHighWarning
+          expr: |
+            sum(container_memory_working_set_bytes{container="ml-inference"})
+            /
+            sum(kube_pod_container_resource_limits{container="ml-inference",resource="memory"}) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            team: ml-platform
+          annotations:
+            summary: "ML Inference memory usage high"
+            description: "Memory usage is {{ $value | humanizePercentage }} of limit"
+        
+        # P95 latency > 50ms for 10 minutes
+        - alert: MLP95LatencyWarning
+          expr: ml_inference:score_latency:p95_5m > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            team: ml-platform
+            slo: latency
+          annotations:
+            summary: "ML Inference P95 latency degraded"
+            description: "P95 latency is {{ $value | humanizeDuration }}, above 50ms target"
+        
+        # AUC < 0.70 in last training
+        - alert: MLModelAUCWarning
+          expr: ml_model_training_auc < 0.70
+          for: 1m
+          labels:
+            severity: warning
+            team: ml-platform
+            slo: prediction_quality
+          annotations:
+            summary: "ML model AUC below target"
+            description: "Model AUC is {{ $value }}, below 0.70 threshold"
+        
+        # Error budget burning fast
+        - alert: MLErrorBudgetBurning
+          expr: ml_inference:error_budget_burn_rate:ratio > 10
+          for: 5m
+          labels:
+            severity: warning
+            team: ml-platform
+            slo: error_budget
+          annotations:
+            summary: "ML error budget burning fast"
+            description: "Error budget burn rate is {{ $value }}x normal"
+        
+        # Score drift warning
+        - alert: MLScoreDriftWarning
+          expr: ml_inference:prediction_drift:ratio > 0.15
+          for: 30m
+          labels:
+            severity: warning
+            team: ml-platform
+            slo: prediction_quality
+          annotations:
+            summary: "ML score drift warning"
+            description: "Prediction drift is {{ $value | humanizePercentage }}"
+
+---
+# =============================================================================
+# GRAFANA DASHBOARD CONFIGURATION (JSON Export)
+# =============================================================================
+# This defines the structure of the SLO dashboard
+# Import into Grafana via dashboard import
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-inference-slo-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "true"
+data:
+  ml-inference-slo.json: |
+    {
+      "dashboard": {
+        "title": "ML Inference SLO Dashboard",
+        "tags": ["ml", "slo", "cargobit"],
+        "panels": [
+          {
+            "title": "Availability SLO (99.9%)",
+            "type": "gauge",
+            "targets": [
+              {
+                "expr": "ml_inference:availability_sli:30d",
+                "legendFormat": "Availability"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 99.5},
+                    {"color": "green", "value": 99.9}
+                  ]
+                },
+                "min": 99,
+                "max": 100,
+                "unit": "percent"
+              }
+            }
+          },
+          {
+            "title": "Error Budget Remaining",
+            "type": "gauge",
+            "targets": [
+              {
+                "expr": "ml_inference:error_budget_remaining:ratio * 100",
+                "legendFormat": "Budget %"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 20},
+                    {"color": "green", "value": 50}
+                  ]
+                },
+                "min": 0,
+                "max": 100,
+                "unit": "percent"
+              }
+            }
+          },
+          {
+            "title": "P95 Latency /score",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "ml_inference:score_latency:p95_5m * 1000",
+                "legendFormat": "P95"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "ms",
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 30},
+                    {"color": "red", "value": 50}
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "title": "Request Rate",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "sum(rate(ml_inference_requests_total[5m]))",
+                "legendFormat": "RPS"
+              }
+            ]
+          },
+          {
+            "title": "Latency Distribution",
+            "type": "heatmap",
+            "targets": [
+              {
+                "expr": "sum by (le) (rate(ml_inference_request_latency_seconds_bucket{endpoint=\"/score\"}[5m]))",
+                "format": "heatmap"
+              }
+            ]
+          },
+          {
+            "title": "Model Version Distribution",
+            "type": "piechart",
+            "targets": [
+              {
+                "expr": "sum by (model_version) (ml_predictions_total)",
+                "legendFormat": "{{model_version}}"
+              }
+            ]
+          },
+          {
+            "title": "Prediction Drift",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "ml_inference:prediction_drift:ratio",
+                "legendFormat": "Drift"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 0.1},
+                    {"color": "red", "value": 0.15}
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+
+---
+# =============================================================================
+# SLO DOCUMENTATION
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-inference-slo-documentation
+  namespace: ml-serving
+data:
+  slo-definitions.md: |
+    # CargoBit ML Inference Service - SLO Definitions
+    
+    ## Overview
+    This document defines the Service Level Objectives (SLOs) for the ML Inference
+    Service, including Service Level Indicators (SLIs), error budgets, and alerting
+    thresholds.
+    
+    ## Service Level Indicators (SLIs)
+    
+    ### 1. Latency SLIs
+    | SLI Name | Description | Target |
+    |----------|-------------|--------|
+    | SLI_latency_p95_score | Proportion of /score requests with latency < 50ms | > 95% |
+    | SLI_latency_p95_explain | Proportion of /explain requests with latency < 200ms | > 95% |
+    
+    ### 2. Availability SLIs
+    | SLI Name | Description | Target |
+    |----------|-------------|--------|
+    | SLI_availability | Proportion of successful requests (2xx) | > 99.9% |
+    
+    ### 3. Model Health SLIs
+    | SLI Name | Description | Target |
+    |----------|-------------|--------|
+    | SLI_model_load_success | Proportion of successful model loads | > 99% |
+    | SLI_score_drift | Drift between heuristic and ML scores | < 15% |
+    
+    ## Service Level Objectives (SLOs)
+    
+    ### Latency SLOs
+    - 99% of /score requests complete in < 50ms
+    - 95% of /explain requests complete in < 200ms
+    
+    ### Availability SLO
+    - 99.9% availability over 30 days
+    - Error budget: 0.1% (≈ 43 minutes/month)
+    
+    ### Model Quality SLOs
+    - AUC ≥ 0.65 (minimum threshold)
+    - NDCG@5 ≥ 0.70 (for ranking)
+    - Score drift < 15% over 7 days
+    
+    ## Error Budget
+    
+    | Metric | Value |
+    |--------|-------|
+    | SLO Target | 99.9% |
+    | Error Budget (30 days) | 43.2 minutes |
+    | Error Budget (7 days) | 10.1 minutes |
+    | Error Budget (1 day) | 1.44 minutes |
+    
+    ## Alert Thresholds
+    
+    ### Critical Alerts
+    | Alert | Condition | Response Time |
+    |-------|-----------|---------------|
+    | P95 latency > 100ms | 5 minutes | Immediate |
+    | Availability < 99% | 5 minutes | Immediate |
+    | Model load failures > 1% | 5 minutes | Immediate |
+    | Score drift > 20% | 5 minutes | Immediate |
+    
+    ### Warning Alerts
+    | Alert | Condition | Response Time |
+    |-------|-----------|---------------|
+    | CPU > 80% | 10 minutes | 1 hour |
+    | P95 latency > 50ms | 10 minutes | 1 hour |
+    | Score drift > 15% | 30 minutes | 4 hours |
+    | AUC < 0.70 | Last training | Next business day |
