@@ -1,0 +1,227 @@
+# =============================================================================
+# CargoBit ML Inference - Kubernetes Deployment
+# =============================================================================
+# Includes: Deployment, Service, HPA, Ingress, ConfigMap, Secret
+# =============================================================================
+
+---
+# DEPLOYMENT
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-inference
+  namespace: ml-serving
+  labels:
+    app: ml-inference
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ml-inference
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: ml-inference
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+    spec:
+      serviceAccountName: ml-inference-sa
+      containers:
+        - name: ml-inference
+          image: cargobit/ml-inference:v1.0.0
+          ports:
+            - containerPort: 8000
+              name: http
+          resources:
+            requests:
+              cpu: "300m"
+              memory: "512Mi"
+            limits:
+              cpu: "800m"
+              memory: "1Gi"
+          env:
+            - name: MODEL_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: ml-inference-config
+                  key: model_bucket
+            - name: MODEL_PATH
+              value: "/app/models"
+            - name: REGISTRY_DB_CONN
+              valueFrom:
+                secretKeyRef:
+                  name: ml-inference-secrets
+                  key: warehouse_conn
+            - name: CANARY_SHARE
+              valueFrom:
+                configMapKeyRef:
+                  name: ml-inference-config
+                  key: canary_share
+            - name: CANARY_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: ml-inference-config
+                  key: canary_version
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: models
+              mountPath: /app/models
+      volumes:
+        - name: models
+          emptyDir:
+            sizeLimit: 500Mi
+
+---
+# SERVICE
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-inference-svc
+  namespace: ml-serving
+  labels:
+    app: ml-inference
+spec:
+  selector:
+    app: ml-inference
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP
+      name: http
+  type: ClusterIP
+
+---
+# HORIZONTAL POD AUTOSCALER
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ml-inference-hpa
+  namespace: ml-serving
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ml-inference
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+
+---
+# INGRESS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ml-inference-ingress
+  namespace: ml-serving
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ml.cargobit.io
+      secretName: ml-inference-tls
+  rules:
+    - host: ml.cargobit.io
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: ml-inference-svc
+                port:
+                  number: 80
+
+---
+# CONFIGMAP
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-inference-config
+  namespace: ml-serving
+data:
+  model_bucket: "cargobit-ml-models"
+  canary_share: "0.0"
+  canary_version: ""
+
+---
+# SECRET (template)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ml-inference-secrets
+  namespace: ml-serving
+type: Opaque
+stringData:
+  warehouse_conn: "postgresql://user:pass@postgres:5432/ml_registry"
+
+---
+# SERVICE ACCOUNT
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ml-inference-sa
+  namespace: ml-serving
+
+---
+# POD DISRUPTION BUDGET
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ml-inference-pdb
+  namespace: ml-serving
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: ml-inference

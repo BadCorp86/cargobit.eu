@@ -1,0 +1,423 @@
+# =============================================================================
+# CargoBit ML Pipeline - CI/CD Configuration
+# =============================================================================
+# Complete CI/CD pipeline for ML model training, validation, and deployment
+# 
+# Components:
+# 1. GitHub Actions CI (training + validation)
+# 2. Model Registry integration
+# 3. Canary deployment
+# 4. ArgoCD for GitOps
+# =============================================================================
+
+# =============================================================================
+# 1. GITHUB ACTIONS - CI PIPELINE
+# =============================================================================
+# File: .github/workflows/ml-training.yml
+
+name: ML Model Training Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'ml-pipeline/training/**'
+      - 'ml-pipeline/features/**'
+  schedule:
+    # Daily training at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      promote:
+        description: 'Auto-promote if metrics pass'
+        required: false
+        default: 'false'
+
+env:
+  AWS_REGION: eu-central-1
+  S3_BUCKET: cargobit-ml-models
+  DB_CONNECTION: ${{ secrets.ML_REGISTRY_DB }}
+
+jobs:
+  # ===========================================================================
+  # TRAINING JOB
+  # ===========================================================================
+  train:
+    runs-on: ubuntu-latest
+    outputs:
+      model_version: ${{ steps.train.outputs.version }}
+      metrics: ${{ steps.train.outputs.metrics }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r ml-pipeline/requirements.txt
+          pip install lightgbm shap mlflow psycopg2-binary
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Download training data
+        run: |
+          aws s3 cp s3://${{ env.S3_BUCKET }}/training-data/latest.parquet ./training_data.parquet
+      
+      - name: Run training
+        id: train
+        run: |
+          python ml-pipeline/training/train_with_shap.py \
+            --data training_data.parquet \
+            --config ml-pipeline/config/training_config.json \
+            --db "${{ env.DB_CONNECTION }}" \
+            --output metrics.json
+          
+          # Extract outputs
+          VERSION=$(cat metrics.json | jq -r '.version')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "metrics=$(cat metrics.json | jq -c '.metrics')" >> $GITHUB_OUTPUT
+      
+      - name: Upload model to S3
+        run: |
+          VERSION=${{ steps.train.outputs.version }}
+          aws s3 sync /tmp/ml-models/$VERSION s3://${{ env.S3_BUCKET }}/models/$VERSION
+          aws s3 cp metrics.json s3://${{ env.S3_BUCKET }}/models/$VERSION/metrics.json
+      
+      - name: Upload training artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-artifacts
+          path: |
+            metrics.json
+            feature_importance.csv
+
+  # ===========================================================================
+  # VALIDATION JOB
+  # ===========================================================================
+  validate:
+    needs: train
+    runs-on: ubuntu-latest
+    outputs:
+      passed: ${{ steps.validate.outputs.passed }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install pytest pandas numpy
+      
+      - name: Run validation tests
+        id: validate
+        run: |
+          METRICS='${{ needs.train.outputs.metrics }}'
+          
+          # Extract metrics
+          AUC=$(echo $METRICS | jq -r '.cv_auc_mean')
+          LOGLOSS=$(echo $METRICS | jq -r '.cv_logloss_mean')
+          
+          echo "AUC: $AUC"
+          echo "LogLoss: $LOGLOSS"
+          
+          # Validation thresholds
+          if (( $(echo "$AUC >= 0.65" | bc -l) )) && (( $(echo "$LOGLOSS <= 0.5" | bc -l) )); then
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Model passed validation"
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Model failed validation"
+            exit 1
+          fi
+      
+      - name: Create model tag
+        if: steps.validate.outputs.passed == 'true'
+        run: |
+          VERSION=${{ needs.train.outputs.model_version }}
+          
+          # Tag model as CANDIDATE in registry
+          python -c "
+          import psycopg2
+          conn = psycopg2.connect('${{ env.DB_CONNECTION }}')
+          cur = conn.cursor()
+          cur.execute('''
+              UPDATE ml_model_registry 
+              SET status = 'CANDIDATE', updated_at = NOW()
+              WHERE version = %s
+          ''', ('$VERSION',))
+          conn.commit()
+          print(f'Tagged {VERSION} as CANDIDATE')
+          "
+
+  # ===========================================================================
+  # NOTIFY JOB
+  # ===========================================================================
+  notify:
+    needs: [train, validate]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "ML Training Pipeline Completed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*ML Model Training*\nVersion: `${{ needs.train.outputs.model_version }}`\nStatus: ${{ needs.validate.outputs.passed == 'true' && '✅ Passed' || '❌ Failed' }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+
+# =============================================================================
+# 2. GITHUB ACTIONS - CD PIPELINE
+# =============================================================================
+# File: .github/workflows/ml-deploy.yml
+
+name: ML Model Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: 'Model version to deploy'
+        required: true
+      canary_share:
+        description: 'Canary traffic share (0-100)'
+        required: false
+        default: '10'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+      
+      - name: Update canary config
+        run: |
+          CANARY_SHARE=$(echo "scale=2; ${{ github.event.inputs.canary_share }} / 100" | bc)
+          
+          # Update Kubernetes ConfigMap
+          kubectl patch configmap ml-inference-config \
+            --namespace ml-serving \
+            --patch "{\"data\":{\"canary_version\":\"${{ github.event.inputs.model_version }}\",\"canary_share\":\"$CANARY_SHARE\"}}"
+      
+      - name: Verify deployment
+        run: |
+          # Wait for pods to pick up new config
+          sleep 30
+          
+          # Health check
+          curl -f https://ml.cargobit.io/health || exit 1
+          
+          echo "✅ Deployment successful"
+
+  # ===========================================================================
+  # CANARY MONITORING
+  # ===========================================================================
+  monitor:
+    needs: deploy
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Setup monitoring
+        run: |
+          echo "Monitoring canary deployment for 1 hour..."
+          # In production, this would query Prometheus/Grafana API
+          # and check metrics before promoting
+      
+      - name: Evaluate canary
+        run: |
+          # Call canary evaluation endpoint
+          RESULT=$(curl -s https://ml.cargobit.io/canary/evaluate)
+          ACTION=$(echo $RESULT | jq -r '.promotion.action')
+          
+          if [ "$ACTION" == "promote" ]; then
+            echo "✅ Canary performing well, promoting..."
+            curl -X POST https://ml.cargobit.io/canary/promote
+          else
+            echo "Canary not ready for promotion yet"
+          fi
+
+
+# =============================================================================
+# 3. ARGOCD APPLICATION - GITOPS
+# =============================================================================
+# File: argocd/ml-inference.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ml-inference
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/cargobit/ml-infra.git
+    targetRevision: main
+    path: ml-pipeline/kubernetes
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ml-serving
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Managed by HPA
+
+
+# =============================================================================
+# 4. KUBERNETES CRONJOB - DAILY METRICS CHECK
+# =============================================================================
+# File: kubernetes/metrics-check-cronjob.yaml
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ml-metrics-check
+  namespace: ml-serving
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: metrics-check
+              image: cargobit/ml-metrics-checker:latest
+              env:
+                - name: DB_CONNECTION
+                  valueFrom:
+                    secretKeyRef:
+                      name: ml-inference-secrets
+                      key: warehouse_conn
+              command:
+                - python
+                - -c
+                - |
+                  import psycopg2
+                  import requests
+                  import os
+                  
+                  conn = psycopg2.connect(os.environ['DB_CONNECTION'])
+                  cur = conn.cursor()
+                  
+                  # Get active model metrics
+                  cur.execute("""
+                      SELECT version, metrics->>'cv_auc_mean' as auc
+                      FROM ml_model_registry
+                      WHERE status = 'ACTIVE'
+                  """)
+                  active = cur.fetchone()
+                  
+                  # Check if AUC is below threshold
+                  if active and float(active[1]) < 0.65:
+                      # Send alert
+                      requests.post(os.environ['SLACK_WEBHOOK'], json={
+                          'text': f'⚠️ Active model {active[0]} AUC below threshold: {active[1]}'
+                      })
+                  
+                  conn.close()
+          restartPolicy: OnFailure
+
+
+# =============================================================================
+# 5. MODEL REGISTRY SQL FUNCTIONS
+# =============================================================================
+# File: database/registry_functions.sql
+
+-- Auto-promote candidate if metrics pass
+CREATE OR REPLACE FUNCTION auto_promote_if_better()
+RETURNS VARCHAR AS $$
+DECLARE
+    candidate_version VARCHAR;
+    candidate_auc FLOAT;
+    active_auc FLOAT;
+BEGIN
+    -- Get candidate
+    SELECT version INTO candidate_version
+    FROM ml_model_registry WHERE status = 'CANDIDATE'
+    ORDER BY created_at DESC LIMIT 1;
+    
+    IF candidate_version IS NULL THEN
+        RETURN 'NO_CANDIDATE';
+    END IF;
+    
+    -- Get metrics
+    SELECT (metrics->>'cv_auc_mean')::FLOAT INTO candidate_auc
+    FROM ml_model_registry WHERE version = candidate_version;
+    
+    SELECT COALESCE((metrics->>'cv_auc_mean')::FLOAT, 0) INTO active_auc
+    FROM ml_model_registry WHERE status = 'ACTIVE';
+    
+    -- Promote if better
+    IF candidate_auc > active_auc + 0.02 THEN
+        PERFORM promote_model(candidate_version);
+        RETURN candidate_version;
+    END IF;
+    
+    RETURN 'NOT_BETTER';
+END;
+$$ LANGUAGE plpgsql;
+
+-- Cleanup old models (keep last 5 per status)
+CREATE OR REPLACE FUNCTION cleanup_old_models()
+RETURNS INT AS $$
+DECLARE
+    deleted_count INT;
+BEGIN
+    WITH ranked AS (
+        SELECT id, status,
+               ROW_NUMBER() OVER (PARTITION BY status ORDER BY created_at DESC) as rn
+        FROM ml_model_registry
+        WHERE status IN ('ROLLED_BACK', 'DEPRECATED')
+    )
+    DELETE FROM ml_model_registry
+    WHERE id IN (SELECT id FROM ranked WHERE rn > 5);
+    
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
