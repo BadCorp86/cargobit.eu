@@ -1857,8 +1857,16 @@ model Payment {
   platformFeeCents    Int           @default(0)  // 3.5% platform fee
   transporterAmountCents Int?       // Amount going to transporter
   
+  // Refund tracking (for reconciliation)
+  refundedCents       Int           @default(0)  // Total refunded amount
+  
   // Status
   status              PaymentStatus @default(PENDING)
+  
+  // Stripe reconciliation metadata
+  lastStripeEventId   String?       // Last processed Stripe event for this payment
+  stripeRefundsJson   String?       // Last known refunds array from Stripe (JSON)
+  lastReconciledAt    DateTime?     // Last reconciliation timestamp
   
   // Metadata
   description         String?
@@ -1873,14 +1881,17 @@ model Payment {
   
   // Relations
   refunds             Refund[]
+  stripeRefunds       StripeRefund[]
   walletTransactions  WalletTransaction[]
   auditEvents         PaymentAuditEvent[]
   
   @@index([paymentIntentId])
+  @@index([chargeId])
   @@index([jobId])
   @@index([shipperId])
   @@index([status])
   @@index([createdAt])
+  @@index([lastReconciledAt])
 }
 
 model Refund {
@@ -1919,7 +1930,7 @@ model PaymentAuditEvent {
   paymentId       String
   
   // Event
-  eventType       String    // created, paid, failed, refunded, etc.
+  eventType       String    // created, paid, failed, refunded, reconciled, etc.
   oldStatus       String?
   newStatus       String
   
@@ -1938,7 +1949,37 @@ model PaymentAuditEvent {
 }
 
 // ============================================
-// 24. STRIPE EVENT IDEMPOTENCY
+// 24. STRIPE REFUNDS (Reconciliation)
+// ============================================
+
+model StripeRefund {
+  id              String    @id @default(cuid())
+  
+  // Stripe reference
+  stripeRefundId  String    @unique  // Stripe Refund ID (re_xxx)
+  paymentId       String
+  
+  // Amount
+  amountCents     Int
+  
+  // Stripe metadata
+  reason          String?
+  status          String    // pending, succeeded, failed, canceled
+  
+  // Timestamps
+  stripeCreatedAt DateTime  // From Stripe (created timestamp)
+  createdAt       DateTime  @default(now())
+  
+  // Relations
+  payment         Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  
+  @@index([stripeRefundId])
+  @@index([paymentId])
+  @@index([status])
+}
+
+// ============================================
+// 25. STRIPE EVENT IDEMPOTENCY
 // ============================================
 
 model StripeEvent {
@@ -1966,7 +2007,7 @@ model StripeEvent {
 }
 
 // ============================================
-// 25. DISPUTES SYSTEM
+// 26. DISPUTES SYSTEM
 // ============================================
 
 enum DisputeStatus {

@@ -52,6 +52,7 @@ export interface ChargeData {
       amount: number;
       reason: string | null;
       status: string;
+      created?: number;
     }>;
   };
   payment_intent?: string;
@@ -465,12 +466,33 @@ export async function handleChargeRefunded(
             processedAt: new Date(),
           },
         });
+
+        // Also create StripeRefund record for reconciliation
+        await tx.stripeRefund.upsert({
+          where: { stripeRefundId: refund.id },
+          create: {
+            stripeRefundId: refund.id,
+            paymentId: payment.id,
+            amountCents: refund.amount,
+            reason: refund.reason,
+            status: refund.status || 'succeeded',
+            stripeCreatedAt: new Date(refund.created * 1000 || Date.now()),
+          },
+          update: {
+            status: refund.status || 'succeeded',
+          },
+        });
       }
 
-      // 2. Update payment status
+      // 2. Update payment status and refundedCents
       await tx.payment.update({
         where: { id: payment.id },
-        data: { status: newStatus },
+        data: {
+          status: newStatus,
+          refundedCents: totalRefundedCents,
+          lastReconciledAt: new Date(),
+          stripeRefundsJson: JSON.stringify(refunds),
+        },
       });
 
       // 3. Create payment audit event
