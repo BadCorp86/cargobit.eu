@@ -784,24 +784,91 @@ Verifies 2FA code (if enabled) and issues JWT access token with role-based paylo
   '/api/admin/payments': {
     get: {
       tags: ['Payments'],
-      summary: 'List all payments',
-      description: 'Returns a paginated list of payments. Requires ADMIN or FINANCE role.',
+      summary: 'List all payments (Admin/Finance)',
+      description: `
+Returns a paginated list of payments with filtering capabilities.
+
+**RBAC:** Requires ADMIN or FINANCE role.
+
+**Query Parameters:**
+- \`status\` - Filter by payment status (SUCCEEDED, PENDING, FAILED, REFUNDED, PARTIAL_REFUNDED, CANCELLED)
+- \`shipperId\` - Filter by shipper user ID
+- \`jobId\` - Filter by job/transport ID
+- \`search\` - Search by payment intent ID, charge ID, or job ID
+- \`from\` - Date range start (ISO string)
+- \`to\` - Date range end (ISO string)
+- \`limit\` - Page size (default: 100)
+- \`offset\` - Page offset (default: 0)
+
+**Response includes:**
+- Payment summary with shipper/transporter info
+- Amounts in cents and EUR
+- Refunded amounts
+- Platform fees
+      `,
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'status', in: 'query', schema: { type: 'string' }, description: 'Filter by status' },
-        { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Search by payment intent or email' },
-        { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } },
-        { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } },
+        { 
+          name: 'status', 
+          in: 'query', 
+          schema: { 
+            type: 'string',
+            enum: ['SUCCEEDED', 'PENDING', 'FAILED', 'REFUNDED', 'PARTIAL_REFUNDED', 'CANCELLED']
+          }, 
+          description: 'Filter by payment status' 
+        },
+        { name: 'shipperId', in: 'query', schema: { type: 'string' }, description: 'Filter by shipper user ID' },
+        { name: 'jobId', in: 'query', schema: { type: 'string' }, description: 'Filter by job/transport ID' },
+        { name: 'search', in: 'query', schema: { type: 'string' }, description: 'Search by payment intent, charge ID, or job ID' },
+        { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'Date range start' },
+        { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' }, description: 'Date range end' },
+        { name: 'limit', in: 'query', schema: { type: 'integer', default: 100 }, description: 'Page size' },
+        { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 }, description: 'Page offset' },
       ],
       responses: {
         '200': {
-          description: 'List of payments',
+          description: 'List of payments with pagination',
           content: {
             'application/json': {
               schema: { $ref: '#/components/schemas/PaymentListResponse' },
+              examples: {
+                success: {
+                  summary: 'Successful response',
+                  value: {
+                    items: [
+                      {
+                        id: 'pay_abc123',
+                        paymentIntentId: 'pi_3QHxYZK8vLqD1234',
+                        chargeId: 'ch_abc123',
+                        jobId: 'job_xyz789',
+                        shipperId: 'user_shipper1',
+                        shipperName: 'Max Mustermann',
+                        shipperEmail: 'shipper@example.com',
+                        transporterId: 'user_trans1',
+                        transporterName: 'Anna Schmidt',
+                        amountCents: 25000,
+                        amountEur: 250.00,
+                        currency: 'EUR',
+                        platformFeeCents: 875,
+                        platformFeeEur: 8.75,
+                        refundedCents: 0,
+                        refundedEur: 0,
+                        status: 'SUCCEEDED',
+                        createdAt: '2024-04-20T10:30:00Z',
+                        paidAt: '2024-04-20T10:30:05Z',
+                      }
+                    ],
+                    total: 150,
+                    limit: 100,
+                    offset: 0,
+                    hasMore: true,
+                  },
+                },
+              },
             },
           },
         },
+        '400': commonResponses.BadRequest,
         '401': commonResponses.Unauthorized,
         '403': commonResponses.Forbidden,
       },
@@ -810,21 +877,78 @@ Verifies 2FA code (if enabled) and issues JWT access token with role-based paylo
   '/api/admin/payments/{id}': {
     get: {
       tags: ['Payments'],
-      summary: 'Get payment details',
-      description: 'Returns detailed payment information including refunds, wallet transactions, and audit trail. Requires ADMIN or FINANCE role.',
+      summary: 'Get payment details (Admin/Finance)',
+      description: `
+Returns detailed payment information including refunds, wallet transactions, and audit trail.
+
+**RBAC:** Requires ADMIN or FINANCE role.
+
+**Includes:**
+- Full payment info with amounts in cents and EUR
+- Shipper and transporter details
+- Refund history
+- Wallet transactions (fee distribution, payouts)
+- Audit trail (status changes, admin actions)
+
+**Amounts calculated:**
+- \`amount_cents\` / \`amount_eur\` - Original payment amount
+- \`platform_fee_cents\` / \`platform_fee_eur\` - Platform fee (3.5%)
+- \`transporter_amount_cents\` / \`transporter_amount_eur\` - Transporter payout
+- \`refunded_cents\` / \`refunded_eur\` - Total refunded
+- \`refundable_cents\` / \`refundable_eur\` - Remaining refundable
+      `,
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Payment ID' },
       ],
       responses: {
         '200': {
-          description: 'Payment details',
+          description: 'Payment details with related data',
           content: {
             'application/json': {
               schema: { $ref: '#/components/schemas/Payment' },
+              examples: {
+                success: {
+                  summary: 'Successful response',
+                  value: {
+                    id: 'pay_abc123',
+                    paymentIntentId: 'pi_3QHxYZK8vLqD1234',
+                    chargeId: 'ch_abc123',
+                    jobId: 'job_xyz789',
+                    currency: 'EUR',
+                    status: 'SUCCEEDED',
+                    description: 'Transport Munich to Berlin',
+                    amountCents: 25000,
+                    amountEur: 250.00,
+                    platformFeeCents: 875,
+                    platformFeeEur: 8.75,
+                    transporterAmountCents: 24125,
+                    transporterAmountEur: 241.25,
+                    refundedCents: 0,
+                    refundedEur: 0,
+                    refundableCents: 25000,
+                    refundableEur: 250.00,
+                    shipper: { id: 'user_shipper1', name: 'Max Mustermann', email: 'shipper@example.com' },
+                    transporter: { id: 'user_trans1', name: 'Anna Schmidt', email: 'transporter@example.com' },
+                    refunds: [],
+                    walletTransactions: [
+                      { id: 'wt_1', walletId: 'w_shipper', walletOwnerType: 'shipper', type: 'PAYMENT_OUT', amount: -25000, currency: 'EUR' },
+                      { id: 'wt_2', walletId: 'w_platform', walletOwnerType: 'platform', type: 'FEE', amount: 875, currency: 'EUR' },
+                      { id: 'wt_3', walletId: 'w_trans', walletOwnerType: 'transporter', type: 'PAYMENT_IN', amount: 24125, currency: 'EUR' },
+                    ],
+                    auditTrail: [
+                      { id: 'ae_1', eventType: 'created', newStatus: 'PENDING', createdAt: '2024-04-20T10:30:00Z' },
+                      { id: 'ae_2', eventType: 'payment_succeeded', oldStatus: 'PENDING', newStatus: 'SUCCEEDED', createdAt: '2024-04-20T10:30:05Z' },
+                    ],
+                    createdAt: '2024-04-20T10:30:00Z',
+                    paidAt: '2024-04-20T10:30:05Z',
+                  },
+                },
+              },
             },
           },
         },
+        '400': commonResponses.BadRequest,
         '401': commonResponses.Unauthorized,
         '403': commonResponses.Forbidden,
         '404': commonResponses.NotFound,
