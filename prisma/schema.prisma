@@ -1712,3 +1712,101 @@ model PartnerBilling {
   @@index([status])
   @@index([periodYear, periodMonth])
 }
+
+// ============================================
+// 22. ADMIN USERS (RBAC)
+// ============================================
+
+enum AdminRole {
+  ADMIN     // Full access: System, Users, Finance, Disputes
+  FINANCE   // Payments, Refunds, Payouts
+  SUPPORT   // Disputes, Jobs, User-Sperren (no direct payouts/refunds)
+}
+
+model AdminUser {
+  id              String      @id @default(cuid())
+  email           String      @unique
+  passwordHash    String
+  
+  // 2FA
+  totpSecret      String?
+  is2faEnabled    Boolean     @default(false)
+  backupCodes     String?     // JSON array of backup codes
+  
+  // Role
+  role            AdminRole   @default(SUPPORT)
+  
+  // Status
+  isActive        Boolean     @default(true)
+  lastLoginAt     DateTime?
+  
+  // Failed attempts
+  failedAttempts  Int         @default(0)
+  lockedUntil     DateTime?
+  
+  // Timestamps
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  // Relations
+  sessions        AdminSession[]
+  auditLogs       AuditLog[]
+  
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+}
+
+model AdminSession {
+  id              String    @id @default(cuid())
+  adminId         String
+  
+  // Tokens
+  token           String    @unique
+  refreshToken    String    @unique
+  
+  // Context
+  ipAddress       String
+  userAgent       String?
+  deviceId        String?
+  
+  // Expiry
+  expiresAt       DateTime
+  refreshExpiresAt DateTime
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  lastActivity    DateTime  @default(now())
+  
+  // Relations
+  admin           AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  
+  @@index([adminId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+model AdminAuditLog {
+  id            String    @id @default(cuid())
+  adminId       String
+  
+  // Action
+  action        String    // login, logout, refund, payout, user_block, etc.
+  entityType    String    // payment, user, job, dispute
+  entityId      String?
+  
+  // Data
+  dataBefore    String?   // JSON
+  dataAfter     String?   // JSON
+  
+  // Context
+  ipAddress     String?
+  userAgent     String?
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([adminId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}

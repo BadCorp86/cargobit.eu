@@ -2224,3 +2224,116 @@ Task: K+L+M Bausteine implementieren (STRIDE Threat Model, Data Flow Diagram, Co
 - ✅ Audit-Ready Artifacts
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: admin-rbac-implementation
+Agent: Main Agent
+Task: Admin-Login + RBAC (Role-Based Access Control) System
+
+## Work Log:
+
+### 1. Database Schema for Admin Users
+- Datei: `/prisma/schema.prisma` - Erweitert mit Admin-Modellen
+- Neue Enums:
+  - `AdminRole`: ADMIN, FINANCE, SUPPORT
+- Neue Models:
+  - `AdminUser`: Admin-Accounts mit 2FA-Support
+  - `AdminSession`: Session-Management
+  - `AdminAuditLog`: Audit-Trail für Admin-Aktionen
+
+### 2. Admin Auth Service
+- Datei: `/src/services/admin-auth.service.ts` - NEU
+- Features:
+  - Login Step 1: Email + Passwort
+  - Login Step 2: 2FA-Code (TOTP + Backup Codes)
+  - JWT Token Generation
+  - Session Management
+  - RBAC Permission System
+  - Account Lockout
+
+### 3. Role Permissions
+```typescript
+ROLE_PERMISSIONS = {
+  ADMIN: [
+    'payments:read', 'payments:write', 'refunds:create',
+    'payouts:read', 'payouts:create', 'disputes:read', 'disputes:write',
+    'jobs:read', 'jobs:write', 'users:read', 'users:block',
+    'admin:read', 'admin:write', 'settings:read', 'settings:write',
+  ],
+  FINANCE: [
+    'payments:read', 'payments:write', 'refunds:create',
+    'payouts:read', 'payouts:create', 'disputes:read', 'jobs:read',
+  ],
+  SUPPORT: [
+    'disputes:read', 'disputes:write', 'jobs:read', 'jobs:write',
+    'users:read', 'users:block', 'users:unblock',
+    // NO: payments:write, refunds:create, payouts:create
+  ],
+}
+```
+
+### 4. RBAC Middleware
+- Datei: `/src/lib/admin-rbac.ts` - NEU
+- `withAdminAuth()` Wrapper für API Routes
+- `checkPermission()` Permission Check
+- `requireRoles()` Role Check
+
+### 5. API Routes
+- `/api/admin/auth/login-step1` - Email + Passwort
+- `/api/admin/auth/login-step2` - 2FA Code
+- `/api/admin/payments` - Payments List (ADMIN, FINANCE)
+- `/api/admin/payments/[id]` - Payment Detail (ADMIN, FINANCE)
+- `/api/admin/refund` - Refund erstellen (ADMIN, FINANCE)
+
+### 6. Admin Login UI
+- Datei: `/src/app/admin/login/page.tsx` - NEU
+- Two-Step Login Flow
+- 2FA Code Input
+- Error Handling
+- Responsive Design
+
+### 7. Seed Script
+- Datei: `/scripts/seed-admin-users.ts` - NEU
+- Test Users:
+  - admin@cargobit.eu (ADMIN)
+  - finance@cargobit.eu (FINANCE)
+  - support@cargobit.eu (SUPPORT)
+
+## Stage Summary:
+
+### Implementierte Dateien:
+1. `/prisma/schema.prisma` - Admin Models
+2. `/src/services/admin-auth.service.ts` - Auth Service
+3. `/src/lib/admin-rbac.ts` - RBAC Middleware
+4. `/src/app/api/admin/auth/login-step1/route.ts` - Login Step 1
+5. `/src/app/api/admin/auth/login-step2/route.ts` - Login Step 2
+6. `/src/app/api/admin/payments/route.ts` - Payments List
+7. `/src/app/api/admin/payments/[id]/route.ts` - Payment Detail
+8. `/src/app/api/admin/refund/route.ts` - Refund API
+9. `/src/app/admin/login/page.tsx` - Login UI
+10. `/scripts/seed-admin-users.ts` - Seed Script
+
+### RBAC Matrix:
+| Role | Payments | Refunds | Payouts | Users | Disputes |
+|------|----------|---------|---------|-------|----------|
+| ADMIN | ✓✓ | ✓ | ✓✓ | ✓✓ | ✓✓ |
+| FINANCE | ✓✓ | ✓ | ✓✓ | ✗ | ✓ (read) |
+| SUPPORT | ✗ | ✗ | ✗ | ✓ (block) | ✓✓ |
+
+### Login Flow:
+```
+Step 1: POST /api/admin/auth/login-step1
+  { email, password } → { requires2fa: boolean }
+
+Step 2: POST /api/admin/auth/login-step2
+  { email, code } → { accessToken, admin: { id, email, role } }
+```
+
+### Test Credentials:
+```
+Admin:    admin@cargobit.eu / Admin123!@#
+Finance:  finance@cargobit.eu / Finance123!@#
+Support:  support@cargobit.eu / Support123!@#
+```
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
