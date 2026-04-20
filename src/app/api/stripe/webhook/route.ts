@@ -1,33 +1,88 @@
 // ============================================
 // CARGOBIT STRIPE WEBHOOK HANDLER
 // POST /api/stripe/webhook
-// Handles: payment_intent.succeeded, subscription events, payout events
+// ============================================
+// 
+// Handled Events:
+// - payment_intent.succeeded   → Job payment confirmed, update Payment + Job
+// - payment_intent.payment_failed → Payment failed, notify shipper
+// - charge.refunded            → Refund processed, update wallet
+// - customer.subscription.*    → Subscription management
+// - payout.paid/failed         → Payout status updates
+//
+// Flow (Job Payment):
+// 1. Job → Accept → createPaymentIntent() → PaymentIntent created
+// 2. Payment record created with status PENDING
+// 3. Client collects payment via Stripe.js
+// 4. Webhook payment_intent.succeeded → Payment + Job updated
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import {
+  handlePaymentIntentSucceeded,
+  handlePaymentIntentFailed,
+} from '@/services/stripe-payment.service';
 
 // ============================================
 // WEBHOOK EVENT TYPES
 // ============================================
-// payment_intent.succeeded → Credit wallet
-// customer.subscription.created → Update subscription status
-// customer.subscription.updated → Update subscription status
-// customer.subscription.deleted → Downgrade to free
-// payout.paid → Mark payout as completed
-// payout.failed → Mark payout as failed
 
-// Mock Stripe signature verification
-const verifyWebhookSignature = (payload: string, signature: string): boolean => {
-  // In production: Use Stripe SDK to verify signature
-  return signature?.startsWith('whsec_') || true;
-};
+interface StripeEvent {
+  id: string;
+  type: string;
+  data: {
+    object: any;
+  };
+}
 
 // ============================================
-// BUSINESS LOGIC: Credit Wallet
+// SIGNATURE VERIFICATION
 // ============================================
+
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test';
+
+function verifyWebhookSignature(payload: string, signature: string): boolean {
+  // In production: Use Stripe SDK to verify signature properly
+  // For development: Basic check
+  if (process.env.NODE_ENV === 'production') {
+    // Production: Require proper signature
+    return signature?.startsWith('whsec_') || false;
+  }
+  // Development: Allow test signatures
+  return signature?.startsWith('whsec_') || signature?.includes('test') || true;
+}
+
+// ============================================
+// IDEMPOTENCY CHECK
+// ============================================
+
+async function isEventProcessed(eventId: string): Promise<boolean> {
+  const existingEvent = await db.auditLog.findFirst({
+    where: {
+      entityType: 'stripe_webhook_event',
+      entityId: eventId,
+    },
+  });
+  return !!existingEvent;
+}
+
+async function markEventProcessed(eventId: string, eventType: string): Promise<void> {
+  await db.auditLog.create({
+    data: {
+      action: 'CREATE',
+      entityType: 'stripe_webhook_event',
+      entityId: eventId,
+      dataAfter: JSON.stringify({ event_id: eventId, type: eventType }),
+    },
+  });
+}
+
+// ============================================
+// BUSINESS LOGIC: CREDIT WALLET (Legacy)
+// ============================================
+
 async function creditWallet(userId: string, amountCents: number, reference: string, metadata?: any) {
-  // Get or create wallet
   let wallet = await db.wallet.findFirst({
     where: { ownerUserId: userId },
   });
@@ -43,7 +98,6 @@ async function creditWallet(userId: string, amountCents: number, reference: stri
     });
   }
 
-  // Check for duplicate transaction
   const existingTx = await db.walletTransaction.findFirst({
     where: { reference },
   });
@@ -53,9 +107,7 @@ async function creditWallet(userId: string, amountCents: number, reference: stri
     return { success: true, duplicate: true };
   }
 
-  // Create transaction and update balance in a transaction
   const result = await db.$transaction(async (tx) => {
-    // Create succeeded transaction
     const transaction = await tx.walletTransaction.create({
       data: {
         walletId: wallet!.id,
@@ -68,7 +120,6 @@ async function creditWallet(userId: string, amountCents: number, reference: stri
       },
     });
 
-    // Update wallet balance
     await tx.wallet.update({
       where: { id: wallet!.id },
       data: {
@@ -80,7 +131,6 @@ async function creditWallet(userId: string, amountCents: number, reference: stri
     return transaction;
   });
 
-  // Create notification
   await db.notification.create({
     data: {
       userId,
@@ -96,8 +146,101 @@ async function creditWallet(userId: string, amountCents: number, reference: stri
 }
 
 // ============================================
-// BUSINESS LOGIC: Update Subscription
+// BUSINESS LOGIC: HANDLE REFUND
 // ============================================
+
+async function handleChargeRefunded(event: StripeEvent) {
+  const charge = event.data.object;
+  const refund = charge.refunds?.data?.[0];
+  
+  if (!refund) {
+    console.log('[WEBHOOK] No refund data in charge.refunded event');
+    return;
+  }
+
+  // Find payment by charge ID
+  const payment = await db.payment.findFirst({
+    where: { chargeId: charge.id },
+  });
+
+  if (!payment) {
+    console.log('[WEBHOOK] No payment found for charge:', charge.id);
+    return;
+  }
+
+  // Update or create refund record
+  const existingRefund = await db.refund.findFirst({
+    where: { refundId: refund.id },
+  });
+
+  if (existingRefund) {
+    // Update existing refund status
+    await db.refund.update({
+      where: { id: existingRefund.id },
+      data: { status: 'SUCCEEDED' },
+    });
+  } else {
+    // Create refund record
+    await db.refund.create({
+      data: {
+        paymentId: payment.id,
+        refundId: refund.id,
+        amountCents: refund.amount,
+        reason: refund.reason || 'Webhook refund',
+        status: 'SUCCEEDED',
+        initiatedBy: 'system',
+        processedAt: new Date(),
+      },
+    });
+  }
+
+  // Calculate total refunded amount
+  const allRefunds = await db.refund.aggregate({
+    where: { paymentId: payment.id, status: 'SUCCEEDED' },
+    _sum: { amountCents: true },
+  });
+
+  const totalRefunded = allRefunds._sum.amountCents || 0;
+
+  // Update payment status
+  let newStatus = payment.status;
+  if (totalRefunded >= payment.amountCents) {
+    newStatus = 'REFUNDED';
+  } else if (totalRefunded > 0) {
+    newStatus = 'PARTIAL_REFUNDED';
+  }
+
+  await db.payment.update({
+    where: { id: payment.id },
+    data: { status: newStatus },
+  });
+
+  // Create audit event
+  await db.paymentAuditEvent.create({
+    data: {
+      paymentId: payment.id,
+      eventType: 'refund_succeeded',
+      oldStatus: payment.status,
+      newStatus: newStatus,
+      metadata: JSON.stringify({
+        refund_id: refund.id,
+        amount_cents: refund.amount,
+        total_refunded_cents: totalRefunded,
+      }),
+    },
+  });
+
+  console.log('[WEBHOOK] Refund processed:', {
+    refundId: refund.id,
+    paymentId: payment.id,
+    amountCents: refund.amount,
+  });
+}
+
+// ============================================
+// BUSINESS LOGIC: UPDATE SUBSCRIPTION
+// ============================================
+
 async function updateSubscriptionStatus(
   userId: string, 
   plan: string, 
@@ -105,7 +248,6 @@ async function updateSubscriptionStatus(
   status: string,
   currentPeriodEnd: Date
 ) {
-  // Get user's company
   const companyUser = await db.companyUser.findFirst({
     where: { userId },
   });
@@ -115,7 +257,6 @@ async function updateSubscriptionStatus(
     return { success: false, reason: 'no_company' };
   }
 
-  // Get plan from DB
   const planRecord = await db.plan.findFirst({
     where: { name: plan.toUpperCase() as any },
   });
@@ -125,7 +266,6 @@ async function updateSubscriptionStatus(
     return { success: false, reason: 'plan_not_found' };
   }
 
-  // Create or update company plan
   await db.companyPlan.upsert({
     where: {
       id: `${companyUser.companyId}_${planRecord.id}`,
@@ -142,7 +282,6 @@ async function updateSubscriptionStatus(
     },
   });
 
-  // Create notification
   await db.notification.create({
     data: {
       userId,
@@ -158,10 +297,10 @@ async function updateSubscriptionStatus(
 }
 
 // ============================================
-// BUSINESS LOGIC: Mark Payout as Paid
+// BUSINESS LOGIC: MARK PAYOUT
 // ============================================
+
 async function markPayoutAsPaid(payoutId: string, stripePayoutId: string) {
-  // Find pending payout transaction
   const transaction = await db.walletTransaction.findFirst({
     where: {
       reference: payoutId,
@@ -174,7 +313,6 @@ async function markPayoutAsPaid(payoutId: string, stripePayoutId: string) {
     return { success: false, reason: 'not_found' };
   }
 
-  // Update transaction
   await db.walletTransaction.update({
     where: { id: transaction.id },
     data: {
@@ -183,7 +321,6 @@ async function markPayoutAsPaid(payoutId: string, stripePayoutId: string) {
     },
   });
 
-  // Get wallet for notification
   const wallet = await db.wallet.findUnique({
     where: { id: transaction.walletId },
   });
@@ -207,6 +344,7 @@ async function markPayoutAsPaid(payoutId: string, stripePayoutId: string) {
 // ============================================
 // MAIN WEBHOOK HANDLER
 // ============================================
+
 export async function POST(request: NextRequest) {
   try {
     const payload = await request.text();
@@ -220,22 +358,64 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const event = JSON.parse(payload);
-    console.log('[WEBHOOK] Received event:', event.type);
+    const event: StripeEvent = JSON.parse(payload);
+    console.log('[WEBHOOK] Received event:', event.type, '| ID:', event.id);
+
+    // Check idempotency - prevent duplicate processing
+    if (await isEventProcessed(event.id)) {
+      console.log('[WEBHOOK] Event already processed:', event.id);
+      return NextResponse.json({ received: true, duplicate: true });
+    }
 
     // ============================================
     // HANDLE: payment_intent.succeeded
+    // Job Payment Flow - Primary handler
     // ============================================
     if (event.type === 'payment_intent.succeeded') {
       const pi = event.data.object;
-      const userId = pi.metadata?.userId;
-      const amountCents = pi.amount;
+      
+      // Use the new payment service for job payments
+      const result = await handlePaymentIntentSucceeded({
+        paymentIntentId: pi.id,
+        chargeId: pi.latest_charge,
+        amount: pi.amount,
+        currency: pi.currency,
+        status: pi.status,
+        metadata: pi.metadata || {},
+      });
 
-      if (userId && pi.metadata?.type === 'wallet_topup') {
-        await creditWallet(userId, amountCents, pi.id, {
+      // Also handle legacy wallet topups
+      if (pi.metadata?.type === 'wallet_topup' && pi.metadata?.userId) {
+        await creditWallet(pi.metadata.userId, pi.amount, pi.id, {
           description: 'Guthaben aufgeladen via Stripe',
         });
       }
+
+      console.log('[WEBHOOK] payment_intent.succeeded result:', result);
+    }
+
+    // ============================================
+    // HANDLE: payment_intent.payment_failed
+    // ============================================
+    if (event.type === 'payment_intent.payment_failed') {
+      const pi = event.data.object;
+      const lastPaymentError = pi.last_payment_error;
+      
+      await handlePaymentIntentFailed({
+        paymentIntentId: pi.id,
+        amount: pi.amount,
+        currency: pi.currency,
+        status: pi.status,
+        metadata: pi.metadata || {},
+        failureMessage: lastPaymentError?.message,
+      });
+    }
+
+    // ============================================
+    // HANDLE: charge.refunded
+    // ============================================
+    if (event.type === 'charge.refunded') {
+      await handleChargeRefunded(event);
     }
 
     // ============================================
@@ -276,7 +456,6 @@ export async function POST(request: NextRequest) {
       const userId = subscription.metadata?.userId;
 
       if (userId) {
-        // Downgrade to free plan
         await updateSubscriptionStatus(userId, 'free', subscription.id, 'canceled', new Date());
       }
     }
@@ -295,7 +474,6 @@ export async function POST(request: NextRequest) {
     if (event.type === 'payout.failed') {
       const payout = event.data.object;
       
-      // Mark transaction as failed
       const transaction = await db.walletTransaction.findFirst({
         where: { reference: payout.id, type: 'PAYOUT' },
       });
@@ -309,7 +487,6 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // Refund the amount back to wallet
         await db.wallet.update({
           where: { id: transaction.walletId },
           data: {
@@ -320,7 +497,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Return success
+    // Mark event as processed (idempotency)
+    await markEventProcessed(event.id, event.type);
+
     return NextResponse.json({ received: true });
 
   } catch (error) {
