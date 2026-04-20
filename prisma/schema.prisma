@@ -2154,3 +2154,86 @@ model DisputeAuditEvent {
   @@index([eventType])
   @@index([createdAt])
 }
+
+// ============================================
+// 27. PAYOUTS SYSTEM
+// ============================================
+
+enum PayoutStatus {
+  PENDING      // Created, awaiting processing
+  PROCESSING   // Stripe transfer initiated
+  PAID         // Successfully transferred
+  FAILED       // Transfer failed
+  CANCELLED    // Cancelled by admin
+}
+
+model Payout {
+  id                  String        @id @default(cuid())
+  
+  // Recipient
+  userId              String        // User receiving the payout
+  
+  // Amount
+  amountCents         Int           // Amount in cents
+  currency            String        @default("EUR")
+  
+  // Status
+  status              PayoutStatus  @default(PENDING)
+  
+  // Stripe reference
+  stripeTransferId    String?       @unique  // Stripe Transfer ID (tr_xxx)
+  stripeAccountId     String?       // Destination Stripe account (Connect)
+  
+  // Failure tracking
+  failureReason       String?
+  failureCode         String?
+  
+  // Idempotency
+  idempotencyKey      String?       @unique  // Client-provided or generated idempotency key
+  
+  // Admin info
+  initiatedBy         String?       // Admin user ID who created the payout
+  processedBy         String?       // Admin user ID who processed
+  
+  // Wallet reference
+  walletTransactionId String?       // Reference to the debit transaction
+  
+  // Timestamps
+  processedAt         DateTime?
+  failedAt            DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  
+  // Relations
+  auditEvents         PayoutAuditEvent[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([stripeTransferId])
+  @@index([createdAt])
+  @@index([idempotencyKey])
+}
+
+model PayoutAuditEvent {
+  id            String    @id @default(cuid())
+  payoutId      String
+  
+  // Event
+  eventType     String    // created, processing, paid, failed, cancelled, retried
+  oldStatus     String?
+  newStatus     String?
+  
+  // Context
+  adminId       String?   // If triggered by admin
+  metadata      String?   // JSON with additional details
+  
+  createdAt     DateTime  @default(now())
+  
+  // Relations
+  payout        Payout    @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  
+  @@index([payoutId])
+  @@index([eventType])
+  @@index([createdAt])
+}

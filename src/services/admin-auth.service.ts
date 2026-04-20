@@ -106,6 +106,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
     'refunds:create',
     'payouts:read',
     'payouts:create',
+    'payouts:cancel',
     'disputes:read',
     'disputes:write',
     'jobs:read',
@@ -126,6 +127,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, string[]> = {
     'refunds:create',
     'payouts:read',
     'payouts:create',
+    'payouts:cancel',
     'disputes:read',  // Read-only for context
     'jobs:read',      // Read-only for context
     'audit:read',
