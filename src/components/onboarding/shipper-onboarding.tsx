@@ -12,6 +12,7 @@ import { toast, Toaster } from 'sonner';
 import {
   Package,
   ArrowRight,
+  ArrowLeft,
   User,
   Building2,
   Mail,
@@ -22,7 +23,11 @@ import {
 // ============================================
 // SHIPPER ONBOARDING COMPONENT
 // ============================================
-export function ShipperOnboarding() {
+interface ShipperOnboardingProps {
+  onBack?: () => void;
+}
+
+export function ShipperOnboarding({ onBack }: ShipperOnboardingProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [form, setForm] = useState({
@@ -100,42 +105,92 @@ export function ShipperOnboarding() {
   // Success state
   if (isSuccess) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex flex-col">
         <Toaster position="top-right" richColors />
-        <Card className="w-full max-w-md text-center">
-          <CardContent className="p-8">
-            <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
-              <Check className="w-10 h-10 text-green-600" />
+        
+        {/* Header mit Zurück-Button */}
+        <header className="border-b bg-card/50 backdrop-blur-sm">
+          <div className="max-w-md mx-auto px-4 py-3">
+            <div className="flex items-center justify-between">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onBack || (() => window.location.href = '/')}
+                className="gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </Button>
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5 text-primary" />
+                <span className="font-semibold">CargoBit</span>
+              </div>
+              <div className="w-16" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">Willkommen bei CargoBit!</h2>
-            <p className="text-muted-foreground mb-6">
-              {form.isBusiness 
-                ? 'Ihr Unternehmenskonto wurde erfolgreich erstellt. Sie können jetzt Transporte beauftragen.' 
-                : 'Ihr Konto wurde erfolgreich erstellt. Starten Sie jetzt Ihren ersten Transport.'}
-            </p>
-            <Button className="w-full gap-2" onClick={() => window.location.href = '/app'}>
-              Zum Dashboard
-              <ArrowRight className="w-4 h-4" />
-            </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </header>
+        
+        <main className="flex-1 flex items-center justify-center p-4">
+          <Card className="w-full max-w-md text-center">
+            <CardContent className="p-8">
+              <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
+                <Check className="w-10 h-10 text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Willkommen bei CargoBit!</h2>
+              <p className="text-muted-foreground mb-6">
+                {form.isBusiness 
+                  ? 'Ihr Unternehmenskonto wurde erfolgreich erstellt. Sie können jetzt Transporte beauftragen.' 
+                  : 'Ihr Konto wurde erfolgreich erstellt. Starten Sie jetzt Ihren ersten Transport.'}
+              </p>
+              <Button className="w-full gap-2" onClick={() => window.location.href = '/app'}>
+                Zum Dashboard
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex flex-col">
       <Toaster position="top-right" richColors />
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <Package className="w-8 h-8 text-primary" />
+      
+      {/* Header mit Zurück-Button */}
+      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-md mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onBack || (() => window.location.href = '/')}
+              className="gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Zurück
+            </Button>
+            <div className="flex items-center gap-2">
+              <Package className="w-5 h-5 text-primary" />
+              <span className="font-semibold">CargoBit</span>
+            </div>
+            <div className="w-16" /> {/* Spacer for centering */}
           </div>
-          <CardTitle className="text-2xl">Verlader werden</CardTitle>
-          <CardDescription>
-            Erstellen Sie Ihr Konto und beauftragen Sie Transporte
-          </CardDescription>
-        </CardHeader>
+        </div>
+      </header>
+      
+      {/* Main Content */}
+      <main className="flex-1 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+              <Package className="w-8 h-8 text-primary" />
+            </div>
+            <CardTitle className="text-2xl">Verlader werden</CardTitle>
+            <CardDescription>
+              Erstellen Sie Ihr Konto und beauftragen Sie Transporte
+            </CardDescription>
+          </CardHeader>
 
         <CardContent className="space-y-4">
           {/* Business Toggle */}
@@ -268,6 +323,7 @@ export function ShipperOnboarding() {
           </p>
         </CardFooter>
       </Card>
+      </main>
     </div>
   );
 }

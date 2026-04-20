@@ -111,7 +111,11 @@ const LEGAL_FORMS = [
 // ============================================
 // COMPONENT
 // ============================================
-export function TransporteurOnboarding() {
+interface TransporteurOnboardingProps {
+  onBack?: () => void;
+}
+
+export function TransporteurOnboarding({ onBack }: TransporteurOnboardingProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [data, setData] = useState<OnboardingData>({
@@ -753,6 +757,17 @@ export function TransporteurOnboarding() {
       <header className="border-b bg-card">
         <div className="max-w-3xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onBack || (() => window.location.href = '/')}
+                className="gap-2 -ml-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </Button>
+            </div>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
                 <Package className="w-5 h-5 text-white" />

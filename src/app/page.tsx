@@ -169,12 +169,12 @@ export default function Home() {
 
   // If Transporteur Onboarding is active
   if (showOnboarding) {
-    return <TransporteurOnboarding />;
+    return <TransporteurOnboarding onBack={() => setShowOnboarding(false)} />;
   }
 
   // If Shipper Onboarding is active
   if (showShipperOnboarding) {
-    return <ShipperOnboarding />;
+    return <ShipperOnboarding onBack={() => setShowShipperOnboarding(false)} />;
   }
 
   // If Partner Portal is active
