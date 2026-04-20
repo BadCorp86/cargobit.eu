@@ -962,15 +962,26 @@ Returns detailed payment information including refunds, wallet transactions, and
   '/api/admin/refund': {
     get: {
       tags: ['Refunds'],
-      summary: 'Calculate refund amounts',
-      description: 'Returns refund calculation for a job. Requires ADMIN or FINANCE role with payments:read permission.',
+      summary: 'Calculate refund amounts (Admin/Finance)',
+      description: `
+Returns refund calculation for a job payment.
+
+**RBAC:** Requires ADMIN or FINANCE role with payments:read permission.
+
+**Returns:**
+- Total paid amount
+- Platform fee amount
+- Transporter amount
+- Already refunded amount
+- Maximum refundable amount
+      `,
       security: [{ BearerAuth: [] }],
       parameters: [
-        { name: 'jobId', in: 'query', required: true, schema: { type: 'string' }, description: 'Job ID' },
+        { name: 'jobId', in: 'query', required: true, schema: { type: 'string' }, description: 'Job/Transport ID' },
       ],
       responses: {
         '200': {
-          description: 'Refund calculation',
+          description: 'Refund calculation breakdown',
           content: {
             'application/json': {
               schema: {
@@ -978,11 +989,121 @@ Returns detailed payment information including refunds, wallet transactions, and
                 properties: {
                   jobId: { type: 'string' },
                   paymentStatus: { type: 'string' },
-                  totalPaidEur: { type: 'number' },
-                  platformFeeEur: { type: 'number' },
-                  transporterAmountEur: { type: 'number' },
-                  alreadyRefundedEur: { type: 'number' },
-                  maxRefundableEur: { type: 'number' },
+                  totalPaidEur: { type: 'number', example: 250.00 },
+                  platformFeeEur: { type: 'number', example: 8.75 },
+                  transporterAmountEur: { type: 'number', example: 241.25 },
+                  alreadyRefundedEur: { type: 'number', example: 0 },
+                  maxRefundableEur: { type: 'number', example: 250.00 },
+                  breakdownCents: { type: 'object' },
+                },
+              },
+            },
+          },
+        },
+        '400': commonResponses.BadRequest,
+        '401': commonResponses.Unauthorized,
+        '403': commonResponses.Forbidden,
+        '404': commonResponses.NotFound,
+      },
+    },
+    post: {
+      tags: ['Refunds'],
+      summary: 'Process a refund via Stripe (Admin/Finance)',
+      description: `
+Initiates a refund for a job payment through Stripe.
+
+**RBAC:** Requires ADMIN or FINANCE role with refunds:create permission.
+
+**Refund Types:**
+- \`full\` - Refund entire remaining amount
+- \`partial\` - Refund specific amount (requires amountEur)
+- \`platform_fee_only\` - Refund only the platform fee
+
+**Idempotency:**
+Uses Stripe idempotency keys with format: \`refund_{paymentId}_{amountCents}\`
+This prevents duplicate refunds from:
+- UI double-clicks
+- Network retries
+- Admin page reloads
+
+**Workflow:**
+1. Verifies payment exists and is refundable
+2. Creates Stripe refund with idempotency key
+3. Creates local refund record
+4. Updates payment status (SUCCEEDED → PARTIALLY_REFUNDED → REFUNDED)
+5. Creates audit log
+
+**Wallet Sync:**
+Wallet corrections happen asynchronously via Stripe webhook (charge.refunded event).
+      `,
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/RefundRequest' },
+            examples: {
+              fullRefund: {
+                summary: 'Full refund',
+                value: { jobId: 'job_xyz789', type: 'full', reason: 'Service not rendered' },
+              },
+              partialRefund: {
+                summary: 'Partial refund',
+                value: { jobId: 'job_xyz789', type: 'partial', amountEur: 50.00, reason: 'Partial service issue' },
+              },
+              platformFeeRefund: {
+                summary: 'Platform fee only',
+                value: { jobId: 'job_xyz789', type: 'platform_fee_only', reason: 'Fee waiver for VIP customer' },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        '200': {
+          description: 'Refund initiated successfully',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/RefundResponse' },
+              examples: {
+                success: {
+                  summary: 'Successful refund',
+                  value: {
+                    status: 'refund_initiated',
+                    refundId: 'refund_abc123',
+                    stripeRefundId: 're_1PxyzK8vLqD1234',
+                    amountCents: 25000,
+                    amountEur: 250.00,
+                    currency: 'EUR',
+                    refundStatus: 'SUCCEEDED',
+                    processedBy: {
+                      id: 'admin_123',
+                      email: 'admin@cargobit.eu',
+                      role: 'FINANCE',
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        '400': {
+          description: 'Bad Request - Invalid refund parameters',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ErrorResponse' },
+              examples: {
+                noPayment: {
+                  summary: 'No successful payment',
+                  value: { error: 'No successful payment found for this job' },
+                },
+                exceedsAmount: {
+                  summary: 'Exceeds refundable amount',
+                  value: { error: 'Refund amount (300.00 EUR) exceeds refundable amount (250.00 EUR)' },
+                },
+                alreadyRefunded: {
+                  summary: 'Already refunded',
+                  value: { error: 'Payment already fully refunded' },
                 },
               },
             },
@@ -991,34 +1112,20 @@ Returns detailed payment information including refunds, wallet transactions, and
         '401': commonResponses.Unauthorized,
         '403': commonResponses.Forbidden,
         '404': commonResponses.NotFound,
-      },
-    },
-    post: {
-      tags: ['Refunds'],
-      summary: 'Process a refund',
-      description: 'Initiates a refund for a job. Requires ADMIN or FINANCE role with refunds:create permission.',
-      security: [{ BearerAuth: [] }],
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: { $ref: '#/components/schemas/RefundRequest' },
-          },
-        },
-      },
-      responses: {
-        '200': {
-          description: 'Refund initiated',
+        '502': {
+          description: 'Bad Gateway - Stripe API error',
           content: {
             'application/json': {
-              schema: { $ref: '#/components/schemas/RefundResponse' },
+              schema: { $ref: '#/components/schemas/ErrorResponse' },
+              examples: {
+                stripeError: {
+                  summary: 'Stripe API error',
+                  value: { error: 'Stripe error: Charge ch_abc123 has already been fully refunded' },
+                },
+              },
             },
           },
         },
-        '400': commonResponses.BadRequest,
-        '401': commonResponses.Unauthorized,
-        '403': commonResponses.Forbidden,
-        '404': commonResponses.NotFound,
       },
     },
   },

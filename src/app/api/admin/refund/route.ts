@@ -24,7 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { withAdminAuth, checkPermission, AdminRole } from '@/lib/admin-rbac';
-import { processRefund, calculateRefundAmounts, RefundType } from '@/services/refund.service';
+import { processRefund, getRefundCalculation, RefundType } from '@/services/refund.service';
 import { getPaymentByJobId, centsToEuros } from '@/services/payment.service';
 
 // ============================================
@@ -194,7 +194,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Get refund calculations
-    const calculations = await calculateRefundAmounts(jobId);
+    const calculations = await getRefundCalculation(jobId);
     
     if (!calculations) {
       return NextResponse.json(
