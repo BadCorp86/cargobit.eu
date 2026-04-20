@@ -1,0 +1,75 @@
+{
+  "id": "cargobit-staging-env",
+  "name": "CargoBit Staging - Payment E2E",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "https://staging.cargobit.example.com",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "admin_jwt",
+      "value": "Bearer <YOUR_ADMIN_JWT_TOKEN>",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "stripe_test_secret",
+      "value": "whsec_<YOUR_STRIPE_WEBHOOK_SIGNING_SECRET>",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "jobId",
+      "value": "",
+      "type": "any",
+      "enabled": true
+    },
+    {
+      "key": "payment_intent_id",
+      "value": "",
+      "type": "any",
+      "enabled": true
+    },
+    {
+      "key": "payment_id",
+      "value": "",
+      "type": "any",
+      "enabled": true
+    },
+    {
+      "key": "refund_id",
+      "value": "",
+      "type": "any",
+      "enabled": true
+    },
+    {
+      "key": "wallet_count_before",
+      "value": "0",
+      "type": "any",
+      "enabled": true
+    },
+    {
+      "key": "test_customer_id",
+      "value": "",
+      "type": "any",
+      "enabled": true
+    },
+    {
+      "key": "event_id_succeeded",
+      "value": "",
+      "type": "any",
+      "enabled": true
+    },
+    {
+      "key": "event_id_refunded",
+      "value": "",
+      "type": "any",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment",
+  "_postman_exported_at": "2024-01-15T10:00:00.000Z",
+  "_postman_exported_using": "Manual Export"
+}

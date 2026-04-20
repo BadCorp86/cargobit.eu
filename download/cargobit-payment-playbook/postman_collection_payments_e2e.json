@@ -1,0 +1,543 @@
+{
+  "info": {
+    "name": "CargoBit Payment E2E Tests",
+    "_postman_id": "cargobit-payment-e2e-collection",
+    "description": "End-to-End Tests für CargoBit Payment & Refund Flow\n\n## Flow Overview\n1. Job erstellen → PaymentIntent erzeugen\n2. Webhook: payment_intent.succeeded simulieren\n3. Payment in DB verifizieren\n4. Partial Refund auslösen\n5. Webhook: charge.refunded simulieren\n6. Refunded_cents verifizieren\n7. Manuelle Reconciliation\n8. Idempotency Test (Duplicate Webhook Replay)\n\n## Requirements\n- Environment Variablen: base_url, admin_jwt, stripe_test_secret\n- Webhook Endpoint muss raw body akzeptieren\n- Stripe Test Mode aktiv",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "timestamp",
+      "value": "{{$timestamp}}"
+    },
+    {
+      "key": "randomInt",
+      "value": "{{$randomInt}}"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Setup - Create Test Job",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Job created successfully', () => {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test('Job has valid ID', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.id).to.exist;",
+              "    pm.expect(json.id).to.be.a('string');",
+              "    pm.environment.set('jobId', json.id);",
+              "});",
+              "",
+              "pm.test('Job status is pending', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.status).to.eql('pending');",
+              "});",
+              "",
+              "console.log('Created Job ID:', pm.environment.get('jobId'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{admin_jwt}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"E2E Test Job - {{$timestamp}}\",\n  \"pickup_address\": \"Teststraße 1, 10115 Berlin\",\n  \"delivery_address\": \"Musterweg 42, 80333 München\",\n  \"price_cents\": 5000,\n  \"customer_email\": \"test-{{$timestamp}}@cargobit.example.com\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/jobs",
+          "host": ["{{base_url}}"],
+          "path": ["jobs"]
+        },
+        "description": "Erstellt einen Test-Job für den Payment-Flow"
+      }
+    },
+    {
+      "name": "2. Create PaymentIntent",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('PaymentIntent created', () => {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test('PaymentIntent ID returned', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.payment_intent_id).to.exist;",
+              "    pm.expect(json.payment_intent_id).to.match(/^pi_/);",
+              "    pm.environment.set('payment_intent_id', json.payment_intent_id);",
+              "});",
+              "",
+              "pm.test('Payment record created', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.payment_id).to.exist;",
+              "    pm.environment.set('payment_id', json.payment_id);",
+              "});",
+              "",
+              "pm.test('Amount matches', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.amount_cents).to.eql(5000);",
+              "});",
+              "",
+              "console.log('PaymentIntent ID:', pm.environment.get('payment_intent_id'));",
+              "console.log('Payment ID:', pm.environment.get('payment_id'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{admin_jwt}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"job_id\": \"{{jobId}}\",\n  \"amount_cents\": 5000,\n  \"currency\": \"eur\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/booking/confirm",
+          "host": ["{{base_url}}"],
+          "path": ["booking", "confirm"]
+        },
+        "description": "Erstellt einen Stripe PaymentIntent für den Job"
+      }
+    },
+    {
+      "name": "3. Webhook - payment_intent.succeeded",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Webhook accepted', () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Webhook processed', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.received).to.be.true;",
+              "});",
+              "",
+              "// Store event ID for idempotency test",
+              "const json = pm.response.json();",
+              "if (json.event_id) {",
+              "    pm.environment.set('event_id_succeeded', json.event_id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Stripe-Signature",
+            "value": "{{stripe_test_secret}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_test_{{$timestamp}}_{{$randomInt}}\",\n  \"object\": \"event\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"{{payment_intent_id}}\",\n      \"object\": \"payment_intent\",\n      \"amount\": 5000,\n      \"currency\": \"eur\",\n      \"status\": \"succeeded\",\n      \"metadata\": {\n        \"job_id\": \"{{jobId}}\"\n      }\n    }\n  },\n  \"created\": {{$timestamp}}\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/webhooks/stripe",
+          "host": ["{{base_url}}"],
+          "path": ["webhooks", "stripe"]
+        },
+        "description": "Simuliert payment_intent.succeeded Webhook von Stripe"
+      }
+    },
+    {
+      "name": "4. Verify Payment Exists",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Payments list retrieved', () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Payment found in list', () => {",
+              "    const json = pm.response.json();",
+              "    const paymentId = pm.environment.get('payment_id');",
+              "    const found = json.data.some(p => p.id === paymentId || p.stripe_payment_intent_id === pm.environment.get('payment_intent_id'));",
+              "    pm.expect(found).to.be.true;",
+              "});",
+              "",
+              "pm.test('Payment status is succeeded', () => {",
+              "    const json = pm.response.json();",
+              "    const paymentId = pm.environment.get('payment_id');",
+              "    const payment = json.data.find(p => p.id === paymentId);",
+              "    if (payment) {",
+              "        pm.expect(payment.status).to.eql('succeeded');",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{admin_jwt}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/payments?limit=10",
+          "host": ["{{base_url}}"],
+          "path": ["admin", "payments"],
+          "query": [
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        },
+        "description": "Verifiziert, dass der Payment in der DB existiert"
+      }
+    },
+    {
+      "name": "5. Trigger Partial Refund",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Refund initiated', () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Refund ID returned', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.refund_id).to.exist;",
+              "    pm.environment.set('refund_id', json.refund_id);",
+              "});",
+              "",
+              "pm.test('Refund amount correct', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.amount_cents).to.eql(500);",
+              "});",
+              "",
+              "console.log('Refund ID:', pm.environment.get('refund_id'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{admin_jwt}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount_cents\": 500,\n  \"reason\": \"customer_request\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/admin/jobs/{{jobId}}/refund",
+          "host": ["{{base_url}}"],
+          "path": ["admin", "jobs", "{{jobId}}", "refund"]
+        },
+        "description": "Löst einen Partial Refund von 500¢ aus (10% des Gesamtbetrags)"
+      }
+    },
+    {
+      "name": "6. Webhook - charge.refunded",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Refund webhook accepted', () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Webhook processed', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.received).to.be.true;",
+              "});",
+              "",
+              "// Store event ID for idempotency test",
+              "const json = pm.response.json();",
+              "if (json.event_id) {",
+              "    pm.environment.set('event_id_refunded', json.event_id);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Stripe-Signature",
+            "value": "{{stripe_test_secret}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_refund_{{$timestamp}}_{{$randomInt}}\",\n  \"object\": \"event\",\n  \"type\": \"charge.refunded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"ch_test_{{$randomInt}}\",\n      \"object\": \"charge\",\n      \"amount\": 5000,\n      \"amount_refunded\": 500,\n      \"payment_intent\": \"{{payment_intent_id}}\",\n      \"refunds\": {\n        \"object\": \"list\",\n        \"data\": [\n          {\n            \"id\": \"{{refund_id}}\",\n            \"object\": \"refund\",\n            \"amount\": 500,\n            \"status\": \"succeeded\"\n          }\n        ]\n      }\n    }\n  },\n  \"created\": {{$timestamp}}\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/webhooks/stripe",
+          "host": ["{{base_url}}"],
+          "path": ["webhooks", "stripe"]
+        },
+        "description": "Simuliert charge.refunded Webhook von Stripe"
+      }
+    },
+    {
+      "name": "7. Verify Refunded Amount",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Payment details retrieved', () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Refunded amount is correct', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.refunded_cents).to.eql(500);",
+              "});",
+              "",
+              "pm.test('Payment status is partial_refunded', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.status).to.be.oneOf(['partial_refunded', 'refunded']);",
+              "});",
+              "",
+              "// Store wallet tx count before idempotency test",
+              "if (json.wallet_transactions) {",
+              "    pm.environment.set('wallet_count_before', json.wallet_transactions.length.toString());",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{admin_jwt}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/admin/payments/{{payment_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["admin", "payments", "{{payment_id}}"]
+        },
+        "description": "Verifiziert, dass refunded_cents korrekt aktualisiert wurde"
+      }
+    },
+    {
+      "name": "8. Manual Reconciliation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Reconciliation completed', () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Reconciliation result returned', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.reconciled).to.exist;",
+              "});",
+              "",
+              "pm.test('No discrepancies found', () => {",
+              "    const json = pm.response.json();",
+              "    // After reconciliation, amounts should match",
+              "    pm.expect(json.discrepancies).to.be.empty;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{admin_jwt}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{base_url}}/admin/payments/{{payment_id}}/reconcile",
+          "host": ["{{base_url}}"],
+          "path": ["admin", "payments", "{{payment_id}}", "reconcile"]
+        },
+        "description": "Führt eine manuelle Reconciliation für den Payment durch"
+      }
+    },
+    {
+      "name": "9. Idempotency - Duplicate Webhook Replay",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Fetch wallet transactions before replay",
+              "pm.sendRequest({",
+              "    url: pm.environment.get('base_url') + '/admin/payments/' + pm.environment.get('payment_id') + '/wallet_transactions',",
+              "    method: 'GET',",
+              "    header: {",
+              "        'Authorization': pm.environment.get('admin_jwt')",
+              "    }",
+              "}, function (err, res) {",
+              "    if (!err) {",
+              "        const arr = res.json();",
+              "        pm.environment.set('wallet_count_before', arr.length.toString());",
+              "        console.log('Wallet tx count before:', arr.length);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Duplicate webhook handled gracefully', () => {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "// Wait briefly then check wallet tx count",
+              "setTimeout(() => {",
+              "    pm.sendRequest({",
+              "        url: pm.environment.get('base_url') + '/admin/payments/' + pm.environment.get('payment_id') + '/wallet_transactions',",
+              "        method: 'GET',",
+              "        header: {",
+              "            'Authorization': pm.environment.get('admin_jwt')",
+              "        }",
+              "    }, function (err, res) {",
+              "        if (!err) {",
+              "            const arr = res.json();",
+              "            const before = parseInt(pm.environment.get('wallet_count_before') || '0', 10);",
+              "            pm.test('No duplicate wallet transactions created', () => {",
+              "                pm.expect(arr.length).to.eql(before);",
+              "            });",
+              "            console.log('Wallet tx count after:', arr.length, '(before:', before + ')');",
+              "        }",
+              "    });",
+              "}, 500);",
+              "",
+              "// Also verify event is marked as processed",
+              "pm.test('Event already processed flag present', () => {",
+              "    const json = pm.response.json();",
+              "    pm.expect(json.already_processed || json.idempotent).to.be.true;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Stripe-Signature",
+            "value": "{{stripe_test_secret}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"{{event_id_succeeded}}\",\n  \"object\": \"event\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"{{payment_intent_id}}\",\n      \"object\": \"payment_intent\",\n      \"amount\": 5000,\n      \"currency\": \"eur\",\n      \"status\": \"succeeded\",\n      \"metadata\": {\n        \"job_id\": \"{{jobId}}\"\n      }\n    }\n  },\n  \"created\": {{$timestamp}}\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/webhooks/stripe",
+          "host": ["{{base_url}}"],
+          "path": ["webhooks", "stripe"]
+        },
+        "description": "Replay desselben payment_intent.succeeded Events - sollte keine doppelten Transaktionen erzeugen"
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global pre-request script",
+          "console.log('Running request:', pm.request.name);"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test script",
+          "console.log('Completed request:', pm.request.name, '- Status:', pm.response.code);"
+        ]
+      }
+    }
+  ]
+}

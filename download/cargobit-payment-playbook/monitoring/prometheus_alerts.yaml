@@ -1,0 +1,407 @@
+# =============================================================================
+# CargoBit Payment Platform - Prometheus Alert Rules
+# =============================================================================
+# Diese Datei enthält alle Alert-Regeln für das Monitoring der Payment- und
+# Refund-Infrastruktur. Die Regeln sind in Gruppen organisiert und können
+# direkt in Prometheus importiert werden.
+#
+# Installation:
+#   1. Datei nach /etc/prometheus/rules/ kopieren
+#   2. Prometheus neu laden: systemctl reload prometheus
+#   3. Alerts in Alertmanager konfigurieren
+# =============================================================================
+
+groups:
+  # ---------------------------------------------------------------------------
+  # Stripe Webhook Alerts
+  # ---------------------------------------------------------------------------
+  - name: stripe_webhook.rules
+    rules:
+      # Kritischer Alert: Hohe Fehlerrate bei Webhooks
+      - alert: StripeWebhookHighErrorRate
+        expr: |
+          (
+            sum(rate(http_server_requests_total{job="webhook",status=~"5.."}[5m]))
+            /
+            sum(rate(http_server_requests_total{job="webhook"}[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          service: payment-webhook
+          team: payments
+        annotations:
+          summary: "Hohe Fehlerrate bei Stripe Webhooks"
+          description: |
+            Mehr als 5% der Webhook-Requests schlagen mit 5xx fehl.
+            Aktuelle Rate: {{ $value | humanizePercentage }}
+            
+            Betroffene Endpunkte prüfen:
+            - /webhooks/stripe
+            - Stripe API Status: https://status.stripe.com
+          runbook_url: "https://wiki.internal/cargobit/runbooks/webhook-incidents"
+
+      # Warnung: Langsame Webhook-Verarbeitung
+      - alert: StripeWebhookSlowProcessing
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(http_server_request_duration_seconds_bucket{job="webhook"}[5m])) by (le)
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: payment-webhook
+          team: payments
+        annotations:
+          summary: "Langsame Stripe Webhook-Verarbeitung"
+          description: |
+            P95 Latenz der Webhook-Verarbeitung liegt über 5 Sekunden.
+            Aktuelle P95 Latenz: {{ $value | humanizeDuration }}
+            
+            Mögliche Ursachen:
+            - Datenbank-Performance-Probleme
+            - Externe API-Latenz (Stripe API)
+            - Hohe Last auf dem Service
+
+      # Kritischer Alert: Stripe Signature Validation Errors
+      - alert: StripeWebhookSignatureValidationErrors
+        expr: |
+          increase(stripe_webhook_signature_errors_total[5m]) > 10
+        for: 1m
+        labels:
+          severity: critical
+          service: payment-webhook
+          team: payments
+        annotations:
+          summary: "Stripe Webhook Signature Validation Errors"
+          description: |
+            Mehr als 10 Signature-Validation-Fehler in den letzten 5 Minuten.
+            Dies könnte auf:
+            - Abgelaufene Webhook-Secrets hinweisen
+            - Replay-Attacken hindeuten
+            - Fehlkonfigurierte Webhook-Endpunkte
+            
+            Sofort prüfen:
+            - Stripe Dashboard → Webhooks
+            - Environment-Variablen (STRIPE_WEBHOOK_SECRET)
+
+      # Warnung: Webhook Queue Backlog
+      - alert: StripeWebhookQueueBacklog
+        expr: |
+          stripe_webhook_queue_size > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: payment-webhook
+          team: payments
+        annotations:
+          summary: "Stripe Webhook Queue Backlog"
+          description: |
+            Mehr als {{ $value }} Webhooks in der Queue warten auf Verarbeitung.
+            
+            Aktionen:
+            - Worker-Skalierung prüfen
+            - Verarbeitungs-Performance analysieren
+
+  # ---------------------------------------------------------------------------
+  # Payment Processing Alerts
+  # ---------------------------------------------------------------------------
+  - name: payment_processing.rules
+    rules:
+      # Warnung: Orphaned Payment Intents
+      - alert: OrphanedPaymentIntentsHigh
+        expr: |
+          increase(audit_events_total{event_type="payment.orphaned_payment_intent"}[1h]) > 10
+        for: 10m
+        labels:
+          severity: warning
+          service: payment-service
+          team: payments
+        annotations:
+          summary: "Hohe Anzahl an orphaned Payment Intents"
+          description: |
+            Mehr als 10 orphaned Payment Intents in der letzten Stunde.
+            Diese sind in Stripe vorhanden, aber nicht in der lokalen DB.
+            
+            Aktionen:
+            - Reconciliation-Job manuell triggern
+            - Audit-Logs prüfen für Details
+
+      # Kritischer Alert: Payment Processing Failures
+      - alert: PaymentProcessingFailures
+        expr: |
+          increase(payment_processing_errors_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          service: payment-service
+          team: payments
+        annotations:
+          summary: "Payment Processing Failures"
+          description: |
+            Mehr als 5 Payment-Processing-Fehler in den letzten 5 Minuten.
+            
+            Fehler-Typen prüfen:
+            - Stripe API Fehler
+            - Datenbank-Fehler
+            - Validation-Fehler
+
+      # Warnung: Payments im Status "processing" zu lange
+      - alert: PaymentsStuckInProcessing
+        expr: |
+          count(payment_status{status="processing"} and 
+                payment_created_at < time() - 300) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: payment-service
+          team: payments
+        annotations:
+          summary: "Payments stuck in processing status"
+          description: |
+            {{ $value }} Payments sind seit mehr als 5 Minuten im Status "processing".
+            
+            Mögliche Ursachen:
+            - Stripe API Timeout
+            - Webhook nicht empfangen
+            - Verarbeitungsfehler
+
+  # ---------------------------------------------------------------------------
+  # Refund & Reconciliation Alerts
+  # ---------------------------------------------------------------------------
+  - name: refund_reconciliation.rules
+    rules:
+      # Warnung: Reconciliation Discrepancies
+      - alert: ReconciliationDiscrepanciesDetected
+        expr: |
+          payment_reconciliation_diffs_total > 0
+        for: 30m
+        labels:
+          severity: warning
+          service: reconciliation
+          team: payments
+        annotations:
+          summary: "Reconciliation Diskrepanzen erkannt"
+          description: |
+            {{ $value }} Payment(s) mit Unterschieden zwischen lokaler DB und Stripe.
+            
+            Details:
+            - Refunded amounts stimmen nicht überein
+            - Status-Diskrepanzen möglich
+            
+            Aktion:
+            - Manuelle Reconciliation prüfen
+            - Audit-Logs analysieren
+
+      # Kritischer Alert: Refund Failures
+      - alert: RefundProcessingFailures
+        expr: |
+          increase(refund_processing_errors_total[15m]) > 3
+        for: 5m
+        labels:
+          severity: critical
+          service: refund-service
+          team: payments
+        annotations:
+          summary: "Refund Processing Failures"
+          description: |
+            Mehr als 3 Refund-Fehler in den letzten 15 Minuten.
+            
+            Prüfen:
+            - Stripe API Status
+            - Customer Account Status
+            - Refund-Limits
+
+      # Info: Reconciliation Cron läuft nicht
+      - alert: ReconciliationCronNotRunning
+        expr: |
+          time() - reconciliation_cron_last_run_timestamp > 3600
+        for: 10m
+        labels:
+          severity: info
+          service: reconciliation
+          team: payments
+        annotations:
+          summary: "Reconciliation Cron nicht gelaufen"
+          description: |
+            Der Reconciliation-Cron wurde seit mehr als 1 Stunde nicht ausgeführt.
+            
+            Prüfen:
+            - Cron-Scheduler Status
+            - Leader Lock Status (Redis)
+            - Service Logs
+
+      # Warnung: Doppelte Wallet Transaktionen
+      - alert: DuplicateWalletTransactionsDetected
+        expr: |
+          increase(audit_events_total{event_type="wallet.duplicate_prevented"}[1h]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: wallet-service
+          team: payments
+        annotations:
+          summary: "Doppelte Wallet Transaktionen verhindert"
+          description: |
+            {{ $value }} doppelte Wallet-Transaktionen wurden durch Idempotency-Check verhindert.
+            
+            Dies ist normal bei Webhook-Replays, sollte aber untersucht werden wenn:
+            - Hohe Anzahl in kurzer Zeit
+            - Keine bekannten Stripe-Issues
+
+  # ---------------------------------------------------------------------------
+  # Database & Infrastructure Alerts
+  # ---------------------------------------------------------------------------
+  - name: payment_infrastructure.rules
+    rules:
+      # Kritischer Alert: Database Connection Pool Exhausted
+      - alert: PaymentDatabasePoolExhausted
+        expr: |
+          pg_stat_activity_count{datname="cargobit_payments"} / 
+          pg_settings_max_connections > 0.9
+        for: 2m
+        labels:
+          severity: critical
+          service: database
+          team: infrastructure
+        annotations:
+          summary: "Payment Database Connection Pool fast erschöpft"
+          description: |
+            Mehr als 90% der Datenbank-Verbindungen sind in Verwendung.
+            Aktuelle Nutzung: {{ $value | humanizePercentage }}
+            
+            Aktionen:
+            - Connection Pool Size erhöhen
+            - Long-running Queries identifizieren
+            - Application Restart falls nötig
+
+      # Warnung: Redis Leader Lock Issues
+      - alert: RedisLeaderLockIssues
+        expr: |
+          increase(redis_lock_errors_total{lock_name="recon:lock:refunds"}[5m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+          team: infrastructure
+        annotations:
+          summary: "Redis Leader Lock Issues"
+          description: |
+            Probleme mit dem Leader-Lock für Reconciliation.
+            Dies kann zu parallelen Cron-Ausführungen führen.
+            
+            Prüfen:
+            - Redis Connectivity
+            - Lock TTL Konfiguration
+
+      # Kritischer Alert: High Memory Usage Payment Service
+      - alert: PaymentServiceHighMemory
+        expr: |
+          container_memory_usage_bytes{service="payment-service"} / 
+          container_spec_memory_limit_bytes{service="payment-service"} > 0.9
+        for: 5m
+        labels:
+          severity: critical
+          service: payment-service
+          team: infrastructure
+        annotations:
+          summary: "Payment Service Memory fast erschöpft"
+          description: |
+            Memory Usage liegt über 90% des Limits.
+            Aktuelle Nutzung: {{ $value | humanizePercentage }}
+            
+            Aktionen:
+            - Memory Limit erhöhen
+            - Memory Leak identifizieren
+            - Service Neustart
+
+  # ---------------------------------------------------------------------------
+  # Business Metrics Alerts
+  # ---------------------------------------------------------------------------
+  - name: payment_business.rules
+    rules:
+      # Info: Unerwartet niedriges Payment Volumen
+      - alert: LowPaymentVolume
+        expr: |
+          (
+            sum(rate(payment_created_total[1h]))
+            /
+            sum(rate(payment_created_total[1h] offset 24h))
+          ) < 0.5
+        for: 30m
+        labels:
+          severity: info
+          service: payment-service
+          team: payments
+        annotations:
+          summary: "Unerwartet niedriges Payment Volumen"
+          description: |
+            Payment Volumen ist 50% niedriger als zur gleichen Zeit gestern.
+            
+            Mögliche Ursachen:
+            - Technische Probleme
+            - Saisonale Schwankungen
+            - Marketing-Kampagnen beendet
+
+      # Warnung: Hohe Refund Rate
+      - alert: HighRefundRate
+        expr: |
+          (
+            sum(rate(refund_created_total[1h]))
+            /
+            sum(rate(payment_created_total[1h]))
+          ) > 0.1
+        for: 1h
+        labels:
+          severity: warning
+          service: payment-service
+          team: business
+        annotations:
+          summary: "Hohe Refund Rate"
+          description: |
+            Mehr als 10% der Payments werden refundiert.
+            Aktuelle Rate: {{ $value | humanizePercentage }}
+            
+            Dies sollte mit dem Business-Team geklärt werden.
+
+  # ---------------------------------------------------------------------------
+  # Stripe API Alerts
+  # ---------------------------------------------------------------------------
+  - name: stripe_api.rules
+    rules:
+      # Kritischer Alert: Stripe API Errors
+      - alert: StripeAPIErrors
+        expr: |
+          increase(stripe_api_errors_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          service: stripe-client
+          team: payments
+        annotations:
+          summary: "Stripe API Errors"
+          description: |
+            Mehr als 5 Stripe API Fehler in den letzten 5 Minuten.
+            
+            Prüfen:
+            - Stripe Status Page: https://status.stripe.com
+            - API Key Gültigkeit
+            - Rate Limits
+
+      # Warnung: Stripe Rate Limit Approaching
+      - alert: StripeRateLimitApproaching
+        expr: |
+          stripe_rate_limit_remaining < 100
+        for: 5m
+        labels:
+          severity: warning
+          service: stripe-client
+          team: payments
+        annotations:
+          summary: "Stripe Rate Limit fast erreicht"
+          description: |
+            Nur noch {{ $value }} Stripe API Calls übrig bis zum Rate Limit.
+            
+            Aktionen:
+            - Request-Batching optimieren
+            - Stripe Support für Rate Limit Increase kontaktieren
