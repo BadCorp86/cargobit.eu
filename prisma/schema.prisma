@@ -1938,7 +1938,35 @@ model PaymentAuditEvent {
 }
 
 // ============================================
-// 24. DISPUTES SYSTEM
+// 24. STRIPE EVENT IDEMPOTENCY
+// ============================================
+
+model StripeEvent {
+  id            String    @id   // Stripe event ID (evt_xxx)
+  
+  // Event details
+  type          String                    // payment_intent.succeeded, charge.refunded, etc.
+  payload       String?                   // Full JSON payload
+  
+  // Processing status
+  processed     Boolean   @default(false)
+  processedAt   DateTime?
+  
+  // Error tracking
+  errorCount    Int       @default(0)
+  lastError     String?
+  
+  // Timestamps
+  receivedAt    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  
+  @@index([type])
+  @@index([processed])
+  @@index([receivedAt])
+}
+
+// ============================================
+// 25. DISPUTES SYSTEM
 // ============================================
 
 enum DisputeStatus {
