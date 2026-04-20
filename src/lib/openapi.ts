@@ -81,15 +81,24 @@ const schemas = {
     type: 'object',
     required: ['email', 'password'],
     properties: {
-      email: { type: 'string', format: 'email', example: 'admin@cargobit.eu' },
-      password: { type: 'string', format: 'password', example: '••••••••' },
+      email: { type: 'string', format: 'email', example: 'admin@cargobit.eu', description: 'Admin email address' },
+      password: { type: 'string', format: 'password', example: '••••••••', description: 'Admin password' },
     },
   },
   AdminLoginStep1Response: {
     type: 'object',
+    required: ['requires_2fa'],
     properties: {
-      requires2fa: { type: 'boolean', example: true },
-      email: { type: 'string', example: 'admin@cargobit.eu' },
+      requires_2fa: { 
+        type: 'boolean', 
+        example: true, 
+        description: 'Whether 2FA is required for this account' 
+      },
+      email: { 
+        type: 'string', 
+        example: 'admin@cargobit.eu', 
+        description: 'Email address (for confirmation)' 
+      },
     },
   },
   AdminLoginStep2Request: {
@@ -456,27 +465,103 @@ const paths: OpenAPISpec['paths'] = {
     post: {
       tags: ['Auth'],
       summary: 'Admin Login Step 1 - Verify credentials',
-      description: 'Verifies email and password. Returns whether 2FA is required for the account.',
+      description: `
+Verifies admin email and password. Returns whether 2FA is required for the account.
+
+**Error Cases:**
+- ❌ Email does not exist → 401 Unauthorized "Invalid credentials"
+- ❌ Wrong password → 401 Unauthorized "Invalid credentials"
+- ❌ Admin deactivated → 403 Forbidden "Account deactivated"
+- ❌ Account locked (too many failed attempts) → 403 Forbidden "Account locked"
+- ❌ Validation error → 400 Bad Request
+
+**Security:**
+- No JWT is issued in Step 1 (correct behavior)
+- Failed attempts are logged and tracked
+- Account lockout after 5 failed attempts for 30 minutes
+      `,
       security: [],
       requestBody: {
         required: true,
         content: {
           'application/json': {
             schema: { $ref: '#/components/schemas/AdminLoginStep1Request' },
+            examples: {
+              validRequest: {
+                summary: 'Valid login request',
+                value: { email: 'admin@cargobit.eu', password: 'SecureP@ss123' },
+              },
+            },
           },
         },
       },
       responses: {
         '200': {
-          description: 'Credentials verified',
+          description: 'Credentials verified - proceed to Step 2 if 2FA enabled',
           content: {
             'application/json': {
               schema: { $ref: '#/components/schemas/AdminLoginStep1Response' },
+              examples: {
+                with2fa: {
+                  summary: 'Account with 2FA enabled',
+                  value: { requires_2fa: true, email: 'admin@cargobit.eu' },
+                },
+                without2fa: {
+                  summary: 'Account without 2FA',
+                  value: { requires_2fa: false, email: 'admin@cargobit.eu' },
+                },
+              },
+            },
+          },
+        },
+        '400': {
+          description: 'Bad Request - Validation error',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ErrorResponse' },
+              examples: {
+                validationError: {
+                  summary: 'Validation failed',
+                  value: { error: 'Validierungsfehler', code: 'VALIDATION_ERROR', details: { errors: ['Ungültige E-Mail-Adresse'] } },
+                },
+              },
             },
           },
         },
         '401': {
-          description: 'Invalid credentials',
+          description: 'Unauthorized - Invalid credentials',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ErrorResponse' },
+              examples: {
+                invalidCredentials: {
+                  summary: 'Invalid email or password',
+                  value: { error: 'Ungültige Anmeldedaten', code: 'INVALID_CREDENTIALS' },
+                },
+              },
+            },
+          },
+        },
+        '403': {
+          description: 'Forbidden - Account disabled or locked',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ErrorResponse' },
+              examples: {
+                deactivated: {
+                  summary: 'Account deactivated',
+                  value: { error: 'Konto deaktiviert', code: 'ACCOUNT_DISABLED' },
+                },
+                locked: {
+                  summary: 'Account locked due to failed attempts',
+                  value: { error: 'Konto gesperrt. Versuchen Sie es in 25 Minuten erneut.', code: 'ACCOUNT_DISABLED' },
+                },
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal Server Error',
           content: {
             'application/json': {
               schema: { $ref: '#/components/schemas/ErrorResponse' },

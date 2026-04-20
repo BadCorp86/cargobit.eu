@@ -5,34 +5,39 @@
  * 
  * Verify email and password, return if 2FA is required.
  * 
- * Python equivalent:
- * ```python
- * class AdminLoginRequest(BaseModel):
- *     email: str
- *     password: str
+ * @summary Admin Login Step 1 (Email + Password)
+ * @description Verifies admin credentials and returns whether 2FA is required.
  * 
- * class AdminLoginStep1Response(BaseModel):
- *     requires_2fa: bool
+ * @requestBody { "email": "admin@cargobit.eu", "password": "••••••••" }
+ * @response 200 { "requires_2fa": true, "email": "admin@cargobit.eu" }
+ * @response 400 { "error": "Validation failed", "details": [...] }
+ * @response 401 { "error": "Invalid credentials" }
+ * @response 403 { "error": "Account deactivated" }
  * 
- * @router.post("/admin/login_step1", response_model=AdminLoginStep1Response)
- * def admin_login_step1(req: AdminLoginRequest, db: Session = Depends(get_db)):
- *     user = get_admin_by_email(db, req.email)
- *     if not user or not verify_password(req.password, user.password_hash):
- *         raise HTTPException(401, "Invalid credentials")
- *     return {"requires_2fa": user.is_2fa_enabled}
- * ```
+ * Error Cases:
+ * - ❌ Email does not exist → 401 Unauthorized "Invalid credentials"
+ * - ❌ Wrong password → 401 Unauthorized "Invalid credentials"
+ * - ❌ Admin deactivated → 403 Forbidden "Account deactivated"
+ * - ❌ Account locked → 403 Forbidden "Account locked"
+ * - ❌ Validation error → 400 Bad Request
+ * 
+ * Security:
+ * - No JWT is issued in Step 1 (correct behavior)
+ * - Failed attempts are logged
+ * - Account lockout after 5 failed attempts
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuthService } from '@/services/admin-auth.service';
+import { LoginStep1Dto, validateDto, ErrorResponseDto } from '@/dto/admin-auth.dto';
 
 // ============================================
-// TYPES
+// RESPONSE TYPES
 // ============================================
 
-interface LoginStep1Request {
+interface SuccessResponse {
+  requires_2fa: boolean;
   email: string;
-  password: string;
 }
 
 // ============================================
@@ -42,43 +47,111 @@ interface LoginStep1Request {
 export async function POST(request: NextRequest) {
   try {
     // Parse request body
-    const body: LoginStep1Request = await request.json();
-    const { email, password } = body;
-    
-    // Validate input
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: 'E-Mail und Passwort erforderlich' },
-        { status: 400 }
-      );
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch {
+      const errorResponse: ErrorResponseDto = {
+        error: 'Invalid JSON body',
+        code: 'INVALID_JSON',
+      };
+      return NextResponse.json(errorResponse, { status: 400 });
     }
     
-    // Get client IP
-    const ipAddress = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
-      || request.headers.get('x-real-ip') 
-      || 'unknown';
+    // Create and validate DTO
+    const dto = LoginStep1Dto.fromObject(body);
+    const validation = validateDto(dto);
+    
+    if (!validation.valid) {
+      const errorResponse: ErrorResponseDto = {
+        error: 'Validierungsfehler',
+        code: 'VALIDATION_ERROR',
+        details: { errors: validation.errors },
+      };
+      return NextResponse.json(errorResponse, { status: 400 });
+    }
+    
+    // Get client context
+    const ipAddress = getClientIp(request);
+    const userAgent = request.headers.get('user-agent') || undefined;
     
     // Process login step 1
-    const result = await adminAuthService.loginStep1(email, password, ipAddress);
+    const result = await adminAuthService.loginStep1(dto.email, dto.password, ipAddress);
     
+    // Handle failure cases
     if (!result.success) {
-      return NextResponse.json(
-        { error: result.error },
-        { status: 401 }
-      );
+      // Determine appropriate status code
+      let statusCode = 401;
+      
+      if (result.error.includes('deaktiviert')) {
+        statusCode = 403; // Account deactivated
+      } else if (result.error.includes('gesperrt')) {
+        statusCode = 403; // Account locked
+      }
+      
+      const errorResponse: ErrorResponseDto = {
+        error: result.error,
+        code: statusCode === 403 ? 'ACCOUNT_DISABLED' : 'INVALID_CREDENTIALS',
+      };
+      
+      return NextResponse.json(errorResponse, { status: statusCode });
     }
     
-    // Return response
-    return NextResponse.json({
-      requires2fa: result.data.requires2fa,
+    // Success - return response (NO JWT in Step 1!)
+    const response: SuccessResponse = {
+      requires_2fa: result.data.requires2fa,
       email: result.data.email,
-    });
+    };
+    
+    return NextResponse.json(response, { status: 200 });
     
   } catch (error) {
     console.error('[AdminLogin] Step 1 error:', error);
-    return NextResponse.json(
-      { error: 'Interner Server-Fehler' },
-      { status: 500 }
-    );
+    
+    const errorResponse: ErrorResponseDto = {
+      error: 'Interner Server-Fehler',
+      code: 'INTERNAL_ERROR',
+    };
+    
+    return NextResponse.json(errorResponse, { status: 500 });
   }
+}
+
+// ============================================
+// HELPER: GET CLIENT IP
+// ============================================
+
+function getClientIp(request: NextRequest): string {
+  // Try various headers in order of preference
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    return forwarded.split(',')[0].trim();
+  }
+  
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) {
+    return realIp;
+  }
+  
+  const cfIp = request.headers.get('cf-connecting-ip'); // Cloudflare
+  if (cfIp) {
+    return cfIp;
+  }
+  
+  return 'unknown';
+}
+
+// ============================================
+// OPTIONS: CORS PREFLIGHT
+// ============================================
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 }
