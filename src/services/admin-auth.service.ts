@@ -636,13 +636,26 @@ export class AdminAuthService {
     return `otpauth://totp/${issuer}:${encodedEmail}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
   }
   
-  private verifyTotp(secret: string, code: string): boolean {
-    const expectedCode = this.generateTotpCode(secret);
-    return code === expectedCode;
+  private verifyTotp(secret: string, code: string, window: number = 1): boolean {
+    // Window = 1 allows ±30 seconds tolerance
+    // Check current time and adjacent windows
+    const counter = Math.floor(Date.now() / 1000 / 30);
+    
+    for (let i = -window; i <= window; i++) {
+      const expectedCode = this.generateTotpCodeForCounter(secret, counter + i);
+      if (code === expectedCode) {
+        return true;
+      }
+    }
+    return false;
   }
   
   private generateTotpCode(secret: string): string {
     const counter = Math.floor(Date.now() / 1000 / 30);
+    return this.generateTotpCodeForCounter(secret, counter);
+  }
+  
+  private generateTotpCodeForCounter(secret: string, counter: number): string {
     const buffer = Buffer.alloc(8);
     buffer.writeBigUInt64BE(BigInt(counter));
     
@@ -656,10 +669,9 @@ export class AdminAuthService {
   }
   
   private async verify2faCode(adminId: string, code: string, totpSecret?: string | null): Promise<boolean> {
-    // Check TOTP code
+    // Check TOTP code with window tolerance (±30 seconds)
     if (totpSecret) {
-      const expectedCode = this.generateTotpCode(totpSecret);
-      if (code === expectedCode) {
+      if (this.verifyTotp(totpSecret, code, 1)) {
         return true;
       }
     }

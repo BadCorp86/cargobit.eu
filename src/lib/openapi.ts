@@ -105,22 +105,47 @@ const schemas = {
     type: 'object',
     required: ['email', 'code'],
     properties: {
-      email: { type: 'string', format: 'email' },
-      code: { type: 'string', example: '123456', minLength: 6, maxLength: 6 },
+      email: { 
+        type: 'string', 
+        format: 'email', 
+        example: 'admin@cargobit.eu', 
+        description: 'Admin email address (must match step 1)' 
+      },
+      code: { 
+        type: 'string', 
+        example: '123456', 
+        minLength: 6, 
+        maxLength: 8,
+        description: '6-digit TOTP code or 8-character backup code' 
+      },
     },
   },
   AdminLoginTokenResponse: {
     type: 'object',
+    required: ['access_token', 'token_type', 'expires_in', 'admin'],
     properties: {
-      accessToken: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIs...' },
-      tokenType: { type: 'string', example: 'bearer' },
-      expiresIn: { type: 'integer', example: 28800 },
+      access_token: { 
+        type: 'string', 
+        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...', 
+        description: 'JWT access token for API authentication' 
+      },
+      token_type: { 
+        type: 'string', 
+        example: 'bearer', 
+        description: 'Token type (always "bearer")' 
+      },
+      expires_in: { 
+        type: 'integer', 
+        example: 28800, 
+        description: 'Token expiry in seconds (8 hours)' 
+      },
       admin: {
         type: 'object',
+        description: 'Admin user information',
         properties: {
-          id: { type: 'string', example: 'clx123abc' },
-          email: { type: 'string', example: 'admin@cargobit.eu' },
-          role: { type: 'string', enum: ['ADMIN', 'FINANCE', 'SUPPORT'], example: 'ADMIN' },
+          id: { type: 'string', example: 'clx123abc', description: 'Admin user ID' },
+          email: { type: 'string', example: 'admin@cargobit.eu', description: 'Admin email' },
+          role: { type: 'string', enum: ['ADMIN', 'FINANCE', 'SUPPORT'], example: 'ADMIN', description: 'Admin role' },
         },
       },
     },
@@ -574,28 +599,132 @@ Verifies admin email and password. Returns whether 2FA is required for the accou
   '/api/admin/auth/login-step2': {
     post: {
       tags: ['Auth'],
-      summary: 'Admin Login Step 2 - Verify 2FA and get token',
-      description: 'Verifies 2FA code (if enabled) and issues JWT access token.',
+      summary: 'Admin Login Step 2 - Verify 2FA and get JWT token',
+      description: `
+Verifies 2FA code (if enabled) and issues JWT access token with role-based payload.
+
+**JWT Payload Structure:**
+\`\`\`json
+{
+  "sub": "admin-uuid",     // Admin user ID
+  "role": "ADMIN",         // ADMIN | FINANCE | SUPPORT
+  "iat": 1713620000,       // Issued at (Unix timestamp)
+  "exp": 1713663200        // Expiration (Unix timestamp)
+}
+\`\`\`
+
+**TOTP Verification:**
+- Standard RFC 6238 TOTP with SHA-1
+- 6 digits, 30-second period
+- Window tolerance: ±30 seconds
+
+**Backup Codes:**
+- 8-character hex codes
+- Single-use, removed after successful verification
+
+**Error Cases:**
+- ❌ Email does not exist → 401 Unauthorized
+- ❌ Invalid 2FA code → 401 Unauthorized
+- ❌ 2FA code expired → 401 Unauthorized (outside window)
+- ❌ Account deactivated → 403 Forbidden
+- ❌ Account locked → 403 Forbidden
+- ❌ Validation error → 400 Bad Request
+      `,
       security: [],
       requestBody: {
         required: true,
         content: {
           'application/json': {
             schema: { $ref: '#/components/schemas/AdminLoginStep2Request' },
+            examples: {
+              totpCode: {
+                summary: 'TOTP code',
+                value: { email: 'admin@cargobit.eu', code: '123456' },
+              },
+              backupCode: {
+                summary: 'Backup code',
+                value: { email: 'admin@cargobit.eu', code: 'A1B2C3D4' },
+              },
+            },
           },
         },
       },
       responses: {
         '200': {
-          description: 'Login successful',
+          description: 'Login successful - JWT token issued',
           content: {
             'application/json': {
               schema: { $ref: '#/components/schemas/AdminLoginTokenResponse' },
+              examples: {
+                success: {
+                  summary: 'Successful login',
+                  value: {
+                    access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                    token_type: 'bearer',
+                    expires_in: 28800,
+                    admin: {
+                      id: 'clx123abc',
+                      email: 'admin@cargobit.eu',
+                      role: 'ADMIN',
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        '400': {
+          description: 'Bad Request - Validation error',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ErrorResponse' },
+              examples: {
+                validationError: {
+                  summary: 'Validation failed',
+                  value: { error: 'Validierungsfehler', code: 'VALIDATION_ERROR', details: { errors: ['Code muss 6-stellig sein'] } },
+                },
+              },
             },
           },
         },
         '401': {
-          description: 'Invalid 2FA code',
+          description: 'Unauthorized - Invalid credentials or 2FA code',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ErrorResponse' },
+              examples: {
+                invalid2fa: {
+                  summary: 'Invalid 2FA code',
+                  value: { error: 'Ungültiger 2FA-Code', code: 'INVALID_2FA' },
+                },
+                invalidCredentials: {
+                  summary: 'Invalid credentials',
+                  value: { error: 'Ungültige Anmeldedaten', code: 'INVALID_CREDENTIALS' },
+                },
+              },
+            },
+          },
+        },
+        '403': {
+          description: 'Forbidden - Account disabled or locked',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ErrorResponse' },
+              examples: {
+                deactivated: {
+                  summary: 'Account deactivated',
+                  value: { error: 'Konto deaktiviert', code: 'ACCOUNT_DISABLED' },
+                },
+                locked: {
+                  summary: 'Account locked',
+                  value: { error: 'Konto gesperrt. Versuchen Sie es in 15 Minuten erneut.', code: 'ACCOUNT_DISABLED' },
+                },
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal Server Error',
           content: {
             'application/json': {
               schema: { $ref: '#/components/schemas/ErrorResponse' },
