@@ -239,10 +239,11 @@ export interface PayoutListQueryDto {
 }
 
 export function parsePayoutListQuery(query: Record<string, unknown>): PayoutListQueryDto {
+  const limitValue = query.limit !== undefined ? Number(query.limit) : 100;
   return {
     status: typeof query.status === 'string' ? (query.status as PayoutStatus) : undefined,
     userId: typeof query.userId === 'string' ? query.userId : undefined,
-    limit: Math.min(Math.max(Number(query.limit) || 100, 1), 1000),
+    limit: Math.min(Math.max(limitValue, 1), 1000),
     offset: Math.max(Number(query.offset) || 0, 0),
     order: query.order === 'asc' ? 'asc' : 'desc',
   };
