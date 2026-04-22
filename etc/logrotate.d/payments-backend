@@ -1,0 +1,39 @@
+# =============================================================================
+# Logrotate configuration for Payments Backend (systemd journal)
+# =============================================================================
+# Installation:
+#   sudo cp etc/logrotate.d/payments-backend /etc/logrotate.d/payments-backend
+#   sudo chmod 644 /etc/logrotate.d/payments-backend
+#
+# Test:
+#   sudo logrotate -d /etc/logrotate.d/payments-backend
+#
+# Force rotation:
+#   sudo logrotate -f /etc/logrotate.d/payments-backend
+# =============================================================================
+
+/var/log/journal/*/system.journal {
+    rotate 7
+    daily
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
+
+# =============================================================================
+# Alternative: Application-specific log files (if not using journal)
+# =============================================================================
+# /srv/app/logs/*.log {
+#     daily
+#     rotate 14
+#     compress
+#     delaycompress
+#     missingok
+#     notifempty
+#     create 0640 appuser appuser
+#     sharedscripts
+#     postrotate
+#         systemctl reload backend.service > /dev/null 2>&1 || true
+#     endscript
+# }

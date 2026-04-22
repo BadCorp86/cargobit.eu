@@ -2,12 +2,11 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ include "payments-service.fullname" . }}-scheduler
+  name: {{ include "payments.name" . }}-scheduler
   labels:
-    {{- include "payments-service.labels" . | nindent 4 }}
-    app.kubernetes.io/component: scheduler
+    app: {{ include "payments.name" . }}-scheduler
 spec:
-  schedule: {{ .Values.cron.schedule | quote }}
+  schedule: "{{ .Values.cron.schedule }}"
   concurrencyPolicy: {{ .Values.cron.concurrencyPolicy }}
   successfulJobsHistoryLimit: {{ .Values.cron.successfulJobsHistoryLimit }}
   failedJobsHistoryLimit: {{ .Values.cron.failedJobsHistoryLimit }}
@@ -16,32 +15,32 @@ spec:
       template:
         metadata:
           labels:
-            {{- include "payments-service.selectorLabels" . | nindent 12 }}
-            app.kubernetes.io/component: scheduler
+            app: {{ include "payments.name" . }}-scheduler
         spec:
-          {{- with .Values.imagePullSecrets }}
-          imagePullSecrets:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          serviceAccountName: {{ include "payments-service.serviceAccountName" . }}
+          serviceAccountName: {{ .Values.serviceAccount.name }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          restartPolicy: OnFailure
+            runAsNonRoot: true
+            runAsUser: 1001
           containers:
             - name: scheduler
-              securityContext:
-                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
-              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
               imagePullPolicy: {{ .Values.image.pullPolicy }}
-              command: {{ .Values.cron.command | toJson }}
-              env:
-                {{- range $key, $value := .Values.env.regular }}
-                - name: {{ $key }}
-                  value: {{ $value | quote }}
-                {{- end }}
+              command: ["node", "dist/src/cron/payout-scheduler.js"]
               envFrom:
                 - secretRef:
                     name: {{ .Values.env.existingSecret }}
+              env:
+                - name: NODE_ENV
+                  value: "production"
               resources:
-                {{- toYaml .Values.cron.resources | nindent 16 }}
+                requests:
+                  cpu: "100m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+          restartPolicy: OnFailure
 {{- end }}

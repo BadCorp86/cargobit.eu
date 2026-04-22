@@ -1123,6 +1123,80 @@ helm upgrade payments-service ./helm/payments-service -n staging \
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
 
 ---
+Task ID: complete-deployment-artifacts
+Agent: Main Agent
+Task: Vollständige Deployment-Artefakte - SealedSecret, Systemd, Logrotate, Helm Charts
+
+## Work Log:
+
+### 1. SealedSecret Template mit Anleitung
+- Datei: `/kubernetes/sealedsecret-payments-template.yaml` - NEU
+- Schritt-für-Schritt Anleitung für kubeseal
+- CI/CD Integration Beispiel (GitHub Actions)
+- Alternativen für Produktion (ExternalSecrets, Vault)
+
+### 2. Systemd Backend Service
+- Datei: `/systemd/backend.service` - Aktualisiert
+- Security Hardening (NoNewPrivileges, PrivateTmp, ProtectSystem)
+- Deployment Schritte dokumentiert
+- Troubleshooting Guide
+
+### 3. Start-Backend-Safe Script
+- Datei: `/scripts/start-backend-safe.sh` - Aktualisiert
+- trim() Funktion für Sanitization
+- Redis Health Check mit Retry-Loop
+- Farbiges Logging
+
+### 4. Logrotate Konfiguration
+- Datei: `/etc/logrotate.d/payments-backend` - NEU
+- Journal Log Rotation (7 Tage, daily, compress)
+- Alternative für Application Logs
+
+### 5. Helm Chart Templates (Vollständig)
+- Datei: `/helm/payments-service/templates/deployment.yaml` - Aktualisiert
+- Datei: `/helm/payments-service/templates/worker-deployment.yaml` - Aktualisiert
+- Datei: `/helm/payments-service/templates/cronjob.yaml` - Aktualisiert
+- Datei: `/helm/payments-service/templates/serviceaccount.yaml` - Aktualisiert
+- Datei: `/helm/payments-service/templates/_helpers.tpl` - Aktualisiert
+- Datei: `/helm/payments-service/values.yaml` - Aktualisiert
+- Security Context für alle Container
+- Prometheus Annotations
+
+## Stage Summary:
+
+### Erstellte/Aktualisierte Dateien:
+1. `/kubernetes/sealedsecret-payments-template.yaml` - SealedSecret mit Anleitung
+2. `/systemd/backend.service` - Systemd mit Hardening
+3. `/scripts/start-backend-safe.sh` - Validierungs-Skript
+4. `/etc/logrotate.d/payments-backend` - Logrotation
+5. `/helm/payments-service/templates/deployment.yaml` - Backend Deployment
+6. `/helm/payments-service/templates/worker-deployment.yaml` - Worker Deployment
+7. `/helm/payments-service/templates/cronjob.yaml` - CronJob Scheduler
+8. `/helm/payments-service/templates/serviceaccount.yaml` - ServiceAccount
+9. `/helm/payments-service/templates/_helpers.tpl` - Helper Templates
+10. `/helm/payments-service/values.yaml` - Values Konfiguration
+
+### Deployment Befehle:
+```bash
+# SealedSecret erstellen
+kubeseal --controller-namespace kube-system --format yaml < secret.yaml > sealedsecret.yaml
+kubectl apply -f sealedsecret.yaml -n staging
+
+# Helm Deploy
+helm upgrade --install payments ./helm/payments-service -n staging --create-namespace
+
+# Systemd Deploy
+chmod 700 /srv/app/scripts/start-backend-safe.sh
+chmod 600 /srv/app/.env
+sudo systemctl enable --now backend.service
+
+# Logrotate installieren
+sudo cp etc/logrotate.d/payments-backend /etc/logrotate.d/
+```
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
 Task ID: production-building-blocks
 Agent: Main Agent
 Task: Vier produktreife Bausteine implementieren (Schema-Validation, API-Gateway, Helm-Charts, Observability)
