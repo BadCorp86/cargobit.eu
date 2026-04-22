@@ -1050,6 +1050,79 @@ sudo systemctl daemon-reload && sudo systemctl enable --now backend.service
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
 
 ---
+Task ID: secure-deployment-configs
+Agent: Main Agent
+Task: SealedSecrets, Systemd Sanitization Script, Helm Chart für Payments Service
+
+## Work Log:
+
+### 1. SealedSecrets Manifest Template
+- Datei: `/kubernetes/payments-sealedsecret.yaml` - NEU
+- Template für bitnami-labs/sealed-secrets
+- Workflow dokumentiert: kubeseal Befehle, Verifikation
+
+### 2. Systemd Backend Service mit Environment Sanitization
+- Datei: `/systemd/backend-safe.service` - NEU
+- Security Hardening: NoNewPrivileges, PrivateTmp, ProtectSystem
+- Validierungsskript für sichere Environment-Ladung
+
+### 3. Start-Backend-Safe Script
+- Datei: `/scripts/start-backend-safe.sh` - NEU
+- Validierung aller REQUIRED_VARS
+- Sanitization (Whitespace, Newlines, Carriage Returns)
+- Format-Validierung (Stripe Key, Database URL, Redis Port)
+- Redis Connectivity Check
+- Farbiges Logging
+
+### 4. Helm Chart: Payments Service
+- Verzeichnis: `/helm/payments-service/` - NEU
+- Chart.yaml, values.yaml, _helpers.tpl
+- Templates: deployment-backend, deployment-worker, cronjob
+- Templates: service, hpa, serviceaccount, rbac, pdb
+- Konfiguration für Backend, Worker, Scheduler (CronJob)
+- HPA für Worker Auto-Scaling
+- Pod Disruption Budget
+- Security Context (non-root, readOnlyRootFilesystem)
+- ServiceMonitor für Prometheus
+
+## Stage Summary:
+
+### Erstellte Dateien:
+1. `/kubernetes/payments-sealedsecret.yaml` - SealedSecret Template
+2. `/systemd/backend-safe.service` - Systemd mit Sanitization
+3. `/scripts/start-backend-safe.sh` - Validierungs-Skript
+4. `/helm/payments-service/Chart.yaml` - Helm Chart Metadata
+5. `/helm/payments-service/values.yaml` - Konfiguration
+6. `/helm/payments-service/templates/_helpers.tpl` - Helper Templates
+7. `/helm/payments-service/templates/deployment-backend.yaml`
+8. `/helm/payments-service/templates/deployment-worker.yaml`
+9. `/helm/payments-service/templates/cronjob.yaml`
+10. `/helm/payments-service/templates/service.yaml`
+11. `/helm/payments-service/templates/hpa.yaml`
+12. `/helm/payments-service/templates/serviceaccount.yaml`
+13. `/helm/payments-service/templates/rbac.yaml`
+14. `/helm/payments-service/templates/pdb.yaml`
+
+### Helm Deployment Befehle:
+```bash
+# Template Preview
+helm template payments-service ./helm/payments-service -n staging
+
+# Dry-Run
+helm install payments-service ./helm/payments-service -n staging --dry-run
+
+# Deploy
+helm upgrade --install payments-service ./helm/payments-service -n staging
+
+# Upgrade mit neuen Values
+helm upgrade payments-service ./helm/payments-service -n staging \
+  --set image.tag=v1.2.3 \
+  --set worker.replicas=5
+```
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
 Task ID: production-building-blocks
 Agent: Main Agent
 Task: Vier produktreife Bausteine implementieren (Schema-Validation, API-Gateway, Helm-Charts, Observability)

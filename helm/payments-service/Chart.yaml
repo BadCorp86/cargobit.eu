@@ -1,0 +1,25 @@
+apiVersion: v2
+name: payments-service
+description: CargoBit Payments Service - Backend, Worker and Scheduler
+
+type: application
+
+# Chart version
+version: 1.0.0
+
+# Application version
+appVersion: "1.0.0"
+
+keywords:
+  - payments
+  - stripe
+  - wallet
+  - payout
+
+maintainers:
+  - name: CargoBit Team
+    email: dev@cargobit.com
+
+home: https://cargobit.com
+sources:
+  - https://github.com/cargobit/payments-service

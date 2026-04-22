@@ -1,0 +1,69 @@
+[Unit]
+Description=Payments Backend Service (with Environment Sanitization)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=appuser
+WorkingDirectory=/srv/app
+# EnvironmentFile lädt nur KEY=VALUE Zeilen; sensible Werte sollten per file mit 600 Rechten liegen
+EnvironmentFile=/srv/app/.env
+# Optional: zusätzliche sichere overrides
+Environment=NODE_ENV=production
+# Startskript prüft .env auf erforderliche Variablen und sanitized Werte
+ExecStart=/srv/app/scripts/start-backend-safe.sh
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+# Beschränke Ressourcen falls gewünscht
+# MemoryMax=1G
+# CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/app/logs
+
+[Install]
+WantedBy=multi-user.target
+
+# ==============================================================================
+# Deployment Schritte
+# ==============================================================================
+#
+# 1. Kopiere gebaute Artefakte nach /srv/app:
+#    sudo mkdir -p /srv/app
+#    sudo cp -r dist/ package.json package-lock.json migrations/ scripts/ /srv/app/
+#
+# 2. Erstelle .env mit Produktionsvariablen:
+#    sudo nano /srv/app/.env
+#    # Füge alle REQUIRED_VARS ein
+#
+# 3. Setze Dateirechte:
+#    sudo chown -R appuser:appuser /srv/app
+#    sudo chmod 600 /srv/app/.env
+#    sudo chmod 700 /srv/app/scripts/start-backend-safe.sh
+#
+# 4. Installiere Service:
+#    sudo cp systemd/backend-safe.service /etc/systemd/system/backend.service
+#    sudo systemctl daemon-reload
+#    sudo systemctl enable --now backend.service
+#
+# 5. Logs:
+#    sudo journalctl -u backend.service -f
+#
+# ==============================================================================
+# Sicherheits-Hinweise
+# ==============================================================================
+#
+# - .env nur für Staging; in Produktion Secrets aus Secret Manager verwenden
+# - Setze Dateirechte: chmod 600 /srv/app/.env
+# - Systemd Unit und Skript sollten nur minimalen Berechtigungen besitzen
+# - Nutze systemd-sysusers für appuser Erstellung

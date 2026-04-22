@@ -1,0 +1,231 @@
+# =============================================================================
+# CargoBit Payments Service Helm Values
+# =============================================================================
+# Zentrale Konfiguration für Backend, Worker und CronJob
+# Secrets werden als Kubernetes Secret referenziert (payments-secrets)
+# =============================================================================
+
+replicaCount: 2
+
+image:
+  repository: registry.example.com/payments-backend
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+workerImage:
+  repository: registry.example.com/payments-worker
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+resources:
+  backend:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+  worker:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+# =============================================================================
+# Environment Configuration
+# =============================================================================
+env:
+  # Referenz auf Kubernetes Secret
+  existingSecret: payments-secrets
+  envFromSecretKeys:
+    - STRIPE_SECRET_KEY
+    - STRIPE_WEBHOOK_SECRET
+    - DATABASE_URL
+    - REDIS_HOST
+    - REDIS_PORT
+    - DEFAULT_STRIPE_ACCOUNT_ID
+    - HOSTNAME
+    - ADMIN_JWT
+  # Additional non-sensitive environment variables
+  regular:
+    NODE_ENV: "production"
+    LOG_LEVEL: "info"
+
+# =============================================================================
+# Health Checks
+# =============================================================================
+readinessProbe:
+  path: /api/health
+  port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+livenessProbe:
+  path: /api/health
+  port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# =============================================================================
+# Worker Configuration
+# =============================================================================
+worker:
+  enabled: true
+  replicas: 2
+  command: ["node", "dist/src/main.worker.js"]
+  # Worker-specific resources (overrides resources.worker)
+  resources: {}
+  # Horizontal Pod Autoscaler for Worker
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+# =============================================================================
+# CronJob Configuration (Scheduler)
+# =============================================================================
+cron:
+  enabled: true
+  schedule: "0 0 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  # Cron command
+  command: ["node", "dist/src/scripts/run-scheduled-tasks.js"]
+  # Cron resources
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+# =============================================================================
+# RBAC & Service Account
+# =============================================================================
+rbac:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["secrets"]
+      verbs: ["get"]
+    - apiGroups: [""]
+      resources: ["configmaps"]
+      verbs: ["get", "list"]
+
+serviceAccount:
+  create: true
+  name: payments-service-account
+  annotations: {}
+
+# =============================================================================
+# Ingress Configuration
+# =============================================================================
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: payments.staging.example.com
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+  #  - secretName: payments-tls
+  #    hosts:
+  #      - payments.staging.example.com
+
+# =============================================================================
+# Node Affinity & Tolerations
+# =============================================================================
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+  # nodeAffinity:
+  #   requiredDuringSchedulingIgnoredDuringExecution:
+  #     nodeSelectorTerms:
+  #       - matchExpressions:
+  #           - key: node-role.kubernetes.io/app
+  #             operator: In
+  #             values: ["true"]
+
+# =============================================================================
+# Pod Disruption Budget
+# =============================================================================
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# =============================================================================
+# Security Context
+# =============================================================================
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# =============================================================================
+# Monitoring
+# =============================================================================
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    path: /metrics
+    labels:
+      release: prometheus
+
+# =============================================================================
+# Deployment Notes
+# =============================================================================
+# 1. Ersetze registry.example.com und Tags mit deinen Werten
+# 2. Helm Chart Templates sollten envFrom mit existingSecret verwenden:
+#
+#    envFrom:
+#      - secretRef:
+#          name: {{ .Values.env.existingSecret }}
+#
+# 3. Für Produktionsumgebungen nutze ExternalSecrets oder Vault:
+#
+#    apiVersion: external-secrets.io/v1beta1
+#    kind: ExternalSecret
+#    metadata:
+#      name: payments-secrets
+#    spec:
+#      refreshInterval: 1h
+#      secretStoreRef:
+#        name: vault-backend
+#        kind: ClusterSecretStore
+#      target:
+#        name: payments-secrets
+#      data:
+#        - secretKey: STRIPE_SECRET_KEY
+#          remoteRef:
+#            key: payments/stripe
+#            property: secret_key
