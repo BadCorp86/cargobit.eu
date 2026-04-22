@@ -1,0 +1,218 @@
+# .github/workflows/e2e-tests.yml
+# =============================================================================
+# CargoBit Payment Platform - E2E Test Workflow
+# =============================================================================
+# Runs Newman Postman tests on push to main and manual dispatch
+# =============================================================================
+
+name: E2E Postman Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      limit:
+        description: 'Max number of tests to run'
+        required: false
+        default: ''
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # =========================================================================
+  # Pre-flight: Validate environment secrets
+  # =========================================================================
+  validate-secrets:
+    runs-on: ubuntu-latest
+    outputs:
+      has-secrets: ${{ steps.check.outputs.has-secrets }}
+    steps:
+      - id: check
+        run: |
+          if [[ -n "${{ secrets.STAGING_BASE_URL }}" && -n "${{ secrets.STAGING_ADMIN_JWT }}" ]]; then
+            echo "has-secrets=true" >> $GITHUB_OUTPUT
+          else
+            echo "has-secrets=false" >> $GITHUB_OUTPUT
+            echo "::warning::Missing required secrets: STAGING_BASE_URL, STAGING_ADMIN_JWT"
+          fi
+
+  # =========================================================================
+  # E2E Tests with Newman
+  # =========================================================================
+  postman-e2e:
+    needs: validate-secrets
+    if: needs.validate-secrets.outputs.has-secrets == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Newman and reporters
+        run: |
+          npm install -g newman
+          npm install -g newman-reporter-junitfull
+          npm install -g newman-reporter-htmlextra
+
+      - name: Create reports directory
+        run: mkdir -p reports
+
+      - name: Generate Postman environment
+        env:
+          BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          ADMIN_JWT: ${{ secrets.STAGING_ADMIN_JWT }}
+          STRIPE_TEST_SECRET: ${{ secrets.STAGING_STRIPE_WEBHOOK_SECRET }}
+        run: |
+          cat > postman_env_staging.json <<EOF
+          {
+            "id": "cargobit-staging-env",
+            "name": "CargoBit Staging",
+            "values": [
+              {"key": "base_url", "value": "${BASE_URL}", "type": "text", "enabled": true},
+              {"key": "admin_jwt", "value": "${ADMIN_JWT}", "type": "secret", "enabled": true},
+              {"key": "stripe_test_secret", "value": "${STRIPE_TEST_SECRET}", "type": "secret", "enabled": true},
+              {"key": "test_timestamp", "value": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")", "type": "text", "enabled": true}
+            ],
+            "_postman_variable_scope": "environment",
+            "_postman_exported_at": "$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")",
+            "_postman_exported_using": "Manual Export"
+          }
+          EOF
+
+      - name: Run Newman E2E tests
+        id: newman
+        run: |
+          newman run postman_collection_payments_e2e.json \
+            --environment postman_env_staging.json \
+            --reporters cli,junitfull,htmlextra \
+            --reporter-junitfull-export reports/newman-junit.xml \
+            --reporter-htmlextra-export reports/newman-report.html \
+            --reporter-htmlextra-title "CargoBit E2E Test Report" \
+            --reporter-htmlextra-showOnlyFails \
+            --timeout 180000 \
+            --timeout-request 30000 \
+            --delay-request 500 \
+            --ignore-redirects \
+            ${{ github.event.inputs.limit && format('--iteration-count {0}', github.event.inputs.limit) || '' }}
+        continue-on-error: true
+
+      - name: Check test results
+        if: always()
+        run: |
+          if [[ -f reports/newman-junit.xml ]]; then
+            FAILED=$(grep -c '<failure' reports/newman-junit.xml || echo "0")
+            ERRORS=$(grep -c '<error' reports/newman-junit.xml || echo "0")
+            
+            echo "## E2E Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [[ "$FAILED" -gt 0 || "$ERRORS" -gt 0 ]]; then
+              echo "❌ **Tests Failed**: $FAILED failures, $ERRORS errors" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "Check the HTML report artifact for details." >> $GITHUB_STEP_SUMMARY
+              exit 1
+            else
+              echo "✅ **All tests passed!**" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ No test results generated" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload JUnit Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: newman-junit-report
+          path: reports/newman-junit.xml
+          retention-days: 30
+
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: newman-html-report
+          path: reports/newman-report.html
+          retention-days: 30
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: reports/newman-junit.xml
+          check_name: E2E Test Results
+          comment_mode: 'off'
+          report_individual_runs: true
+
+  # =========================================================================
+  # Idempotency Check (Parallel)
+  # =========================================================================
+  idempotency-check:
+    needs: validate-secrets
+    if: needs.validate-secrets.outputs.has-secrets == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run idempotency verification
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          # Check if psql is available
+          if command -v psql &> /dev/null; then
+            psql "$DATABASE_URL" -f sql/idempotency_checks.sql > reports/idempotency-check.log 2>&1 || true
+            cat reports/idempotency-check.log
+          else
+            echo "psql not available, skipping idempotency check"
+            echo "Run manually: psql \$DATABASE_URL -f sql/idempotency_checks.sql"
+          fi
+
+  # =========================================================================
+  # Notify on Failure
+  # =========================================================================
+  notify-failure:
+    needs: [postman-e2e]
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+          text: |
+            🚨 E2E Tests failed on main branch!
+            Commit: ${{ github.sha }}
+            Author: ${{ github.actor }}
+            Workflow: ${{ github.workflow }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true

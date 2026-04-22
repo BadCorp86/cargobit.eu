@@ -2685,3 +2685,130 @@ Task: Postman Collection und zusätzliche Tests für Task 2.2-2.3 implementieren
 | 9) Duplicate Webhook Replay | payment-edge-cases.test.ts |
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: payment-payout-integration
+Agent: Main Agent
+Task: Integration und Betriebsaufgaben für Payment/Payout System
+
+## Work Log:
+
+### 1. Migration SQL erstellt
+- Datei: `/migrations/20260421_create_payouts_and_events.sql` - NEU
+- Tabellen:
+  - `payouts` - Haupttabelle für Auszahlungen
+  - `payout_events` - Audit Trail für Payouts
+  - `payout_attempts` - Retry Tracking
+  - `wallet_transactions` - Erweiterte Wallet-Transaktionen
+  - `audit_events` - Generelles Audit-Log
+  - `stripe_events` - Webhook Event Tracking
+  - `leader_locks` - Leader Election für Cron Jobs
+- Funktionen:
+  - `acquire_leader_lock()` - Leader Lock erwerben
+  - `release_leader_lock()` - Leader Lock freigeben
+- Views:
+  - `payout_summary` - Payout Übersicht
+  - `daily_payout_stats` - Tägliche Statistiken
+
+### 2. Worker Startup Scripts
+- Datei: `/scripts/start-payout-worker.sh` - NEU
+  - Umgebungsvariablen laden
+  - Redis-Verbindung prüfen
+  - TypeScript kompilieren
+  - Worker starten mit PID-File
+  - Logging in Datei
+- Datei: `/scripts/stop-payout-worker.sh` - NEU
+  - Graceful Shutdown (SIGTERM)
+  - Force Kill nach 30s Timeout
+  - PID-File Cleanup
+
+### 3. Systemd Unit & Kubernetes Deployment
+- Datei: `/systemd/cargobit-payout-worker.service` - NEU
+  - Systemd Service für Production
+  - Restart Policy, Resource Limits
+  - Security Hardening
+- Datei: `/kubernetes/payout-worker-deployment.yaml` - NEU
+  - Kubernetes Deployment (1 Replica)
+  - ConfigMap, Secrets
+  - HPA (Horizontal Pod Autoscaler)
+  - PDB (Pod Disruption Budget)
+
+### 4. Payout Webhook Service
+- Datei: `/src/services/payout-webhook.service.ts` - NEU
+- Handlers implementiert:
+  - `handleTransferPaid()` - Stripe transfer.paid Event
+  - `handleTransferFailed()` - Stripe transfer.failed Event
+  - `handlePayoutPaid()` - Stripe payout.paid Event
+- Integration in `/src/services/stripe-webhook.service.ts`:
+  - Payout Event Types routing
+  - Idempotency Protection
+
+### 5. GitHub Actions E2E Workflow
+- Datei: `/.github/workflows/e2e-tests.yml` - NEU
+- Features:
+  - Newman E2E Tests
+  - Idempotency Check Job
+  - JUnit Report Upload
+  - HTML Report Upload
+  - Slack Notification bei Failure
+
+### 6. Newman Run Script
+- Datei: `/ci/newman-run.sh` - NEU
+- Newman mit Reportern:
+  - JUnit Full
+  - HTML Extra
+  - CLI
+
+### 7. Operations Runbook
+- Datei: `/docs/payment-operations-runbook.md` - NEU
+- Inhalt:
+  - Quick Health Check
+  - Worker Operations (Start/Stop/Restart)
+  - Webhook Processing & Reprocessing
+  - Idempotency & Replay Tests
+  - Wallet & Reconciliation
+  - Database Operations
+  - Monitoring & Alerts
+  - Incident Response Workflow
+  - Wartungsfenster
+  - Kontakte & Eskalation
+
+## Stage Summary:
+
+### Neue Dateien:
+1. `/migrations/20260421_create_payouts_and_events.sql` - DB Migration
+2. `/scripts/start-payout-worker.sh` - Worker Start-Script
+3. `/scripts/stop-payout-worker.sh` - Worker Stop-Script
+4. `/systemd/cargobit-payout-worker.service` - Systemd Unit
+5. `/kubernetes/payout-worker-deployment.yaml` - K8s Deployment
+6. `/src/services/payout-webhook.service.ts` - Webhook Handler
+7. `/.github/workflows/e2e-tests.yml` - CI Workflow
+8. `/ci/newman-run.sh` - Newman Runner
+9. `/docs/payment-operations-runbook.md` - Runbook
+
+### Akzeptanzkriterien erfüllt:
+- [x] **DB**: Migration SQL erstellt mit allen Tabellen und Indizes
+- [x] **API**: Payout Endpoints bereits implementiert mit RBAC
+- [x] **Worker**: BullMQ Worker mit Start/Stop Scripts
+- [x] **Webhook**: transfer.paid/payout.paid Handler implementiert
+- [x] **Idempotency**: Stripe Event Tracking vorhanden
+- [x] **Tests**: Newman E2E Workflow konfiguriert
+- [x] **Monitoring**: Prometheus/Grafana Integration vorhanden
+- [x] **Runbook**: Vollständiges Operations-Handbuch
+
+### Deployment Befehle:
+```bash
+# Migration ausführen
+psql "$DATABASE_URL" -f migrations/20260421_create_payouts_and_events.sql
+
+# Worker starten (Systemd)
+sudo systemctl start cargobit-payout-worker
+
+# Worker starten (Kubernetes)
+kubectl apply -f kubernetes/payout-worker-deployment.yaml
+
+# E2E Tests ausführen
+./ci/newman-run.sh
+```
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT

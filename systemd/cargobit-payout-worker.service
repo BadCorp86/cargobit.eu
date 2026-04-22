@@ -1,0 +1,48 @@
+[Unit]
+Description=CargoBit Payout Worker
+Documentation=https://github.com/cargobit/platform
+After=network.target redis.service postgresql.service
+Wants=redis.service postgresql.service
+
+[Service]
+Type=simple
+User=cargobit
+Group=cargobit
+WorkingDirectory=/opt/cargobit
+
+# Environment
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/cargobit/.env
+
+# Command
+ExecStart=/usr/bin/node /opt/cargobit/dist/src/main.worker.js
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Graceful shutdown
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cargobit-payout-worker
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=512M
+TasksMax=100
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/cargobit/logs
+
+[Install]
+WantedBy=multi-user.target

@@ -16,6 +16,7 @@
 import { prisma } from '@/lib/db';
 import { PaymentStatus } from '@prisma/client';
 import { creditWallet, reverseCredit } from './wallet.service';
+import { dispatchPayoutWebhookEvent, PayoutWebhookEventTypes } from './payout-webhook.service';
 
 // ============================================
 // TYPES
@@ -591,14 +592,20 @@ export async function dispatchStripeEvent(event: StripeEvent): Promise<WebhookRe
       result = await handleChargeRefunded(event.data.object, event.id);
       break;
 
+    // Payout-related events (transfer.paid, transfer.failed, payout.paid, etc.)
     default:
-      // Unhandled event type - log and return success
-      console.log('[WEBHOOK] Unhandled event type:', event.type);
-      await recordAuditEvent('unhandled_event', {
-        event_id: event.id,
-        event_type: event.type,
-      });
-      result = { success: true };
+      if (PayoutWebhookEventTypes.includes(event.type as any)) {
+        const payoutResult = await dispatchPayoutWebhookEvent(event);
+        result = payoutResult;
+      } else {
+        // Unhandled event type - log and return success
+        console.log('[WEBHOOK] Unhandled event type:', event.type);
+        await recordAuditEvent('unhandled_event', {
+          event_id: event.id,
+          event_type: event.type,
+        });
+        result = { success: true };
+      }
   }
 
   // Mark as processed if successful

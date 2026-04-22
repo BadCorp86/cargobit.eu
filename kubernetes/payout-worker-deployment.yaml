@@ -1,0 +1,164 @@
+# =============================================================================
+# CargoBit Payout Worker - Kubernetes Deployment
+# =============================================================================
+# Deploy with: kubectl apply -f payout-worker-deployment.yaml
+# =============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payout-worker-config
+  namespace: cargobit
+data:
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  NODE_ENV: "production"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payout-worker
+  namespace: cargobit
+  labels:
+    app: payout-worker
+    component: worker
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payout-worker
+  template:
+    metadata:
+      labels:
+        app: payout-worker
+        component: worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      serviceAccountName: cargobit-worker
+      
+      # Anti-affinity to spread across nodes
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: payout-worker
+                topologyKey: kubernetes.io/hostname
+      
+      containers:
+        - name: payout-worker
+          image: cargobit/payout-worker:latest
+          imagePullPolicy: Always
+          
+          # Environment from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: payout-worker-config
+          
+          # Secrets
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cargobit-secrets
+                  key: database-url
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cargobit-secrets
+                  key: stripe-secret-key
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cargobit-secrets
+                  key: redis-password
+                  optional: true
+          
+          # Resource limits
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          
+          # Health check
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pgrep -f 'node.*main.worker' || exit 1"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          
+          # Graceful shutdown
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - "sleep 10"
+      
+      # Graceful termination period
+      terminationGracePeriodSeconds: 30
+      
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payout-worker-pdb
+  namespace: cargobit
+spec:
+  minAvailable: 0  # Allow voluntary disruptions during maintenance
+  selector:
+    matchLabels:
+      app: payout-worker
+---
+# Horizontal Pod Autoscaler (optional - for scaling based on queue depth)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payout-worker-hpa
+  namespace: cargobit
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payout-worker
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    # Scale based on CPU
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    # Scale based on custom metric (BullMQ queue depth)
+    # Requires Prometheus Adapter
+    - type: External
+      external:
+        metric:
+          name: bullmq_queue_waiting
+          selector:
+            matchLabels:
+              queue: payouts
+        target:
+          type: AverageValue
+          averageValue: "100"
