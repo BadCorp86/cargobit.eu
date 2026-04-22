@@ -994,6 +994,62 @@ Ads Partner (Spedition Schmidt):
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
 
 ---
+Task ID: deployment-configs
+Agent: Main Agent
+Task: Kubernetes Secrets, Systemd Backend Service, Dockerfiles für Backend und Worker
+
+## Work Log:
+
+### 1. Kubernetes Secret Manifest Template
+- Datei: `/kubernetes/payments-secrets.yaml` - NEU
+- Secrets für Stripe, Database, Redis, App Config
+- Hinweise für Production (SealedSecrets, External Secrets Operator, Vault)
+
+### 2. Systemd Backend Service
+- Datei: `/systemd/backend.service` - NEU
+- Full Service Unit für Payments Backend
+- Environment File Support, Resource Limits, Journal Logging
+- Deployment Steps dokumentiert
+
+### 3. Dockerfile Backend (Multi-Stage)
+- Datei: `/Dockerfile.backend` - NEU
+- Builder Stage: npm ci, npm run build
+- Runtime Stage: Production deps only, non-root user
+- Health Check via /api/health endpoint
+- Build & Push Commands
+
+### 4. Dockerfile Worker (Multi-Stage)
+- Datei: `/Dockerfile.worker` - NEU
+- Similar structure to Backend
+- Health Check via Redis connection
+- Scaling commands documented
+
+## Stage Summary:
+
+### Erstellte Dateien:
+1. `/kubernetes/payments-secrets.yaml` - K8s Secrets Template
+2. `/systemd/backend.service` - Systemd Unit
+3. `/Dockerfile.backend` - Backend Container
+4. `/Dockerfile.worker` - Worker Container
+
+### Deployment Befehle:
+```bash
+# Backend
+docker build -f Dockerfile.backend -t registry.example.com/payments-backend:latest .
+docker push registry.example.com/payments-backend:latest
+
+# Worker
+docker build -f Dockerfile.worker -t registry.example.com/payments-worker:latest .
+docker push registry.example.com/payments-worker:latest
+
+# Systemd
+sudo cp systemd/backend.service /etc/systemd/system/backend.service
+sudo systemctl daemon-reload && sudo systemctl enable --now backend.service
+```
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
 Task ID: production-building-blocks
 Agent: Main Agent
 Task: Vier produktreife Bausteine implementieren (Schema-Validation, API-Gateway, Helm-Charts, Observability)

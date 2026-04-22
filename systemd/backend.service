@@ -1,0 +1,32 @@
+[Unit]
+Description=Payments Backend Service
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=appuser
+WorkingDirectory=/srv/app
+EnvironmentFile=/srv/app/.env
+# Optional: set NODE_ENV and other critical envs here if not in .env
+# Environment=NODE_ENV=production
+ExecStart=/usr/bin/node dist/src/main.js
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+# Optional: set resource limits
+# MemoryMax=1G
+# CPUQuota=50%
+
+# Logging to journal; consider forwarding to file or log aggregator
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
+# Deployment Steps:
+# 1. Copy built artifacts to /srv/app and create .env with production variables
+# 2. sudo cp systemd/backend.service /etc/systemd/system/backend.service
+# 3. sudo systemctl daemon-reload && sudo systemctl enable --now backend.service
+# 4. Logs: sudo journalctl -u backend.service -f

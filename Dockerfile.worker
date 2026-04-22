@@ -1,0 +1,66 @@
+# Dockerfile.worker
+# Multi-stage build for CargoBit Payout Worker Service
+
+# ==================== Builder Stage ====================
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++ bash
+
+# Copy package files first for better caching
+COPY package.json package-lock.json ./
+RUN npm ci --production=false
+
+# Copy source code and build
+COPY . .
+RUN npm run build
+
+# ==================== Runtime Stage ====================
+FROM node:18-alpine AS runtime
+
+WORKDIR /app
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Copy only production dependencies
+COPY package.json package-lock.json ./
+RUN npm ci --production=true && npm cache clean --force
+
+# Copy built files from builder
+COPY --from=builder /app/dist ./dist
+
+# Copy scripts for worker management
+COPY --from=builder /app/scripts ./scripts
+
+# Set ownership to non-root user
+RUN chown -R nodejs:nodejs /app
+
+# Switch to non-root user
+USER nodejs
+
+ENV NODE_ENV=production
+
+# Worker doesn't expose HTTP port, uses BullMQ for job processing
+# Health check via Redis connection
+HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
+  CMD node -e "const Redis = require('ioredis'); const r = new Redis(process.env.REDIS_URL || 'redis://localhost:6379'); r.ping().then(() => process.exit(0)).catch(() => process.exit(1))"
+
+CMD ["node", "dist/src/main.worker.js"]
+
+# ==================== Build & Push Commands ====================
+# docker build -f Dockerfile.worker -t registry.example.com/payments-worker:latest .
+# docker build -f Dockerfile.worker -t registry.example.com/payments-worker:v1.0.0 .
+# docker push registry.example.com/payments-worker:latest
+# docker push registry.example.com/payments-worker:v1.0.0
+
+# ==================== Kubernetes Deployment ====================
+# kubectl apply -f kubernetes/payout-worker-deployment.yaml
+# kubectl rollout status deployment/payout-worker -n staging
+
+# ==================== Scaling ====================
+# kubectl scale deployment payout-worker --replicas=3 -n staging
+# Or use HPA (Horizontal Pod Autoscaler) defined in the deployment yaml
