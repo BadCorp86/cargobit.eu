@@ -1,0 +1,151 @@
+# =============================================================================
+# Docker Build & Push Workflow (Backend + Worker)
+# =============================================================================
+# Zweck: Baue und pushe Backend- und Worker-Images in dein Registry.
+#
+# Erforderliche GitHub Secrets:
+# - DOCKER_REGISTRY: z.B. registry.example.com
+# - DOCKER_USERNAME: Registry Benutzer
+# - DOCKER_PASSWORD: Registry Passwort/Token
+# =============================================================================
+
+name: Build and Push Images
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'prisma/**'
+      - 'package*.json'
+      - 'Dockerfile.backend'
+      - 'Dockerfile.worker'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Custom image tag (optional)'
+        required: false
+        default: ''
+
+env:
+  REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+  BACKEND_IMAGE: ${{ secrets.DOCKER_REGISTRY }}/payments-backend
+  WORKER_IMAGE: ${{ secrets.DOCKER_REGISTRY }}/payments-worker
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (for multi-arch)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Generate image tags
+        id: meta
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            CUSTOM_TAG="${{ github.event.inputs.tag }}"
+          else
+            CUSTOM_TAG="${{ github.sha }}"
+          fi
+          echo "tags=${CUSTOM_TAG}" >> $GITHUB_OUTPUT
+          echo "Building images with tag: ${CUSTOM_TAG}"
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push worker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.WORKER_IMAGE }}:latest
+            ${{ env.WORKER_IMAGE }}:${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan images for vulnerabilities (optional)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tags }}
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+        continue-on-error: true
+
+      - name: Summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Backend Image" >> $GITHUB_STEP_SUMMARY
+          echo "\`${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Worker Image" >> $GITHUB_STEP_SUMMARY
+          echo "\`${{ env.WORKER_IMAGE }}:${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # Optional: Trigger Helm deployment after build
+  trigger-deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger Helm deploy workflow
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          event-type: images-built
+          client-payload: '{"image_tag": "${{ needs.build-and-push.outputs.image_tag }}"}'
+
+# =============================================================================
+# HINWEISE
+# =============================================================================
+#
+# 1. Setze DOCKER_REGISTRY z.B. auf registry.example.com
+#
+# 2. Tags: latest und Commit SHA; du kannst zusätzlich semantische Tags ergänzen
+#
+# 3. Multi-Arch: Baut für linux/amd64 und linux/arm64
+#
+# 4. Trivy Scan: Optionaler Vulnerability-Scan (non-blocking)
+#
+# 5. Cache: Nutzt GitHub Actions Cache für npm und Docker Layer

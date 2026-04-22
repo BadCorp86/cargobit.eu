@@ -1197,6 +1197,70 @@ sudo cp etc/logrotate.d/payments-backend /etc/logrotate.d/
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
 
 ---
+Task ID: github-actions-ci-cd
+Agent: Main Agent
+Task: GitHub Actions CI/CD Pipelines - SealedSecret, Docker Build, Helm Deploy
+
+## Work Log:
+
+### 1. SealedSecret Generator Workflow
+- Datei: `/.github/workflows/generate-sealedsecret.yml` - NEU
+- Generiert SealedSecret aus GitHub Secrets
+- Installiert kubeseal, erstellt sealedsecret.yaml
+- Öffnet automatisch Pull Request
+- Upload als Artifact
+
+### 2. Docker Build & Push Workflow
+- Datei: `/.github/workflows/build-and-push-images.yml` - NEU
+- Baut Backend und Worker Images
+- Multi-Arch Support (amd64, arm64)
+- Push mit Tags: latest + Commit SHA
+- Trivy Vulnerability Scan (optional)
+- GitHub Actions Cache für npm und Docker Layer
+
+### 3. Helm Deploy & Test Pipeline
+- Datei: `/.github/workflows/helm-deploy-and-test.yml` - NEU
+- Helm lint und template preview
+- Upgrade --install mit --wait
+- Helm tests und smoke verification
+- GitHub Release bei Production Deploy
+- Rollback Support
+
+### 4. Smoke Test Script
+- Datei: `/scripts/verify_smoke.sh` - NEU
+- Testet /api/health Endpoint
+- Testet /api/docs (optional)
+- Testet authentifizierte Endpoints
+- Prüft Database und Redis Connectivity
+
+## Stage Summary:
+
+### Erstellte Dateien:
+1. `/.github/workflows/generate-sealedsecret.yml` - SealedSecret CI
+2. `/.github/workflows/build-and-push-images.yml` - Docker Build CI
+3. `/.github/workflows/helm-deploy-and-test.yml` - Helm Deploy CI
+4. `/scripts/verify_smoke.sh` - Smoke Test Script
+
+### Erforderliche GitHub Secrets:
+| Secret | Beschreibung |
+|--------|--------------|
+| `KUBESEAL_CERT` | Öffentliches Zertifikat des Controllers |
+| `KUBE_CONFIG_DATA` | Base64-kodierte kubeconfig |
+| `DOCKER_REGISTRY` | z.B. registry.example.com |
+| `DOCKER_USERNAME` | Registry Benutzer |
+| `DOCKER_PASSWORD` | Registry Passwort/Token |
+| `STRIPE_SECRET_KEY` | Stripe API Key |
+| `DATABASE_URL` | PostgreSQL Connection String |
+| `ADMIN_JWT` | JWT für Smoke Tests |
+
+### Workflow Triggers:
+- **SealedSecret**: `workflow_dispatch` (manuell)
+- **Docker Build**: Push auf `main` + `workflow_dispatch`
+- **Helm Deploy**: `workflow_dispatch` + `repository_dispatch`
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
 Task ID: production-building-blocks
 Agent: Main Agent
 Task: Vier produktreife Bausteine implementieren (Schema-Validation, API-Gateway, Helm-Charts, Observability)
