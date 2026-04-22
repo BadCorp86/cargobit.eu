@@ -1261,6 +1261,70 @@ Task: GitHub Actions CI/CD Pipelines - SealedSecret, Docker Build, Helm Deploy
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
 
 ---
+Task ID: ci-rbac-and-rotation
+Agent: Main Agent
+Task: CI ServiceAccount RBAC, Secret Rotation Workflow, CargoBit-spezifische Konfiguration
+
+## Work Log:
+
+### 1. CI ServiceAccount mit namespace-scoped RBAC
+- Datei: `/kubernetes/ci-serviceaccount.yaml` - NEU
+- ServiceAccount: `ci-deployer` (namespace: staging)
+- Role: Deployments, Services, CronJobs, HPA, Ingress
+- Keine Secret-Erstellung (nur Lesen)
+- Anleitung für Kubeconfig-Erstellung
+
+### 2. Secret Rotation Workflow
+- Datei: `/.github/workflows/rotate-secrets.yml` - NEU
+- Monatliche Rotation (1. des Monats)
+- Rotiert: Stripe Keys, Admin JWT, K8s SA Token
+- Slack Benachrichtigungen
+- GitHub Secret Update automatisiert
+
+### 3. CargoBit-spezifische Values
+- Datei: `/helm/payments-service/values-cargobit.yaml` - NEU
+- Staging: 2 Replicas, debug logging, staging.cargobit.io
+- Production: 3 Replicas, production.cargobit.io, PDB, PodAntiAffinity
+- Monitoring konfiguriert
+
+### 4. Deployment Guide für CargoBit
+- Datei: `/docs/deployment-guide-cargobit.md` - NEU
+- Registry: registry.cargobit.io
+- Schritt-für-Schritt Deployment
+- Rollback und Troubleshooting
+
+## Stage Summary:
+
+### Erstellte Dateien:
+1. `/kubernetes/ci-serviceaccount.yaml` - CI RBAC
+2. `/.github/workflows/rotate-secrets.yml` - Secret Rotation
+3. `/helm/payments-service/values-cargobit.yaml` - CargoBit Values
+4. `/docs/deployment-guide-cargobit.md` - Deployment Guide
+
+### CI RBAC Berechtigungen:
+| Resource | Verbs |
+|----------|-------|
+| deployments | get, list, watch, create, update, patch, delete |
+| services | get, list, watch, create, update, patch, delete |
+| secrets | get, list (kein create!) |
+| cronjobs | get, list, watch, create, update, patch, delete |
+| ingresses | get, list, watch, create, update, patch, delete |
+| sealedsecrets | get, list, watch, create, update, patch |
+
+### Secret Rotation Schedule:
+- **Stripe Keys**: Monatlich via Stripe API
+- **Admin JWT**: Monatlich (90 Tage gültig)
+- **K8s SA Token**: Monatlich (90 Tage gültig)
+
+### CargoBit Endpoints:
+| Umgebung | URL |
+|----------|-----|
+| Staging | https://payments.staging.cargobit.io |
+| Production | https://payments.cargobit.io |
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
 Task ID: production-building-blocks
 Agent: Main Agent
 Task: Vier produktreife Bausteine implementieren (Schema-Validation, API-Gateway, Helm-Charts, Observability)

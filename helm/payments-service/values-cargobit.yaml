@@ -1,0 +1,242 @@
+# =============================================================================
+# Konfigurierte Workflows für CargoBit Payments Service
+# =============================================================================
+# Registry: registry.cargobit.io
+# Namespaces: staging, production
+# =============================================================================
+
+# values-staging.yaml - Staging Umgebung
+replicaCount: 2
+
+image:
+  repository: registry.cargobit.io/payments-backend
+  tag: "latest"
+  pullPolicy: Always
+
+workerImage:
+  repository: registry.cargobit.io/payments-worker
+  tag: "latest"
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+resources:
+  backend:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+  worker:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+env:
+  existingSecret: payments-secrets
+  regular:
+    NODE_ENV: "staging"
+    LOG_LEVEL: "debug"
+
+readinessProbe:
+  path: /api/health
+  port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+livenessProbe:
+  path: /api/health
+  port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 30
+
+worker:
+  enabled: true
+  replicas: 2
+  command: ["node", "dist/src/main.worker.js"]
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+cron:
+  enabled: true
+  schedule: "0 */6 * * *"  # Alle 6 Stunden
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+
+serviceAccount:
+  create: true
+  name: payments-service-account
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: payments.staging.cargobit.io
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls:
+    - secretName: payments-staging-tls
+      hosts:
+        - payments.staging.cargobit.io
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    path: /metrics
+    labels:
+      release: prometheus
+
+---
+# values-production.yaml - Production Umgebung
+replicaCount: 3
+
+image:
+  repository: registry.cargobit.io/payments-backend
+  tag: "stable"
+  pullPolicy: Always
+
+workerImage:
+  repository: registry.cargobit.io/payments-worker
+  tag: "stable"
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+resources:
+  backend:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "2Gi"
+  worker:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "2Gi"
+
+env:
+  existingSecret: payments-secrets-production
+  regular:
+    NODE_ENV: "production"
+    LOG_LEVEL: "info"
+
+readinessProbe:
+  path: /api/health
+  port: 3000
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+livenessProbe:
+  path: /api/health
+  port: 3000
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+worker:
+  enabled: true
+  replicas: 3
+  command: ["node", "dist/src/main.worker.js"]
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 60
+
+cron:
+  enabled: true
+  schedule: "0 0 * * *"  # Täglich um Mitternacht
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+
+serviceAccount:
+  create: true
+  name: payments-service-account
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+  hosts:
+    - host: payments.cargobit.io
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls:
+    - secretName: payments-production-tls
+      hosts:
+        - payments.cargobit.io
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector:
+  node-role.kubernetes.io/app: "true"
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - payments
+          topologyKey: kubernetes.io/hostname
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    path: /metrics
+    labels:
+      release: prometheus
