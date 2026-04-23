@@ -1,0 +1,99 @@
+{{- if .Values.reports.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "payments.fullname" . }}-report-worker
+  labels:
+    {{- include "payments.labels" . | nindent 4 }}
+    app.kubernetes.io/component: report-worker
+spec:
+  replicas: {{ .Values.reports.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "payments.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: report-worker
+  template:
+    metadata:
+      labels:
+        {{- include "payments.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: report-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: {{ include "payments.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: report-worker
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - node
+            - dist/src/reports/worker/report-worker.js
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.env.nodeEnv | default "production" }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.env.existingSecret | default (include "payments.fullname" .) }}
+                  key: database-url
+            - name: EXPORT_DIR
+              value: {{ .Values.reports.exportDir | default "/tmp/exports" }}
+            - name: POLL_INTERVAL_MS
+              value: {{ .Values.reports.pollIntervalMs | default "5000" | quote }}
+            - name: BATCH_SIZE
+              value: {{ .Values.reports.batchSize | default "10000" | quote }}
+          resources:
+            {{- toYaml .Values.reports.resources | default .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: export-storage
+              mountPath: {{ .Values.reports.exportDir | default "/tmp/exports" }}
+      volumes:
+        - name: export-storage
+          {{- if .Values.reports.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "payments.fullname" . }}-export-storage
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- if .Values.reports.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "payments.fullname" . }}-export-storage
+  labels:
+    {{- include "payments.labels" . | nindent 4 }}
+    app.kubernetes.io/component: report-worker
+spec:
+  accessModes:
+    - {{ .Values.reports.persistence.accessMode | default "ReadWriteOnce" }}
+  resources:
+    requests:
+      storage: {{ .Values.reports.persistence.size | default "10Gi" }}
+  {{- if .Values.reports.persistence.storageClass }}
+  storageClassName: {{ .Values.reports.persistence.storageClass }}
+  {{- end }}
+{{- end }}
+{{- end }}

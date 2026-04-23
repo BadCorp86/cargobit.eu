@@ -1,0 +1,35 @@
+# Task 5: Reconciliation Reporting and Export
+# Add these values to your existing helm/payments-service/values.yaml
+
+# Reports Module Configuration
+reports:
+  # Enable report worker deployment
+  enabled: true
+
+  # Number of worker replicas
+  replicas: 1
+
+  # Export storage configuration
+  exportDir: "/tmp/exports"
+
+  # Worker polling interval in milliseconds
+  pollIntervalMs: 5000
+
+  # Maximum rows per export batch
+  batchSize: 10000
+
+  # Resource limits for report worker
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Persistent storage for exports
+  persistence:
+    enabled: false
+    # storageClass: "standard"
+    accessMode: ReadWriteOnce
+    size: 10Gi

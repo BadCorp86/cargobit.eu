@@ -1,0 +1,105 @@
+name: Task5 CI - Reports Module
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+    paths:
+      - 'src/reports/**'
+      - 'migrations/**export_jobs**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/reports/**'
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: payments_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint -- --fix src/reports || true
+
+      - name: Create test database schema
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/payments_test
+        run: |
+          psql "$DATABASE_URL" -c "
+            CREATE TABLE IF NOT EXISTS export_jobs (
+              id UUID PRIMARY KEY,
+              payload JSONB,
+              status VARCHAR(32) NOT NULL DEFAULT 'queued',
+              result_url TEXT,
+              error TEXT,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+            );
+          "
+
+      - name: Run unit tests
+        run: npm run test -- --testPathPattern=src/reports --coverage --coverageReporters=text --coverageReporters=lcov
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/payments_test
+          NODE_ENV: test
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          flags: reports-module
+          fail_ci_if_error: false
+
+      - name: Run Newman E2E tests (staging)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          npm install -g newman
+          newman run postman/postman_reconciliation_export.json \
+            -e postman/postman_env_staging.json \
+            --reporters cli,junit \
+            --reporter-junit-export reports/newman-reports-export.xml \
+            --insecure || true
+        continue-on-error: true
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            coverage/
+            reports/
+          retention-days: 7

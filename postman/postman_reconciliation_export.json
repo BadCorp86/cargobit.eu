@@ -1,0 +1,305 @@
+{
+  "info": {
+    "name": "Reconciliation Export API - Staging",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "cargobit-task5"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://payments.staging.cargobit.io"
+    },
+    {
+      "key": "admin_jwt",
+      "value": "{{admin_jwt_token}}"
+    }
+  ],
+  "item": [
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "List Reports",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has pagination', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('total');",
+                  "    pm.expect(json).to.have.property('page');",
+                  "    pm.expect(json).to.have.property('size');",
+                  "    pm.expect(json).to.have.property('items');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_jwt}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/reconciliation/report?page=1&size=50",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "reconciliation", "report"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "50"
+                },
+                {
+                  "key": "status",
+                  "value": "paid",
+                  "disabled": true
+                },
+                {
+                  "key": "dateFrom",
+                  "value": "2024-01-01",
+                  "disabled": true
+                },
+                {
+                  "key": "dateTo",
+                  "value": "2024-12-31",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has summary statistics', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('totalPayouts');",
+                  "    pm.expect(json).to.have.property('totalAmount');",
+                  "    pm.expect(json).to.have.property('byStatus');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_jwt}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/reconciliation/report/summary",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "reconciliation", "report", "summary"]
+            }
+          }
+        },
+        {
+          "name": "Enqueue Export CSV",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 202', function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "pm.test('Response has jobId', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('jobId');",
+                  "    pm.collectionVariables.set('last_export_job_id', json.jobId);",
+                  "});",
+                  "pm.test('Status is queued', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql('queued');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_jwt}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"format\": \"csv\",\n  \"filter\": {\n    \"status\": \"paid\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/reconciliation/report/export",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "reconciliation", "report", "export"]
+            }
+          }
+        },
+        {
+          "name": "Enqueue Export JSON",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 202', function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "pm.test('Response has jobId', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('jobId');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_jwt}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"format\": \"json\",\n  \"filter\": {\n    \"status\": \"paid\",\n    \"dateFrom\": \"2024-01-01\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/reconciliation/report/export",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "reconciliation", "report", "export"]
+            }
+          }
+        },
+        {
+          "name": "Get Export Job Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has job details', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('id');",
+                  "    pm.expect(json).to.have.property('status');",
+                  "    pm.expect(json).to.have.property('progress');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_jwt}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/reconciliation/report/export/{{last_export_job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "reconciliation", "report", "export", "{{last_export_job_id}}"]
+            }
+          }
+        },
+        {
+          "name": "List Export Jobs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Response has items array', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('items');",
+                  "    pm.expect(json.items).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_jwt}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/reconciliation/report/exports?page=1&size=20",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "reconciliation", "report", "exports"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "done",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

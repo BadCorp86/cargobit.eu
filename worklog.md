@@ -2678,3 +2678,176 @@ scripts/
 ```
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: task5-reports-export
+Agent: Main Agent
+Task: Task 5 - Reconciliation Reporting and Export implementieren
+
+## Work Log:
+
+### 1. SQL Migration
+- Datei: `/migrations/20260423_create_export_jobs.sql` - NEU
+- Tabelle `export_jobs` mit Spalten:
+  - id (UUID, Primary Key)
+  - payload (JSONB)
+  - status (VARCHAR: queued, running, done, failed)
+  - result_url, error, rows_exported, file_size, duration_ms
+  - created_at, updated_at, started_at, completed_at
+- Indizes auf status und created_at
+
+### 2. NestJS Reports Module
+- Datei: `/src/reports/reports.module.ts` - NEU
+- Datei: `/src/reports/controllers/reports.controller.ts` - NEU
+- Datei: `/src/reports/services/reports.service.ts` - NEU
+- Datei: `/src/reports/entities/export-job.entity.ts` - NEU
+- API Endpoints:
+  - GET /admin/reconciliation/report - List reports with pagination
+  - GET /admin/reconciliation/report/summary - Aggregated statistics
+  - POST /admin/reconciliation/report/export - Enqueue export job
+  - GET /admin/reconciliation/report/export/:id - Get job status
+  - GET /admin/reconciliation/report/exports - List export jobs
+
+### 3. Report Worker
+- Datei: `/src/reports/worker/report-worker.ts` - NEU
+- PostgreSQL polling worker
+- Unterstützt CSV und JSON Export
+- Filter: status, dateFrom, dateTo, userId, minAmount, maxAmount
+- Graceful shutdown (SIGINT/SIGTERM)
+- Konfigurierbar via Umgebungsvariablen:
+  - DATABASE_URL, EXPORT_DIR, POLL_INTERVAL_MS, BATCH_SIZE
+
+### 4. Prometheus Metrics
+- Datei: `/src/reports/metrics/reports.metrics.ts` - NEU
+- Metriken:
+  - report_exports_queued_total (Counter)
+  - report_exports_running (Gauge)
+  - report_exports_completed_total (Counter)
+  - report_exports_failed_total (Counter)
+  - report_export_duration_seconds (Histogram)
+  - report_export_in_progress (Gauge)
+
+### 5. Unit Tests
+- Datei: `/src/reports/__tests__/reports.service.spec.ts` - NEU
+- Testfälle:
+  - listReports pagination
+  - enqueueExport job creation
+  - getExportJobStatus retrieval
+  - progress calculation (queued=0, running=50, done=100, failed=0)
+  - listExportJobs filtering
+  - markJobRunning, markJobDone, markJobFailed
+  - getNextQueuedJob
+
+### 6. Postman Collection
+- Datei: `/postman/postman_reconciliation_export.json` - NEU
+- Requests:
+  - List Reports (with filters)
+  - Get Summary
+  - Enqueue Export CSV
+  - Enqueue Export JSON
+  - Get Export Job Status
+  - List Export Jobs
+- Automatische Tests für jeden Request
+
+### 7. Helm Chart
+- Datei: `/helm/payments-service/templates/report-worker-deployment.yaml` - NEU
+- Datei: `/helm/payments-service/values-reports.yaml` - NEU
+- Deployment mit:
+  - Configurable replicas
+  - Resource limits
+  - Persistent volume support
+  - Environment variables for worker config
+
+### 8. GitHub Actions CI
+- Datei: `/.github/workflows/task5-ci.yml` - NEU
+- Workflow:
+  - PostgreSQL service container
+  - npm install, lint, test
+  - Coverage upload to Codecov
+  - Newman E2E tests (on main branch)
+
+### 9. Next.js API Routes
+- Datei: `/src/app/api/admin/reconciliation/report/route.ts` - Aktualisiert
+- Datei: `/src/app/api/admin/reconciliation/report/export/route.ts` - NEU
+- Datei: `/src/app/api/admin/reconciliation/report/export/[id]/route.ts` - NEU
+- Datei: `/src/app/api/admin/reconciliation/report/exports/route.ts` - NEU
+- Datei: `/src/app/api/admin/reconciliation/report/summary/route.ts` - NEU
+
+### 10. Deployment Script
+- Datei: `/scripts/task5-deploy.sh` - NEU
+- Funktionen:
+  - DB Migration anwenden
+  - Helm deploy mit reports.enabled=true
+  - Deployment verifikation
+  - Worker logs check
+
+## Stage Summary:
+
+### Erstellte Dateien:
+1. `/migrations/20260423_create_export_jobs.sql`
+2. `/src/reports/reports.module.ts`
+3. `/src/reports/controllers/reports.controller.ts`
+4. `/src/reports/services/reports.service.ts`
+5. `/src/reports/entities/export-job.entity.ts`
+6. `/src/reports/worker/report-worker.ts`
+7. `/src/reports/metrics/reports.metrics.ts`
+8. `/src/reports/__tests__/reports.service.spec.ts`
+9. `/postman/postman_reconciliation_export.json`
+10. `/helm/payments-service/templates/report-worker-deployment.yaml`
+11. `/helm/payments-service/values-reports.yaml`
+12. `/.github/workflows/task5-ci.yml`
+13. `/scripts/task5-deploy.sh`
+14. API Routes (5 Dateien)
+
+### API Endpoints:
+```
+GET  /admin/reconciliation/report           → Paginated report list
+GET  /admin/reconciliation/report/summary   → Aggregated statistics
+POST /admin/reconciliation/report/export    → Enqueue export job
+GET  /admin/reconciliation/report/export/:id → Job status
+GET  /admin/reconciliation/report/exports   → List export jobs
+```
+
+### Worker Flow:
+```
+                    ┌─────────────────┐
+                    │   API Request   │
+                    │ POST /export    │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │  Create Job     │
+                    │  status=queued  │
+                    └────────┬────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    REPORT WORKER                              │
+├─────────────────────────────────────────────────────────────┤
+│  1. Poll export_jobs WHERE status='queued'                   │
+│  2. UPDATE status='running'                                  │
+│  3. Query payouts with filters                               │
+│  4. Generate CSV/JSON file                                   │
+│  5. UPDATE status='done', result_url=...                     │
+│  6. Record metrics                                            │
+└─────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │  Export File    │
+                    │  /tmp/exports/  │
+                    └─────────────────┘
+```
+
+### Prometheus Metrics:
+| Metric | Type | Description |
+|--------|------|-------------|
+| report_exports_queued_total | Counter | Total jobs queued |
+| report_exports_running | Gauge | Jobs currently running |
+| report_exports_completed_total | Counter | Completed exports |
+| report_exports_failed_total | Counter | Failed exports |
+| report_export_duration_seconds | Histogram | Export duration |
+| report_export_in_progress | Gauge | Jobs in progress |
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
