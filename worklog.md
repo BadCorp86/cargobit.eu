@@ -2851,3 +2851,109 @@ GET  /admin/reconciliation/report/exports   → List export jobs
 | report_export_in_progress | Gauge | Jobs in progress |
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: pilot-pack-and-load-tests
+Agent: Main Agent
+Task: Schritte 2, 3, 5 ausführen: Pilot Pack PDF, Confluence Security-Checklist, k6 Load Tests
+
+## Work Log:
+
+### 1. Pilot Pack PDF generiert
+- Datei: `/home/z/my-project/download/CargoBit_Pilot_Pack.pdf` - NEU
+- Inhalt: Partner-Onboarding-Dokument für Reconciliation Export MVP
+- Sections: Übersicht, Features, API-Endpunkte, Integration Guide, KPIs, Support, Nächste Schritte
+- Format: A4, professionelle Tabellen-Formatierung mit Corporate Colors
+
+### 2. Confluence Security-Checklist erstellt
+- Datei: `/home/z/my-project/docs/confluence-security-checklist.md` - NEU
+- 8 Haupt-Sektionen:
+  - Authentication & Authorization (5 Checks)
+  - Data Protection (5 Checks)
+  - Rate Limiting & Throttling (4 Checks)
+  - Audit & Logging (5 Checks)
+  - Infrastructure Security (5 Checks)
+  - Compliance (5 Checks)
+  - Incident Response (4 Checks)
+  - Pre-Launch Verification (5 Checks)
+- Confluence Markup-Ready mit Macros und Labels
+- Sign-off Tabelle für Security Lead, Tech Lead, Partner Manager, DPO
+
+### 3. k6 Load Test Scripts erstellt
+- Datei: `/home/z/my-project/ops/load-tests/k6-export-load-param.js` - NEU
+  - Parametrisierbarer Load Test für Export API
+  - 5 Szenarien: create-only, full-flow, concurrent, burst, mixed
+  - Custom Metrics: export_success, export_error, export_latency, download_latency
+  - Thresholds: P95 < 2s, Error Rate < 1%
+  
+- Datei: `/home/z/my-project/ops/load-tests/enqueue-load-test-param.js` - NEU
+  - Queue Stress Test mit Batch-Processing
+  - Rate Limiting Detection
+  
+- Datei: `/home/z/my-project/ops/load-tests/enqueue-load-test.js` - NEU
+  - Simple Queue Stress Test
+  
+- Datei: `/home/z/my-project/ops/load-tests/test-data-generator.sql` - NEU
+  - SQL Script für 10,000 Test Payouts
+  - Realistische Verteilung nach Status
+
+### 4. GitHub Actions Workflows erstellt
+- Datei: `/.github/workflows/load-test-k6.yml` - NEU
+  - Manual Trigger mit Parametern
+  - Environment: staging/production
+  - Szenario-Auswahl
+  - Artifact Upload
+
+- Datei: `/.github/workflows/load-test-enqueue.yml` - NEU
+  - Enqueue-spezifischer Workflow
+  - Batch Size Parameter
+
+### 5. Dokumentation erstellt
+- Datei: `/home/z/my-project/ops/load-tests/README.md` - NEU
+  - Vollständige Doku für k6 Load Tests
+  - Environment Variables Referenz
+  - Szenario-Beschreibungen
+  - CI/CD Integration Guide
+  - Troubleshooting
+
+- Datei: `/home/z/my-project/docs/partners/pilot-pack-onepage.md` - NEU
+  - Markdown-Quelle für Pilot Pack PDF
+
+## Stage Summary:
+
+### Erstellte Dateien:
+1. `/home/z/my-project/download/CargoBit_Pilot_Pack.pdf` - Partner Onboarding PDF
+2. `/home/z/my-project/docs/confluence-security-checklist.md` - Security Checklist
+3. `/home/z/my-project/docs/partners/pilot-pack-onepage.md` - Pilot Pack Markdown
+4. `/home/z/my-project/ops/load-tests/k6-export-load-param.js` - Haupt Load Test
+5. `/home/z/my-project/ops/load-tests/enqueue-load-test-param.js` - Enqueue Test
+6. `/home/z/my-project/ops/load-tests/enqueue-load-test.js` - Simple Enqueue Test
+7. `/home/z/my-project/ops/load-tests/test-data-generator.sql` - Test Data SQL
+8. `/home/z/my-project/ops/load-tests/README.md` - Load Test Doku
+9. `/.github/workflows/load-test-k6.yml` - k6 Workflow
+10. `/.github/workflows/load-test-enqueue.yml` - Enqueue Workflow
+
+### Load Test Features:
+| Szenario | VUs | Duration | Beschreibung |
+|----------|-----|----------|--------------|
+| create-only | 10+ | 2m+ | Export Jobs erstellen |
+| full-flow | 5 | 10m+ | Create → Poll → Download |
+| concurrent | 50 | - | Parallele Requests |
+| burst | 50 | 2m | Traffic Spike |
+| mixed | 20 | 2m+ | 70% create + 30% full-flow |
+
+### k6 Ausführung:
+```bash
+# Staging Test (default)
+k6 run ops/load-tests/k6-export-load-param.js \
+  -e BASE_URL=https://api.staging.cargobit.io \
+  -e ADMIN_JWT=$STAGING_ADMIN_JWT
+
+# Full Flow Test
+k6 run ops/load-tests/k6-export-load-param.js \
+  -e SCENARIO=full-flow \
+  -e VUS=5 \
+  -e DURATION=5m
+```
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT

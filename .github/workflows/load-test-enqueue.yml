@@ -1,0 +1,89 @@
+name: k6 Enqueue Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      vus:
+        description: 'Number of virtual users'
+        required: true
+        default: '20'
+        type: string
+      duration:
+        description: 'Test duration (e.g., 2m, 5m)'
+        required: true
+        default: '2m'
+        type: string
+      batch_size:
+        description: 'Jobs per iteration per VU'
+        required: false
+        default: '5'
+        type: string
+      p95_latency:
+        description: 'P95 latency threshold (ms)'
+        required: false
+        default: '500'
+        type: string
+
+jobs:
+  enqueue-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup k6
+        uses: grafana/setup-k6@v1
+
+      - name: Get environment URL
+        id: env-url
+        run: |
+          if [ "${{ inputs.environment }}" = "staging" ]; then
+            echo "url=https://api.staging.cargobit.io" >> $GITHUB_OUTPUT
+          else
+            echo "url=https://api.cargobit.io" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run enqueue load test
+        env:
+          BASE_URL: ${{ steps.env-url.outputs.url }}
+          ADMIN_JWT: ${{ secrets.STAGING_ADMIN_JWT }}
+          VUS: ${{ inputs.vus }}
+          DURATION: ${{ inputs.duration }}
+          BATCH_SIZE: ${{ inputs.batch_size }}
+          P95_LATENCY: ${{ inputs.p95_latency }}
+        run: |
+          k6 run ops/load-tests/enqueue-load-test-param.js \
+            --out json=enqueue-test-results.json
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: enqueue-results-${{ github.run_id }}
+          path: enqueue-test-results.json
+          retention-days: 30
+
+      - name: Generate summary report
+        if: always()
+        run: |
+          echo "## Enqueue Load Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Virtual Users | ${{ inputs.vus }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Duration | ${{ inputs.duration }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Batch Size | ${{ inputs.batch_size }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| P95 Threshold | ${{ inputs.p95_latency }}ms |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Total Jobs Created" >> $GITHUB_STEP_SUMMARY
+          echo "Estimated: $((${{ inputs.vus }} * ${{ inputs.duration }} * ${{ inputs.batch_size }})) jobs" >> $GITHUB_STEP_SUMMARY
