@@ -1,0 +1,225 @@
+// Prisma Schema for CargoBit Payment System
+// PostgreSQL Production Schema
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// User & Authentication
+// ============================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(CUSTOMER)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  payments     Payment[]
+  auditLogs    AuditLog[]
+  sessions     Session[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  CUSTOMER
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  token        String   @unique
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ============================================
+// Payments
+// ============================================
+
+model Payment {
+  id              String        @id @default(cuid())
+  userId          String        @map("user_id")
+  stripePaymentId String?       @unique @map("stripe_payment_id")
+  amount          Int           // in cents
+  currency        String        @default("EUR")
+  status          PaymentStatus @default(PENDING)
+  description     String?
+  metadata        Json?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([stripePaymentId])
+  @@index([createdAt])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+// ============================================
+// Reconciliation
+// ============================================
+
+model ReconciliationBatch {
+  id              String              @id @default(cuid())
+  status          BatchStatus         @default(PENDING)
+  totalRecords    Int                 @default(0) @map("total_records")
+  processedCount  Int                 @default(0) @map("processed_count")
+  errorCount      Int                 @default(0) @map("error_count")
+  startedAt       DateTime?           @map("started_at")
+  completedAt     DateTime?           @map("completed_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  records         ReconciliationRecord[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("reconciliation_batches")
+}
+
+model ReconciliationRecord {
+  id              String              @id @default(cuid())
+  batchId         String              @map("batch_id")
+  externalId      String              @map("external_id")
+  internalId      String?             @map("internal_id")
+  amount          Int
+  currency        String
+  status          RecordStatus        @default(PENDING)
+  mismatchReason  String?             @map("mismatch_reason")
+  score           Float?
+  rawData         Json?               @map("raw_data")
+  processedAt     DateTime?           @map("processed_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  batch ReconciliationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([externalId])
+  @@index([status])
+  @@map("reconciliation_records")
+}
+
+enum BatchStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum RecordStatus {
+  PENDING
+  MATCHED
+  MISMATCHED
+  ERROR
+}
+
+// ============================================
+// Stripe Integration
+// ============================================
+
+model StripeEvent {
+  id          String   @id
+  type        String
+  payload     Json
+  processed   Boolean  @default(false)
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([type])
+  @@index([processed])
+  @@index([createdAt])
+  @@map("stripe_events")
+}
+
+// ============================================
+// Audit Log (Tamper-Proof)
+// ============================================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  timestamp DateTime @default(now())
+  actor     String
+  actorType ActorType @map("actor_type")
+  action    String
+  entity    String
+  entityId  String   @map("entity_id")
+  metadata  Json?
+  prevHash  String?  @map("prev_hash")
+  hash      String
+
+  user User? @relation(fields: [actor], references: [id])
+
+  @@index([timestamp(sort: Desc)])
+  @@index([actor])
+  @@index([entity, entityId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  API
+  WEBHOOK
+}
+
+// ============================================
+// Rate Limiting (Persistence)
+// ============================================
+
+model RateLimitEntry {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  tokens    Int      @default(0)
+  lastRefill DateTime @default(now()) @map("last_refill")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([key])
+  @@map("rate_limit_entries")
+}
+
+// ============================================
+// Settings & Configuration
+// ============================================
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
