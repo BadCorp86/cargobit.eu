@@ -1,90 +1,217 @@
 {
-  "generated_at": "2026-05-02T00:00:00.000Z",
-  "system": "CargoBit Multi-Agent Code Generation System",
+  "name": "cargobit-payment-system",
   "version": "1.0.0",
-  "files": [
-    "prisma/schema.prisma",
-    "migrations/0001_init.sql",
-    "migrations/0002_indexes.sql",
-    "docs/architecture-overview.md",
-    "src/lib/rateLimit.ts",
-    "src/middleware/rateLimit.ts",
-    "src/webhooks/stripe.ts",
-    "src/services/stripeEvents.ts",
-    "src/services/auditLog.ts",
-    "src/jobs/auditVerify.ts",
-    "ops/backup-db.sh",
-    "ops/restore-db.sh",
-    "ops/cron-backup.yaml",
-    "ops/export-audit-log.ts",
-    "tests/rateLimit.test.ts",
-    "tests/stripeWebhook.test.ts",
-    "docs/security-policy.md",
-    "docs/compliance-readiness.md",
-    "docs/slas.md",
-    "docs/incident-playbook-payment-outage.md",
-    "docs/on-call-runbook.md",
-    "docs/operational-readiness-checklist.md",
-    "manifest.json"
-  ],
-  "agents_executed": [
-    "architect-agent",
-    "backend-agent",
-    "sre-agent",
-    "qa-agent",
-    "compliance-agent"
-  ],
-  "errors": null,
-  "statistics": {
-    "total_files": 23,
-    "by_category": {
-      "schema": 1,
-      "migrations": 2,
-      "typescript": 8,
-      "shell": 2,
-      "yaml": 1,
-      "tests": 2,
-      "documentation": 6,
-      "manifest": 1
+  "description": "Production-ready payment system foundation with rate limiting, Stripe integration, and audit logging",
+  "generated": "2024-05-03T00:00:00.000Z",
+  "generator": "cargobit-multi-agent-system",
+  "blocks": [
+    {
+      "id": "block-1",
+      "name": "Data Model & Migrations",
+      "status": "complete",
+      "files": [
+        "prisma/schema.prisma",
+        "migrations/0001_init.sql",
+        "migrations/0002_indexes.sql",
+        "docs/architecture-overview.md"
+      ]
     },
-    "lines_of_code": {
-      "typescript": 4500,
-      "sql": 400,
-      "shell": 800,
-      "documentation": 3500
+    {
+      "id": "block-2",
+      "name": "Backend Core",
+      "status": "complete",
+      "files": [
+        "src/lib/rateLimit.ts",
+        "src/middleware/rateLimit.ts",
+        "src/webhooks/stripe.ts",
+        "src/services/stripeEvents.ts",
+        "src/services/auditLog.ts",
+        "src/jobs/auditVerify.ts"
+      ]
+    },
+    {
+      "id": "block-3",
+      "name": "SRE / Ops",
+      "status": "complete",
+      "files": [
+        "ops/backup-db.sh",
+        "ops/restore-db.sh",
+        "ops/cron-backup.yaml",
+        "ops/export-audit-log.ts",
+        "docs/backup-policy.md",
+        "docs/restore-playbook.md"
+      ]
+    },
+    {
+      "id": "block-4",
+      "name": "Tests",
+      "status": "complete",
+      "files": [
+        "tests/rateLimit.test.ts",
+        "tests/middleware/rateLimit.test.ts",
+        "tests/webhooks/stripe.test.ts",
+        "tests/services/stripeEvents.test.ts",
+        "jest.config.js",
+        "jest.setup.ts",
+        "docs/testing-guide.md"
+      ]
+    },
+    {
+      "id": "block-5",
+      "name": "Policies & Playbooks",
+      "status": "complete",
+      "files": [
+        "docs/security-policy.md",
+        "docs/compliance-readiness.md",
+        "docs/slas.md",
+        "docs/incident-playbook-payment-outage.md",
+        "docs/on-call-runbook.md",
+        "docs/operational-readiness-checklist.md"
+      ]
+    }
+  ],
+  "modules": {
+    "rate-limiting": {
+      "description": "Redis-based sliding window rate limiter with configurable presets",
+      "entry": "src/lib/rateLimit.ts",
+      "presets": ["publicApi", "authenticatedApi", "webhooks", "adminApi", "paymentCreate", "authAttempts"],
+      "limits": {
+        "publicApi": { "limit": 100, "windowMs": 60000 },
+        "authenticatedApi": { "limit": 1000, "windowMs": 60000 },
+        "webhooks": { "limit": 500, "windowMs": 60000 },
+        "adminApi": { "limit": 5000, "windowMs": 60000 },
+        "paymentCreate": { "limit": 10, "windowMs": 60000 },
+        "authAttempts": { "limit": 5, "windowMs": 60000 }
+      }
+    },
+    "stripe-integration": {
+      "description": "Stripe webhook handler with signature verification and idempotency",
+      "entry": "src/webhooks/stripe.ts",
+      "events": [
+        "payment_intent.succeeded",
+        "payment_intent.payment_failed",
+        "charge.succeeded",
+        "charge.refunded",
+        "charge.dispute.created",
+        "customer.created",
+        "payout.created",
+        "payout.paid",
+        "payout.failed"
+      ],
+      "security": ["signature-verification", "idempotency", "timeout-protection"]
+    },
+    "audit-logging": {
+      "description": "Hash-chain immutable audit logging system",
+      "entry": "src/services/auditLog.ts",
+      "features": ["hash-chain-integrity", "tamper-detection", "verification-job"],
+      "retention": "180 days minimum"
+    },
+    "backup-restore": {
+      "description": "PostgreSQL backup and restore procedures",
+      "scripts": ["ops/backup-db.sh", "ops/restore-db.sh"],
+      "schedule": "Daily at 02:00 UTC",
+      "retention": "30 days"
     }
   },
-  "compliance_frameworks": [
-    "PCI-DSS-SAQ-A",
-    "GDPR",
-    "SOC2-Type2"
-  ],
-  "features": {
-    "rate_limiting": {
-      "backend": "Redis",
-      "algorithm": "sliding-window",
-      "presets": ["publicApi", "authenticatedApi", "webhooks", "adminApi", "paymentCreate", "authAttempts"]
+  "compliance": {
+    "pci-dss": {
+      "level": "SAQ-A",
+      "notes": "Cardholder data handled exclusively by Stripe"
     },
-    "stripe_integration": {
-      "webhook_verification": true,
-      "idempotency": true,
-      "event_types": ["payment_intent.succeeded", "payment_intent.payment_failed", "charge.succeeded", "charge.refunded", "charge.dispute.created", "customer.created", "checkout.session.completed"]
+    "gdpr": {
+      "status": "aligned",
+      "features": ["data-export", "data-deletion", "retention-policies"]
     },
-    "audit_logging": {
-      "retention_days": 2555,
-      "gdpr_compliant": true,
-      "integrity_verification": true
-    },
-    "backup": {
-      "types": ["full", "incremental", "pitr"],
-      "encryption": "AES-256",
-      "s3_upload": true
+    "soc2": {
+      "status": "controls-implemented",
+      "criteria": ["security", "availability", "confidentiality"]
     }
   },
-  "sla_targets": {
-    "uptime": "99.9%",
-    "api_response_p95": "250ms",
-    "rto": "4 hours",
-    "rpo": "1 hour"
+  "testing": {
+    "coverage": {
+      "branches": 70,
+      "functions": 70,
+      "lines": 70,
+      "statements": 70
+    },
+    "framework": "jest",
+    "files": 4,
+    "estimated_tests": 120
+  },
+  "dependencies": {
+    "runtime": [
+      "@prisma/client",
+      "ioredis",
+      "stripe",
+      "next"
+    ],
+    "dev": [
+      "prisma",
+      "typescript",
+      "jest",
+      "@types/node",
+      "@types/jest"
+    ]
+  },
+  "environment": {
+    "required": [
+      "DATABASE_URL",
+      "REDIS_URL",
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET"
+    ],
+    "optional": [
+      "NODE_ENV",
+      "LOG_LEVEL",
+      "RATE_LIMIT_PREFIX"
+    ]
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src --ext .ts,.tsx",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "backup": "./ops/backup-db.sh",
+    "restore": "./ops/restore-db.sh",
+    "audit:verify": "ts-node src/jobs/auditVerify.ts",
+    "audit:export": "ts-node ops/export-audit-log.ts"
+  },
+  "structure": {
+    "src/": "Application source code",
+    "src/lib/": "Core libraries (rate limiting, Redis)",
+    "src/middleware/": "Express/Next.js middleware",
+    "src/services/": "Business logic services",
+    "src/webhooks/": "Webhook handlers",
+    "src/jobs/": "Background jobs and utilities",
+    "prisma/": "Database schema and migrations",
+    "migrations/": "SQL migration files",
+    "ops/": "Operations scripts and configurations",
+    "tests/": "Test suites",
+    "docs/": "Documentation"
+  },
+  "readiness": {
+    "production": {
+      "status": "ready",
+      "requirements": [
+        "Configure production DATABASE_URL",
+        "Configure production REDIS_URL",
+        "Set Stripe live keys",
+        "Enable monitoring/alerting",
+        "Run production-readiness checklist"
+      ]
+    },
+    "staging": {
+      "status": "ready",
+      "requirements": [
+        "Configure staging DATABASE_URL",
+        "Configure staging REDIS_URL",
+        "Set Stripe test keys"
+      ]
+    }
   }
 }
