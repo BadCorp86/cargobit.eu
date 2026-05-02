@@ -29,6 +29,8 @@
 | 12 | System Hardening Guide | ✅ 60 Seiten |
 | 13 | Full System Export | ✅ Vollständig |
 | 14 | Executive Summary | ✅ 25 Seiten |
+| 15 | Architecture Deep Dive | ✅ 50 Seiten |
+| 16 | Risk Register | ✅ 35 Seiten |
 
 ---
 
@@ -379,6 +381,8 @@ node pipeline/run.js
 | `docs/developer-handbook.md` | Vollständiges Entwicklerhandbuch | 40 Seiten |
 | `docs/system-hardening-guide.md` | Security, Ops, Compliance Hardening | 60 Seiten |
 | `docs/repository-guide.md` | Full System Export Dokumentation | 30 Seiten |
+| `docs/architecture-deep-dive.md` | Extrem detailliertes Architektur-Dokument | 50 Seiten |
+| `docs/risk-register.md` | Enterprise-Risikoanalyse | 35 Seiten |
 | `docs/architecture-diagrams.md` | Visuelle Architektur-Diagramme | - |
 | `docs/onboarding.md` | Onboarding-Guide für neue Entwickler | - |
 | `pipeline/README.md` | Pipeline-Dokumentation | - |
@@ -408,7 +412,8 @@ Bei Fragen oder Problemen:
 - 📘 [Developer Handbook](docs/developer-handbook.md)
 - 🔐 [System Hardening Guide](docs/system-hardening-guide.md)
 - 📦 [Repository Guide](docs/repository-guide.md)
-- 🏗️ [Architecture Diagrams](docs/architecture-diagrams.md)
+- 🏗️ [Architecture Deep Dive](docs/architecture-deep-dive.md)
+- ⚠️ [Risk Register](docs/risk-register.md)
 - 🚀 [Pipeline README](pipeline/README.md)
 
 ---
