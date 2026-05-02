@@ -1,0 +1,313 @@
+# =============================================================================
+# CargoBit Multi-Agent System - Publishing Workflow
+# =============================================================================
+# This workflow publishes the generated output to various targets.
+
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Publish target'
+        required: true
+        default: 'artifact'
+        type: choice
+        options:
+          - artifact
+          - release
+          - npm
+          - docker
+      version:
+        description: 'Version (for release)'
+        required: false
+        type: string
+      prerelease:
+        description: 'Pre-release flag'
+        required: false
+        default: false
+        type: boolean
+
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  NODE_VERSION: '20'
+  OUTPUT_DIR: 'multi-agent/output'
+
+jobs:
+  # ===========================================================================
+  # Job 1: Prepare
+  # ===========================================================================
+  prepare:
+    name: Prepare Output
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      artifact_name: ${{ steps.version.outputs.artifact_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ $GITHUB_REF == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-$(date +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)"
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "artifact_name=cargobit-foundation-$VERSION" >> $GITHUB_OUTPUT
+          
+          echo "Version: $VERSION"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate checksums
+        run: node pipeline/assemble.js --generate-checksums
+
+      - name: Update manifest version
+        run: |
+          node -e "
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync('$OUTPUT_DIR/manifest.json'));
+            manifest.version = '${{ steps.version.outputs.version }}';
+            manifest.generatedAt = new Date().toISOString();
+            fs.writeFileSync('$OUTPUT_DIR/manifest.json', JSON.stringify(manifest, null, 2));
+          "
+
+      - name: Upload prepared output
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepared-output
+          path: ${{ env.OUTPUT_DIR }}/
+          retention-days: 1
+
+  # ===========================================================================
+  # Job 2: Publish as Artifact
+  # ===========================================================================
+  publish-artifact:
+    name: Publish Artifact
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: ${{ github.event.inputs.target == 'artifact' || github.event_name == 'push' }}
+    steps:
+      - name: Download prepared output
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-output
+          path: output/
+
+      - name: Create distribution archive
+        run: |
+          tar -czvf ${{ needs.prepare.outputs.artifact_name }}.tar.gz output/
+          zip -r ${{ needs.prepare.outputs.artifact_name }}.zip output/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.artifact_name }}
+          path: |
+            ${{ needs.prepare.outputs.artifact_name }}.tar.gz
+            ${{ needs.prepare.outputs.artifact_name }}.zip
+          retention-days: 30
+
+      - name: Generate artifact summary
+        run: |
+          echo "## Artifact Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Files:**" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ needs.prepare.outputs.artifact_name }}.tar.gz\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ needs.prepare.outputs.artifact_name }}.zip\`" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # Job 3: Publish as Release
+  # ===========================================================================
+  publish-release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: ${{ github.event.inputs.target == 'release' || startsWith(github.ref, 'refs/tags/v') }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download prepared output
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-output
+          path: output/
+
+      - name: Create distribution archive
+        run: |
+          tar -czvf ${{ needs.prepare.outputs.artifact_name }}.tar.gz output/
+          zip -r ${{ needs.prepare.outputs.artifact_name }}.zip output/
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          cat << EOF > release-notes.md
+          ## CargoBit Foundation System v${{ needs.prepare.outputs.version }}
+          
+          ### Included Modules
+          - **Block 1:** Data Model & Migrations (Prisma, SQL)
+          - **Block 2:** Backend Core (Rate Limiting, Stripe, Audit)
+          - **Block 3:** SRE / Ops (Backup, Restore, CronJobs)
+          - **Block 4:** Tests (Jest, 120+ Test Cases)
+          - **Block 5:** Policies & Playbooks (Compliance)
+          - **Block 6:** Final Assembly (Manifest, Checksums)
+          
+          ### Files
+          - \`manifest.json\` - Project manifest
+          - \`checksums.json\` - SHA-256 checksums
+          - \`README.md\` - Documentation
+          
+          ### Quick Start
+          \`\`\`bash
+          tar -xzf ${{ needs.prepare.outputs.artifact_name }}.tar.gz
+          cd output
+          npm install
+          cp .env.example .env
+          npm run dev
+          \`\`\`
+          
+          ### Checksum Verification
+          \`\`\`bash
+          sha256sum -c checksums.json
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.prepare.outputs.version }}
+          name: CargoBit Foundation v${{ needs.prepare.outputs.version }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          files: |
+            ${{ needs.prepare.outputs.artifact_name }}.tar.gz
+            ${{ needs.prepare.outputs.artifact_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ===========================================================================
+  # Job 4: Publish to NPM (Internal Registry)
+  # ===========================================================================
+  publish-npm:
+    name: Publish to NPM
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: ${{ github.event.inputs.target == 'npm' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download prepared output
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-output
+          path: output/
+
+      - name: Update package.json
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('output/package.json'));
+            pkg.version = '${{ needs.prepare.outputs.version }}';
+            pkg.name = '@cargobit/foundation';
+            fs.writeFileSync('output/package.json', JSON.stringify(pkg, null, 2));
+          "
+
+      - name: Publish to NPM
+        working-directory: output/
+        run: npm publish --access restricted
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ===========================================================================
+  # Job 5: Publish Docker Image
+  # ===========================================================================
+  publish-docker:
+    name: Publish Docker Image
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: ${{ github.event.inputs.target == 'docker' }}
+    permissions:
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download prepared output
+        uses: actions/download-artifact@v4
+        with:
+          name: prepared-output
+          path: output/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./output
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ needs.prepare.outputs.version }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.title=CargoBit Foundation
+
+  # ===========================================================================
+  # Job 6: Summary
+  # ===========================================================================
+  publish-summary:
+    name: Publish Summary
+    runs-on: ubuntu-latest
+    needs: [prepare, publish-artifact, publish-release, publish-npm, publish-docker]
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Publish Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact | ${{ needs.publish-artifact.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release | ${{ needs.publish-release.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NPM | ${{ needs.publish-npm.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker | ${{ needs.publish-docker.result }} |" >> $GITHUB_STEP_SUMMARY

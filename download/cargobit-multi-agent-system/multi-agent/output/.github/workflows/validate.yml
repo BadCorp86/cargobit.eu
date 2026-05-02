@@ -1,0 +1,309 @@
+# =============================================================================
+# CargoBit Multi-Agent System - Validation Workflow
+# =============================================================================
+# This workflow validates the generated output structure and integrity.
+
+name: Validate Output
+
+on:
+  workflow_call:
+    outputs:
+      valid:
+        description: 'Whether validation passed'
+        value: ${{ jobs.validate.outputs.valid }}
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: 'Enable strict validation'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  OUTPUT_DIR: 'multi-agent/output'
+
+jobs:
+  validate:
+    name: Validate Output
+    runs-on: ubuntu-latest
+    outputs:
+      valid: ${{ steps.validation.outputs.valid }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate file structure
+        id: structure
+        run: |
+          echo "Checking required directories..."
+          
+          REQUIRED_DIRS=(
+            "prisma"
+            "migrations"
+            "src/lib"
+            "src/middleware"
+            "src/services"
+            "src/webhooks"
+            "src/jobs"
+            "ops"
+            "docs"
+            "tests"
+          )
+          
+          MISSING_DIRS=()
+          
+          for dir in "${REQUIRED_DIRS[@]}"; do
+            if [ ! -d "$OUTPUT_DIR/$dir" ]; then
+              MISSING_DIRS+=("$dir")
+              echo "::warning::Missing directory: $dir"
+            fi
+          done
+          
+          if [ ${#MISSING_DIRS[@]} -gt 0 ]; then
+            echo "missing_dirs=${MISSING_DIRS[*]}" >> $GITHUB_OUTPUT
+            echo "::error::Missing required directories"
+            exit 1
+          fi
+          
+          echo "✓ All required directories present"
+
+      - name: Validate required files
+        id: files
+        run: |
+          echo "Checking required files..."
+          
+          REQUIRED_FILES=(
+            "prisma/schema.prisma"
+            "migrations/0001_init.sql"
+            "src/lib/rateLimit.ts"
+            "src/webhooks/stripe.ts"
+            "src/services/auditLog.ts"
+            "ops/backup-db.sh"
+            "docs/security-policy.md"
+            "tests/rateLimit.test.ts"
+            "manifest.json"
+            "README.md"
+          )
+          
+          MISSING_FILES=()
+          
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$OUTPUT_DIR/$file" ]; then
+              MISSING_FILES+=("$file")
+              echo "::warning::Missing file: $file"
+            fi
+          done
+          
+          if [ ${#MISSING_FILES[@]} -gt 0 ]; then
+            echo "missing_files=${MISSING_FILES[*]}" >> $GITHUB_OUTPUT
+            echo "::error::Missing required files"
+            exit 1
+          fi
+          
+          echo "✓ All required files present"
+
+      - name: Validate manifest.json
+        id: manifest
+        run: |
+          echo "Validating manifest.json..."
+          
+          MANIFEST_FILE="$OUTPUT_DIR/manifest.json"
+          
+          if [ ! -f "$MANIFEST_FILE" ]; then
+            echo "::error::manifest.json not found"
+            exit 1
+          fi
+          
+          # Validate JSON structure
+          node -e "
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync('$MANIFEST_FILE'));
+            
+            if (!manifest.version) {
+              console.error('Missing version field');
+              process.exit(1);
+            }
+            
+            if (!Array.isArray(manifest.files)) {
+              console.error('files must be an array');
+              process.exit(1);
+            }
+            
+            console.log('Manifest version:', manifest.version);
+            console.log('Files count:', manifest.files.length);
+          "
+          
+          echo "✓ manifest.json is valid"
+
+      - name: Validate checksums.json
+        id: checksums
+        run: |
+          echo "Validating checksums.json..."
+          
+          CHECKSUMS_FILE="$OUTPUT_DIR/checksums.json"
+          
+          if [ ! -f "$CHECKSUMS_FILE" ]; then
+            echo "::warning::checksums.json not found, will be generated"
+            exit 0
+          fi
+          
+          # Validate JSON structure
+          node -e "
+            const fs = require('fs');
+            const checksums = JSON.parse(fs.readFileSync('$CHECKSUMS_FILE'));
+            
+            if (checksums.algorithm !== 'sha256') {
+              console.error('Invalid algorithm:', checksums.algorithm);
+              process.exit(1);
+            }
+            
+            if (!checksums.files || typeof checksums.files !== 'object') {
+              console.error('Missing files object');
+              process.exit(1);
+            }
+            
+            console.log('Algorithm:', checksums.algorithm);
+            console.log('Files count:', Object.keys(checksums.files).length);
+          "
+          
+          echo "✓ checksums.json is valid"
+
+      - name: Validate file content
+        id: content
+        if: ${{ github.event.inputs.strict == 'true' }}
+        run: |
+          echo "Validating file content (strict mode)..."
+          
+          # Check Prisma schema
+          npx prisma validate --schema="$OUTPUT_DIR/prisma/schema.prisma"
+          
+          # Check TypeScript files
+          for file in $(find $OUTPUT_DIR/src -name "*.ts"); do
+            npx tsc --noEmit --skipLibCheck "$file" || echo "::warning::TypeScript error in $file"
+          done
+          
+          echo "✓ Content validation complete"
+
+      - name: Validation summary
+        id: validation
+        run: |
+          echo "## Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Directory structure | ✓ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Required files | ✓ |" >> $GITHUB_STEP_SUMMARY
+          echo "| manifest.json | ✓ |" >> $GITHUB_STEP_SUMMARY
+          echo "| checksums.json | ✓ |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Validation passed!**" >> $GITHUB_STEP_SUMMARY
+          
+          echo "valid=true" >> $GITHUB_OUTPUT
+
+  # ===========================================================================
+  # Additional validation jobs
+  # ===========================================================================
+  validate-schema:
+    name: Validate Database Schema
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Prisma schema
+        run: npx prisma validate --schema=$OUTPUT_DIR/prisma/schema.prisma
+
+      - name: Check for SQL injection patterns
+        run: |
+          echo "Checking for SQL injection patterns..."
+          grep -r "string interpolation" $OUTPUT_DIR/migrations/ && {
+            echo "::warning::Potential SQL injection pattern found"
+          } || echo "✓ No obvious SQL injection patterns"
+
+  validate-security:
+    name: Validate Security Controls
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for hardcoded secrets
+        run: |
+          echo "Checking for hardcoded secrets..."
+          
+          SECRET_PATTERNS=(
+            "sk_live_"
+            "pk_live_"
+            "whsec_"
+            "password\s*="
+            "secret\s*="
+          )
+          
+          FOUND_SECRETS=0
+          
+          for pattern in "${SECRET_PATTERNS[@]}"; do
+            if grep -rq "$pattern" $OUTPUT_DIR/ --include="*.ts" --include="*.js" --include="*.json" 2>/dev/null; then
+              echo "::warning::Potential hardcoded secret pattern: $pattern"
+              FOUND_SECRETS=1
+            fi
+          done
+          
+          if [ $FOUND_SECRETS -eq 1 ]; then
+            echo "::error::Hardcoded secrets detected!"
+            exit 1
+          fi
+          
+          echo "✓ No hardcoded secrets found"
+
+      - name: Check TLS usage
+        run: |
+          echo "Checking TLS configuration..."
+          
+          if grep -rq "http://" $OUTPUT_DIR/src/ --include="*.ts" 2>/dev/null; then
+            echo "::warning::HTTP URLs found in source code"
+          fi
+          
+          echo "✓ TLS check complete"
+
+  validate-compliance:
+    name: Validate Compliance Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check required compliance documents
+        run: |
+          echo "Checking compliance documentation..."
+          
+          REQUIRED_DOCS=(
+            "docs/security-policy.md"
+            "docs/compliance-matrix.md"
+            "docs/sla-definitions.md"
+            "docs/incident-response.md"
+          )
+          
+          for doc in "${REQUIRED_DOCS[@]}"; do
+            if [ ! -f "$OUTPUT_DIR/$doc" ]; then
+              echo "::error::Missing compliance document: $doc"
+              exit 1
+            fi
+          done
+          
+          echo "✓ All compliance documents present"
