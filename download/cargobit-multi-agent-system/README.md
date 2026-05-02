@@ -31,6 +31,8 @@
 | 14 | Executive Summary | ✅ 25 Seiten |
 | 15 | Architecture Deep Dive | ✅ 50 Seiten |
 | 16 | Risk Register | ✅ 35 Seiten |
+| 17 | 12-Month Roadmap | ✅ 20 Seiten |
+| 18 | Architecture Board Presentation | ✅ 25 Slides |
 
 ---
 
@@ -383,6 +385,8 @@ node pipeline/run.js
 | `docs/repository-guide.md` | Full System Export Dokumentation | 30 Seiten |
 | `docs/architecture-deep-dive.md` | Extrem detailliertes Architektur-Dokument | 50 Seiten |
 | `docs/risk-register.md` | Enterprise-Risikoanalyse | 35 Seiten |
+| `docs/roadmap-12-months.md` | Strategische & technische 12-Monats-Roadmap | 20 Seiten |
+| `docs/architecture-board-presentation.md` | Enterprise Architecture Board Presentation | 25 Slides |
 | `docs/architecture-diagrams.md` | Visuelle Architektur-Diagramme | - |
 | `docs/onboarding.md` | Onboarding-Guide für neue Entwickler | - |
 | `pipeline/README.md` | Pipeline-Dokumentation | - |
@@ -414,6 +418,8 @@ Bei Fragen oder Problemen:
 - 📦 [Repository Guide](docs/repository-guide.md)
 - 🏗️ [Architecture Deep Dive](docs/architecture-deep-dive.md)
 - ⚠️ [Risk Register](docs/risk-register.md)
+- 🗓️ [12-Month Roadmap](docs/roadmap-12-months.md)
+- 📽️ [Architecture Board Presentation](docs/architecture-board-presentation.md)
 - 🚀 [Pipeline README](pipeline/README.md)
 
 ---
