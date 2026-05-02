@@ -1,0 +1,49 @@
+{
+  "name": "cargobit-foundation-generator",
+  "version": "1.0.0",
+  "description": "Automated Multi-Agent System for generating the CargoBit Payment System Foundation",
+  "main": "multi-agent/orchestrator.js",
+  "scripts": {
+    "generate": "node pipeline/run.js",
+    "validate": "node pipeline/validate.js",
+    "assemble": "node pipeline/assemble.js",
+    "publish": "node pipeline/publish.js",
+    "pipeline": "npm run generate && npm run validate && npm run assemble",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . --ext .js,.ts",
+    "clean": "rm -rf output dist"
+  },
+  "keywords": [
+    "code-generator",
+    "multi-agent",
+    "payment-system",
+    "stripe",
+    "prisma",
+    "postgresql",
+    "redis",
+    "audit-log",
+    "rate-limiting",
+    "deterministic"
+  ],
+  "author": "CargoBit Team",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.10.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.10.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0",
+    "eslint": "^8.56.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/cargobit-foundation.git"
+  }
+}

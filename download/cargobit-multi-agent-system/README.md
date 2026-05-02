@@ -1,0 +1,356 @@
+# CargoBit Foundation Generator
+
+> Automatisiertes Multi-Agent-System zur Generierung der technischen Basis für das CargoBit Payment System
+
+Dieses Repository enthält das vollständige automatisierte System, das die technische Foundation für die CargoBit Payment App generiert.
+
+Es besteht aus:
+
+- Einem **Multi-Agent-System** (Architect, Backend, SRE, QA, Compliance)
+- Einer **CI-Pipeline** (GitHub Actions)
+- Einer **deterministischen Assembly-Engine**
+- Einer **Validierungs-Schicht**
+- Einer **Publishing-Engine**
+- Einem vollständig generierten **Foundation Output** in `/output`
+
+---
+
+## System-Übersicht
+
+### Multi-Agent-System (MAS)
+Das MAS generiert alle Artefakte:
+- Datenbank-Schema & Migrationen
+- Backend-Services
+- Ops-Skripte
+- Dokumentation
+- Tests
+
+### Pipeline
+Die Pipeline führt folgende Schritte aus:
+1. MAS ausführen
+2. Output validieren
+3. Manifest & Checksums assemblieren
+4. Änderungen publizieren
+
+### Output
+Die finale generierte Foundation wird in `/output` gespeichert.
+
+---
+
+## Schnellstart
+
+### Voraussetzungen
+- Node.js >= 18
+- npm oder yarn
+- Git
+
+### Installation
+
+```bash
+# Repository klonen
+git clone git@github.com:your-org/cargobit-foundation.git
+cd cargobit-foundation
+
+# Dependencies installieren
+npm install
+```
+
+### System ausführen
+
+```bash
+# 1. Multi-Agent-System starten
+node pipeline/run.js
+
+# 2. Output validieren
+node pipeline/validate.js
+
+# 3. Manifest & Checksums erstellen
+node pipeline/assemble.js
+
+# 4. Output inspizieren
+ls -la output/
+```
+
+---
+
+## Verzeichnisstruktur
+
+```
+/cargobit-foundation
+├── package.json                 # Projekt-Konfiguration
+├── tsconfig.json               # TypeScript-Konfiguration
+├── README.md                   # Diese Datei
+│
+├── /multi-agent                # Multi-Agent-System
+│   ├── config.json             # Agent-Konfiguration
+│   ├── orchestrator.js         # Orchestrierungs-Logik
+│   └── /agents                 # Alle Agenten
+│       ├── architect-agent.js  # Architektur & Schema
+│       ├── backend-agent.js    # Backend-Services
+│       ├── sre-agent.js        # Ops & Infrastruktur
+│       ├── qa-agent.js         # Tests
+│       └── compliance-agent.js # Dokumentation & Compliance
+│
+├── /pipeline                   # CI/CD-Pipeline
+│   ├── run.js                  # MAS-Runner
+│   ├── validate.js             # Validierungs-Engine
+│   ├── assemble.js             # Assembly-Engine
+│   ├── publish.js              # Publishing-Engine
+│   └── README.md               # Pipeline-Dokumentation
+│
+├── /output                     # Generierte Artefakte
+│   ├── /prisma                 # Prisma-Schema
+│   ├── /migrations             # SQL-Migrationen
+│   ├── /src                    # Quellcode
+│   ├── /ops                    # Ops-Skripte
+│   ├── /tests                  # Tests
+│   ├── /docs                   # Dokumentation
+│   ├── manifest.json           # Datei-Manifest
+│   └── checksums.json          # SHA-256-Checksums
+│
+└── /.github                    # GitHub-Konfiguration
+    └── /workflows
+        └── generate-foundation.yml
+```
+
+---
+
+## Multi-Agent-System
+
+### Agenten-Übersicht
+
+| Agent | Verantwortung | Output |
+|-------|---------------|--------|
+| **Architect** | Architektur & Schema | `prisma/schema.prisma`, `migrations/*.sql` |
+| **Backend** | Backend-Services | `src/lib/*`, `src/services/*`, `src/webhooks/*` |
+| **SRE** | Ops & Infrastruktur | `ops/*.sh`, `ops/*.yaml` |
+| **QA** | Tests | `tests/*.test.ts` |
+| **Compliance** | Dokumentation | `docs/*.md` |
+
+### Agenten-Flow
+
+```
+┌──────────────────────────┐
+│      Architect Agent      │
+│  (Schema, Migrations)     │
+└──────────────┬───────────┘
+               │
+┌──────────────▼───────────┐
+│      Backend Agent        │
+│  (Services, Audit)        │
+└──────────────┬───────────┘
+               │
+┌──────────────▼───────────┐
+│        SRE Agent          │
+│  (Ops-Skripte)            │
+└──────────────┬───────────┘
+               │
+┌──────────────▼───────────┐
+│        QA Agent           │
+│  (Tests)                  │
+└──────────────┬───────────┘
+               │
+┌──────────────▼───────────┐
+│    Compliance Agent       │
+│  (Dokumentation)          │
+└──────────────┬───────────┘
+               │
+┌──────────────▼───────────┐
+│     Assembly Engine       │
+│  (Manifest, Checksums)    │
+└──────────────┬───────────┘
+               │
+┌──────────────▼───────────┐
+│         Output            │
+│  (Generierte Foundation)  │
+└───────────────────────────┘
+```
+
+---
+
+## Pipeline
+
+### Schritte
+
+| Schritt | Skript | Beschreibung |
+|---------|--------|--------------|
+| 1. Run | `run.js` | Führt MAS aus |
+| 2. Validate | `validate.js` | Prüft Output-Korrektheit |
+| 3. Assemble | `assemble.js` | Erstellt Release-Paket |
+| 4. Publish | `publish.js` | Publiziert zu Zielen |
+
+### GitHub Actions
+
+Die Pipeline wird automatisch ausgeführt bei:
+- Push auf `main`-Branch
+- Manueller Trigger via `workflow_dispatch`
+
+Workflow-Datei: `.github/workflows/generate-foundation.yml`
+
+---
+
+## CI-Integration
+
+### GitHub Actions Workflow
+
+```yaml
+name: Generate CargoBit Foundation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: node pipeline/run.js
+      - run: node pipeline/validate.js
+      - run: node pipeline/assemble.js
+      - run: node pipeline/publish.js
+```
+
+---
+
+## Determinismus
+
+Um reproduzierbare Builds zu gewährleisten:
+
+| Regel | Beschreibung |
+|-------|--------------|
+| Keine Zeitstempel | Keine Zeitstempel in generierten Dateien (außer Logs) |
+| Keine Zufallswerte | Keine Random-Werte im Code |
+| Sortierung | Alphabetisch sortierte Dateilisten |
+| JSON-Reihenfolge | Konsistente JSON-Schlüsselreihenfolge |
+| Versionen | Fixierte Dependency-Versionen |
+
+---
+
+## Validierung
+
+### Validierungs-Checks
+
+| Check | Beschreibung |
+|-------|--------------|
+| Struktur | Alle required Files vorhanden |
+| TypeScript | Syntax & Patterns |
+| SQL | Migration-Gültigkeit |
+| Dokumentation | Qualität & Vollständigkeit |
+| Shell-Skripte | Shebang & Syntax |
+| Manifest | JSON-Gültigkeit |
+
+### Forbidden Patterns
+
+- `TODO` Kommentare
+- `FIXME` Kommentare
+- `any` Types (Warning)
+
+---
+
+## Generierte Artefakte
+
+### Struktur
+
+```
+/output
+├── /prisma
+│   └── schema.prisma          # Prisma-Datenbankschema
+│
+├── /migrations
+│   ├── 0001_init.sql          # Initiale Migration
+│   └── 0002_indexes.sql       # Index-Migration
+│
+├── /src
+│   ├── /lib                   # Core-Bibliotheken
+│   │   └── rateLimit.ts       # Rate-Limiting
+│   ├── /middleware            # Express/Next.js Middleware
+│   │   └── rateLimit.ts
+│   ├── /webhooks              # Stripe-Webhooks
+│   │   └── stripe.ts
+│   ├── /services              # Business-Logik
+│   │   ├── stripeEvents.ts
+│   │   └── auditLog.ts
+│   └── /jobs                  # Scheduled Jobs
+│       └── auditVerify.ts
+│
+├── /ops
+│   ├── backup-db.sh           # Backup-Skript
+│   ├── restore-db.sh          # Restore-Skript
+│   ├── cron-backup.yaml       # Cron-Konfiguration
+│   └── export-audit-log.ts    # Audit-Export
+│
+├── /tests
+│   ├── rateLimit.test.ts      # Rate-Limit Tests
+│   └── stripeWebhook.test.ts  # Webhook Tests
+│
+├── /docs
+│   ├── security-policy.md     # Security-Policy
+│   ├── compliance-matrix.md   # Compliance-Übersicht
+│   └── sla-definitions.md     # SLAs
+│
+├── manifest.json              # Datei-Manifest
+├── checksums.json             # SHA-256-Checksums
+└── README.md                  # Output-README
+```
+
+---
+
+## Compliance
+
+Das generierte System erfüllt folgende Standards:
+
+| Standard | Abdeckung |
+|----------|-----------|
+| **PCI-DSS SAQ-A** | Stripe-Integration, keine Kartendaten gespeichert |
+| **GDPR** | Audit-Logs, Data Retention |
+| **SOC2-Type2** | Security-Controls, Dokumentation |
+
+---
+
+## Beitragen (Contributing)
+
+### Regeln
+
+1. Keine Secrets im Code
+2. Keine Zeitstempel in generierten Dateien
+3. Keine Zufallswerte
+4. Alle Outputs müssen deterministisch sein
+5. Tests müssen bestanden werden
+
+### Entwicklung
+
+```bash
+# Tests ausführen
+npm test
+
+# Linting
+npm run lint
+
+# MAS lokal testen
+node pipeline/run.js
+```
+
+---
+
+## Support
+
+Bei Fragen oder Problemen:
+1. Pipeline-README lesen: `pipeline/README.md`
+2. Onboarding-Guide lesen: `docs/onboarding.md`
+3. Issue erstellen
+
+---
+
+## Lizenz
+
+**UNLICENSED** — Nur für interne Nutzung.
+
+---
+
+*Generiert von CargoBit Multi-Agent System v1.0.0*
