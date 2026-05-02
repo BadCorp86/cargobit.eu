@@ -1,0 +1,809 @@
+# ================================================================================
+# CARGOBIT CODE-GENERATOR SYSTEM - MULTI-AGENT CONFIGURATION
+# ================================================================================
+# Version: 1.0.0
+# Description: Vollständige Konfiguration für das Multi-Agent-System
+# ================================================================================
+
+system:
+  name: "CargoBit Code-Generator"
+  version: "1.0.0"
+  description: "Automatisierte Code-Generierung für Payment-Systeme"
+  
+  runtime:
+    max_concurrent_agents: 5
+    task_timeout_ms: 300000
+    retry_attempts: 3
+    retry_backoff_ms: 1000
+    
+  logging:
+    level: "info"
+    format: "json"
+    
+  output:
+    base_directory: "./output/cargobit-payment-system"
+    manifest_file: "manifest.json"
+
+# ================================================================================
+# MESSAGE BROKER CONFIGURATION
+# ================================================================================
+
+message_broker:
+  type: "redis"
+  
+  connection:
+    url: "${REDIS_URL:-redis://localhost:6379}"
+    
+  channels:
+    task_queue: "cargobit:tasks"
+    result_queue: "cargobit:results"
+    error_queue: "cargobit:errors"
+    signal_bus: "cargobit:signals"
+    
+  options:
+    max_retries: 3
+    retry_delay_ms: 1000
+
+# ================================================================================
+# STATE STORE CONFIGURATION
+# ================================================================================
+
+state_store:
+  type: "redis"
+  
+  connection:
+    url: "${REDIS_URL:-redis://localhost:6379}"
+    
+  keys:
+    current_state: "cargobit:state:current"
+    checkpoint: "cargobit:state:checkpoint"
+    
+  persistence:
+    enabled: true
+    snapshot_interval_ms: 60000
+
+# ================================================================================
+# AGENT DEFINITIONS
+# ================================================================================
+
+agents:
+  # ------------------------------------------------------------------------------
+  # ARCHITECT AGENT
+  # ------------------------------------------------------------------------------
+  - id: "architect"
+    name: "Database Architect"
+    role: "database_design"
+    description: "Verantwortlich für Datenmodellierung, Prisma Schema und SQL-Migrationen"
+    
+    capabilities:
+      - prisma_schema_generation
+      - sql_migration_writing
+      - database_indexing
+      - architecture_documentation
+      
+    priority: 1
+    max_concurrent_tasks: 1
+    
+    inputs:
+      - project_requirements
+      - tech_stack_specification
+      
+    outputs:
+      - path: "prisma/schema.prisma"
+        type: "prisma"
+        description: "Vollständiges Prisma Schema mit allen Modellen"
+      - path: "migrations/0001_init.sql"
+        type: "sql"
+        description: "Initiale SQL Migration"
+      - path: "migrations/0002_indexes.sql"
+        type: "sql"
+        description: "Performance-Indexe"
+      - path: "docs/architecture/database.md"
+        type: "markdown"
+        description: "Datenbank-Architektur-Dokumentation"
+        
+    signals:
+      emits:
+        - SCHEMA_READY
+        - MIGRATIONS_READY
+        - MODELS_DEFINED
+      consumes: []
+      
+    dependencies: []
+    
+    prompts:
+      system: |
+        Du bist der Database Architect für das CargoBit Payment System.
+        
+        DEINE AUFGABE:
+        Erstelle ein vollständiges, produktionsreifes Prisma Schema und SQL-Migrationen.
+        
+        MODELL-ANFORDERUNGEN:
+        - User: Authentifizierung, Rollen, KYC-Status
+        - Wallet: Multi-Currency, Balances, Status
+        - Payment: Stripe-Integration, Status-Tracking, Idempotency
+        - Payout: Bankverbindung, Status
+        - Transaction: Wallet-Buchungen, Balance-Tracking
+        - Refund: Rückerstattungen, Stripe-Integration
+        - AuditLog: Hash-Chain, Manipulationsschutz
+        - StripeEvent: Webhook-Idempotency
+        
+        ENUMS:
+        - UserRole: SHIPPER, CARRIER, DRIVER, DISPATCHER, ADMIN, SUPPORT
+        - UserStatus: PENDING, ACTIVE, SUSPENDED, DELETED
+        - KycStatus: PENDING, SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED
+        - WalletStatus: ACTIVE, FROZEN, CLOSED
+        - Currency: EUR, USD, GBP, CHF, PLN
+        - PaymentStatus: PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED, REFUNDED, PARTIALLY_REFUNDED
+        - PaymentMethod: CARD, SEPA, WALLET, BANK_TRANSFER
+        - PayoutStatus: PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED
+        - TransactionType: DEPOSIT, WITHDRAWAL, PAYMENT, PAYOUT, REFUND, FEE, ADJUSTMENT
+        - TransactionStatus: PENDING, COMPLETED, FAILED, REVERSED
+        - RefundStatus: PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED
+        
+        INDEX-ANFORDERUNGEN:
+        - users: email, role+status
+        - wallets: userId, userId+currency (unique)
+        - payments: userId+status, stripePaymentIntentId, createdAt
+        - payouts: userId+status, createdAt
+        - transactions: walletId+createdAt, type+status
+        - audit_logs: userId+createdAt, entityType+entityId, createdAt
+        - stripe_events: stripeEventId (unique), processed+createdAt
+        
+        OUTPUT-FORMAT:
+        ```
+        ### FILE: pfad/zur/datei.ext
+        ```sprache
+        [vollständiger Dateiinhalt]
+        ```
+        ```
+        
+      task: |
+        Erstelle {task_description}.
+        
+        Anforderungen:
+        {requirements}
+        
+        Output-Dateien:
+        {output_files}
+
+  # ------------------------------------------------------------------------------
+  # BACKEND AGENT
+  # ------------------------------------------------------------------------------
+  - id: "backend"
+    name: "Backend Developer"
+    role: "implementation"
+    description: "Verantwortlich für Services, Webhooks und Rate Limiting"
+    
+    capabilities:
+      - typescript_development
+      - rate_limiting_implementation
+      - webhook_handler_creation
+      - audit_log_implementation
+      - express_middleware
+      
+    priority: 2
+    max_concurrent_tasks: 3
+    
+    inputs:
+      - prisma_schema
+      - model_interfaces
+      
+    outputs:
+      - path: "src/lib/prisma.ts"
+        type: "typescript"
+        description: "Prisma Client Singleton"
+      - path: "src/lib/redis.ts"
+        type: "typescript"
+        description: "Redis Client Factory"
+      - path: "src/lib/rateLimit.ts"
+        type: "typescript"
+        description: "Rate Limiting Module (Token Bucket + Sliding Window)"
+      - path: "src/middleware/rateLimit.ts"
+        type: "typescript"
+        description: "Express Rate Limit Middleware"
+      - path: "src/webhooks/stripe.ts"
+        type: "typescript"
+        description: "Stripe Webhook Handler mit Signature Validation"
+      - path: "src/services/stripeEvents.ts"
+        type: "typescript"
+        description: "Stripe Event Processing Service"
+      - path: "src/services/auditLog.ts"
+        type: "typescript"
+        description: "Audit Log Service mit Hash-Chain"
+      - path: "src/jobs/auditVerify.ts"
+        type: "typescript"
+        description: "Audit Chain Verification Job"
+        
+    signals:
+      emits:
+        - MODULES_READY
+        - AUDIT_SERVICE_READY
+        - WEBHOOK_HANDLER_READY
+        - RATE_LIMIT_READY
+      consumes:
+        - SCHEMA_READY
+        - MODELS_DEFINED
+        
+    dependencies:
+      - architect
+      
+    prompts:
+      system: |
+        Du bist der Backend Developer für das CargoBit Payment System.
+        
+        DEINE AUFGABE:
+        Implementiere produktionsreife TypeScript-Module für Payment-Funktionalitäten.
+        
+        CODE-STANDARDS:
+        - TypeScript strict mode
+        - Async/await (keine .then() chains)
+        - Explizite Typ-Annotationen
+        - JSDoc Kommentare für öffentliche APIs
+        - Deutschsprachige Kommentare, Englisch für Code
+        
+        MODULE ZU IMPLEMENTIEREN:
+        
+        1. rateLimit.ts:
+           - TokenBucketRateLimiter Klasse
+           - SlidingWindowRateLimiter Klasse
+           - Lua Scripts für atomare Redis-Operationen
+           - Rate Limit Policies (api:global, api:auth, api:payment)
+           
+        2. stripe.ts (Webhook Handler):
+           - Signature Validation mit timingSafeEqual
+           - Replay Attack Prevention (5 Min Toleranz)
+           - Idempotency Layer
+           - Event Router für payment_intent.*, charge.*
+           
+        3. auditLog.ts:
+           - Hash-Chain Implementation (SHA256)
+           - writeAuditLog() Funktion
+           - verifyAuditChain() Funktion
+           - exportAuditLogs() Funktion
+           
+        SICHERHEITSANFORDERUNGEN:
+        - Keine Secrets im Code
+        - Timing-safe Vergleiche für Signatures
+        - Input Validierung
+        - Error Handling ohne Stack Traces zu leaken
+        
+      task: |
+        Implementiere {task_description}.
+        
+        Basis auf Prisma Schema: {schema_file}
+        
+        Anforderungen:
+        {requirements}
+
+  # ------------------------------------------------------------------------------
+  # SRE AGENT
+  # ------------------------------------------------------------------------------
+  - id: "sre"
+    name: "Site Reliability Engineer"
+    role: "operations"
+    description: "Verantwortlich für Backup, Restore und operative Skripte"
+    
+    capabilities:
+      - bash_scripting
+      - kubernetes_configuration
+      - backup_automation
+      - disaster_recovery
+      - cronjob_setup
+      
+    priority: 3
+    max_concurrent_tasks: 2
+    
+    inputs:
+      - prisma_schema
+      - audit_service_interface
+      
+    outputs:
+      - path: "ops/backup-db.sh"
+        type: "bash"
+        description: "PostgreSQL Backup Script mit S3 Support"
+      - path: "ops/restore-db.sh"
+        type: "bash"
+        description: "PostgreSQL Restore Script"
+      - path: "ops/cron-backup.yaml"
+        type: "yaml"
+        description: "Kubernetes CronJob für Backups"
+      - path: "ops/export-audit-log.ts"
+        type: "typescript"
+        description: "Audit Log Export Script"
+      - path: "docs/backup-policy.md"
+        type: "markdown"
+        description: "Backup Policy Dokumentation"
+      - path: "docs/restore-playbook.md"
+        type: "markdown"
+        description: "Restore Playbook"
+        
+    signals:
+      emits:
+        - SCRIPTS_READY
+        - BACKUP_SPECS
+      consumes:
+        - SCHEMA_READY
+        - AUDIT_SERVICE_READY
+        
+    dependencies:
+      - architect
+      - backend
+      
+    prompts:
+      system: |
+        Du bist der SRE für das CargoBit Payment System.
+        
+        DEINE AUFGABE:
+        Erstelle produktionsreife operative Skripte und Konfigurationen.
+        
+        SCRIPT-ANFORDERUNGEN:
+        
+        1. backup-db.sh:
+           - pg_dump mit gzip Komprimierung
+           - S3 Upload (optional)
+           - Manifest mit Checksum
+           - Retention Policy Cleanup
+           - Slack/Email Benachrichtigung
+           - Error Handling
+           
+        2. restore-db.sh:
+           - Backup-Auflistung
+           - S3 Download
+           - Backup-Verifikation
+           - Sicherheits-Confirm (--confirm)
+           - Pre/Post Restore Statistiken
+           
+        3. cron-backup.yaml:
+           - Kubernetes CronJob
+           - Resource Limits
+           - Security Context
+           - Volume Mounts
+           
+        SHELL-SCRIPTING STANDARDS:
+        - set -euo pipefail
+        - Funktionale Gliederung
+        - Ausführliche Logging
+        - Exit Codes
+        - Environment Variables für Konfiguration
+        
+      task: |
+        Erstelle {task_description}.
+        
+        Anforderungen:
+        {requirements}
+
+  # ------------------------------------------------------------------------------
+  # QA AGENT
+  # ------------------------------------------------------------------------------
+  - id: "qa"
+    name: "Quality Assurance Engineer"
+    role: "testing"
+    description: "Verantwortlich für Tests und Qualitätsprüfung"
+    
+    capabilities:
+      - unit_testing
+      - integration_testing
+      - test_fixture_creation
+      - mocking_strategies
+      - coverage_analysis
+      
+    priority: 4
+    max_concurrent_tasks: 3
+    
+    inputs:
+      - prisma_schema
+      - implemented_modules
+      - operational_scripts
+      
+    outputs:
+      - path: "tests/unit/rateLimit.test.ts"
+        type: "typescript"
+        description: "Unit Tests für Rate Limiting"
+      - path: "tests/unit/stripeWebhook.test.ts"
+        type: "typescript"
+        description: "Unit Tests für Stripe Webhooks"
+      - path: "tests/unit/auditLog.test.ts"
+        type: "typescript"
+        description: "Unit Tests für Audit Logging"
+      - path: "tests/integration/payment.flow.test.ts"
+        type: "typescript"
+        description: "Integration Tests für Payment Flow"
+      - path: "tests/fixtures/stripeEvents.json"
+        type: "json"
+        description: "Stripe Event Test Fixtures"
+      - path: "tests/mocks/redis.mock.ts"
+        type: "typescript"
+        description: "Redis Mock"
+      - path: "tests/mocks/prisma.mock.ts"
+        type: "typescript"
+        description: "Prisma Mock"
+        
+    signals:
+      emits:
+        - TESTS_COMPLETE
+        - TEST_STANDARDS
+      consumes:
+        - MODELS_DEFINED
+        - MODULES_READY
+        - SCRIPTS_READY
+        
+    dependencies:
+      - architect
+      - backend
+      - sre
+      
+    prompts:
+      system: |
+        Du bist der QA Engineer für das CargoBit Payment System.
+        
+        DEINE AUFGABE:
+        Erstelle umfassende Tests für alle implementierten Module.
+        
+        TEST-STANDARDS:
+        - Vitest Framework
+        - AAA Pattern (Arrange, Act, Assert)
+        - Mindestens 80% Coverage
+        - Mock externe Dependencies
+        - Deskriptive Test-Namen
+        
+        TEST-STRUKTUR:
+        ```typescript
+        describe('ModuleName', () => {
+          describe('functionName', () => {
+            it('should do X when Y', async () => {
+              // Arrange
+              const input = ...;
+              
+              // Act
+              const result = await functionUnderTest(input);
+              
+              // Assert
+              expect(result).toBe(expected);
+            });
+          });
+        });
+        ```
+        
+        TEST-FÄLLE FÜR:
+        1. Rate Limiting:
+           - Token Bucket: erlauben, ablehnen, refill, reset
+           - Sliding Window: korrektes Zählen, Cleanup
+           
+        2. Stripe Webhooks:
+           - Signature Validation: gültig, ungültig, abgelaufen
+           - Idempotency: bereits verarbeitet, neu
+           - Event Processing: succeeded, failed, refunded
+           
+        3. Audit Logging:
+           - Hash-Chain: korrekte Verkettung, Verifikation
+           - Write: korrekte Hash-Berechnung
+           - Export: korrektes Format
+           
+      task: |
+        Schreibe Tests für {module_name}.
+        
+        Zu testende Funktionen:
+        {functions}
+        
+        Testfälle:
+        {test_cases}
+
+  # ------------------------------------------------------------------------------
+  # COMPLIANCE AGENT
+  # ------------------------------------------------------------------------------
+  - id: "compliance"
+    name: "Compliance Officer"
+    role: "documentation"
+    description: "Verantwortlich für Policies, Playbooks und Compliance-Dokumentation"
+    
+    capabilities:
+      - security_policy_writing
+      - compliance_documentation
+      - incident_playbook_creation
+      - sla_definition
+      - operational_checklist_creation
+      
+    priority: 5
+    max_concurrent_tasks: 2
+    
+    inputs:
+      - architecture_overview
+      - security_implementations
+      - backup_specifications
+      - test_standards
+      
+    outputs:
+      - path: "docs/policies/security-policy.md"
+        type: "markdown"
+        description: "Security Policy"
+      - path: "docs/policies/audit-log-policy.md"
+        type: "markdown"
+        description: "Audit Log Policy"
+      - path: "docs/policies/rate-limit-policy.md"
+        type: "markdown"
+        description: "Rate Limit Policy"
+      - path: "docs/compliance/compliance-readiness.md"
+        type: "markdown"
+        description: "Compliance Readiness Checklist"
+      - path: "docs/compliance/slas.md"
+        type: "markdown"
+        description: "SLA Definitionen"
+      - path: "docs/playbooks/incident-payment-outage.md"
+        type: "markdown"
+        description: "Incident Playbook: Payment Outage"
+      - path: "docs/playbooks/on-call-runbook.md"
+        type: "markdown"
+        description: "On-Call Runbook"
+      - path: "docs/operational-readiness-checklist.md"
+        type: "markdown"
+        description: "Operational Readiness Checklist"
+        
+    signals:
+      emits:
+        - COMPLIANCE_COMPLETE
+        - DOCUMENTATION_READY
+      consumes:
+        - ARCHITECTURE_DOC
+        - SECURITY_SPECS
+        - BACKUP_SPECS
+        - TEST_STANDARDS
+        
+    dependencies:
+      - architect
+      
+    prompts:
+      system: |
+        Du bist der Compliance Officer für das CargoBit Payment System.
+        
+        DEINE AUFGABE:
+        Erstelle umfassende Dokumentation für Security, Compliance und Operations.
+        
+        DOKUMENTATIONS-STANDARDS:
+        - Klare Struktur mit Überschriften
+        - Checkboxen für actionable Items
+        - Code-Beispiele in Code-Blöcken
+        - Tabellen für übersichtliche Daten
+        - Diagramme wo sinnvoll
+        
+        DOKUMENTE ZU ERSTELLEN:
+        
+        1. Security Policy:
+           - Access Control (Authentication, Authorization)
+           - Data Protection (Encryption, PII)
+           - API Security (Rate Limiting, Input Validation)
+           - Infrastructure (Secrets, Network)
+           - Incident Response
+           - Compliance (DSGVO, PCI DSS)
+           
+        2. Incident Playbook:
+           - Schweregrad-Klassifikation (SEV-1 bis SEV-4)
+           - Detection (Alerts, manuelle Erkennung)
+           - Response Flow (Triage, Kommunikation, Diagnose)
+           - Konkrete Checklisten und Commands
+           - Escalation Matrix
+           - Rollback Procedure
+           
+        3. Operational Readiness Checklist:
+           - Kritische Punkte (vor Launch)
+           - Wichtige Punkte (1 Woche nach Launch)
+           - Empfohlene Punkte (laufend)
+           - Sign-off Tabelle
+           
+        4. SLA Definitionen:
+           - Availability Targets
+           - Response Times
+           - Support Levels
+           
+      task: |
+        Erstelle {document_name}.
+        
+        Anforderungen:
+        {requirements}
+
+# ================================================================================
+# WORKFLOW DEFINITION
+# ================================================================================
+
+workflow:
+  name: "cargobit-generation-pipeline"
+  description: "Vollständige Code-Generierung für CargoBit Payment System"
+  
+  phases:
+    - id: "phase-1-architecture"
+      name: "Architecture & Schema"
+      parallel: false
+      agents:
+        - architect
+      tasks:
+        - agent: "architect"
+          task: "create_prisma_schema"
+          description: "Erstelle Prisma Schema und SQL Migrationen"
+          
+    - id: "phase-2-backend"
+      name: "Backend Implementation"
+      parallel: true
+      agents:
+        - backend
+      tasks:
+        - agent: "backend"
+          task: "implement_rate_limiting"
+          description: "Implementiere Rate Limiting Module"
+        - agent: "backend"
+          task: "implement_webhook_handler"
+          description: "Implementiere Stripe Webhook Handler"
+        - agent: "backend"
+          task: "implement_audit_log"
+          description: "Implementiere Audit Log Service"
+          
+    - id: "phase-3-operations"
+      name: "Operations Setup"
+      parallel: false
+      agents:
+        - sre
+      tasks:
+        - agent: "sre"
+          task: "create_backup_scripts"
+          description: "Erstelle Backup und Restore Scripts"
+          
+    - id: "phase-4-testing"
+      name: "Testing"
+      parallel: true
+      agents:
+        - qa
+      tasks:
+        - agent: "qa"
+          task: "create_unit_tests"
+          description: "Erstelle Unit Tests"
+        - agent: "qa"
+          task: "create_integration_tests"
+          description: "Erstelle Integration Tests"
+          
+    - id: "phase-5-compliance"
+      name: "Compliance & Documentation"
+      parallel: false
+      agents:
+        - compliance
+      tasks:
+        - agent: "compliance"
+          task: "create_policies"
+          description: "Erstelle Policies und Playbooks"
+          
+    - id: "phase-6-finalization"
+      name: "Final Assembly"
+      parallel: false
+      agents:
+        - orchestrator
+      tasks:
+        - agent: "orchestrator"
+          task: "create_manifest"
+          description: "Erstelle Manifest und finalisiere Output"
+          
+  completion:
+    require_all_phases: true
+    validate_outputs: true
+    generate_summary: true
+
+# ================================================================================
+# OUTPUT CONFIGURATION
+# ================================================================================
+
+output:
+  base_directory: "./output/cargobit-payment-system"
+  
+  structure:
+    - path: "prisma"
+      type: "directory"
+      description: "Prisma Schema und Migrationen"
+    - path: "migrations"
+      type: "directory"
+      description: "SQL Migration Dateien"
+    - path: "src/lib"
+      type: "directory"
+      description: "Library Module"
+    - path: "src/middleware"
+      type: "directory"
+      description: "Express Middleware"
+    - path: "src/webhooks"
+      type: "directory"
+      description: "Webhook Handler"
+    - path: "src/services"
+      type: "directory"
+      description: "Business Services"
+    - path: "src/jobs"
+      type: "directory"
+      description: "Background Jobs"
+    - path: "ops"
+      type: "directory"
+      description: "Operations Scripts"
+    - path: "tests/unit"
+      type: "directory"
+      description: "Unit Tests"
+    - path: "tests/integration"
+      type: "directory"
+      description: "Integration Tests"
+    - path: "tests/fixtures"
+      type: "directory"
+      description: "Test Fixtures"
+    - path: "tests/mocks"
+      type: "directory"
+      description: "Test Mocks"
+    - path: "docs/policies"
+      type: "directory"
+      description: "Policy Dokumente"
+    - path: "docs/playbooks"
+      type: "directory"
+      description: "Incident Playbooks"
+    - path: "docs/compliance"
+      type: "directory"
+      description: "Compliance Dokumente"
+      
+  manifest:
+    include_checksums: true
+    include_line_counts: true
+    include_timestamps: true
+    format: "json"
+
+# ================================================================================
+# VALIDATION CONFIGURATION
+# ================================================================================
+
+validation:
+  enabled: true
+  
+  checks:
+    - type: "syntax"
+      enabled: true
+      languages: ["typescript", "sql", "bash", "yaml", "json"]
+      
+    - type: "type_check"
+      enabled: true
+      command: "npx tsc --noEmit"
+      
+    - type: "lint"
+      enabled: true
+      command: "npx eslint"
+      
+    - type: "prisma_validate"
+      enabled: true
+      command: "npx prisma validate"
+      
+    - type: "test"
+      enabled: true
+      command: "npm test"
+      
+  fail_on_error: true
+  max_warnings: 10
+
+# ================================================================================
+# MONITORING CONFIGURATION
+# ================================================================================
+
+monitoring:
+  enabled: true
+  
+  metrics:
+    - name: "agent_tasks_total"
+      type: "counter"
+      labels: ["agent", "status"]
+      
+    - name: "agent_task_duration_seconds"
+      type: "histogram"
+      labels: ["agent", "task_type"]
+      
+    - name: "agent_output_lines"
+      type: "gauge"
+      labels: ["agent", "file_type"]
+      
+    - name: "agent_errors_total"
+      type: "counter"
+      labels: ["agent", "error_code"]
+      
+  alerts:
+    - name: "agent_task_failed"
+      condition: "agent_tasks_total{status='failed'} > 0"
+      severity: "warning"
+      
+    - name: "agent_timeout"
+      condition: "agent_task_duration_seconds > 300"
+      severity: "critical"

@@ -1,0 +1,29 @@
+{
+  "name": "cargobit-code-generator",
+  "version": "1.0.0",
+  "description": "Multi-Agent Code Generator for CargoBit Payment System",
+  "main": "orchestrator/index.ts",
+  "scripts": {
+    "generate": "ts-node orchestrator/index.ts",
+    "validate": "node scripts/validate-config.js",
+    "test": "vitest",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "ioredis": "^5.3.0",
+    "@prisma/client": "^5.0.0",
+    "stripe": "^14.0.0",
+    "express": "^4.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.0",
+    "@types/node": "^20.0.0",
+    "prisma": "^5.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
