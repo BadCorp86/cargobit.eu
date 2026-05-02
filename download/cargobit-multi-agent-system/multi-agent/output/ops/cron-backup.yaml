@@ -1,0 +1,83 @@
+# CargoBit Backup Cron Configuration
+# Copy to /etc/cron.d/cargobit-backup or import via crontab
+#
+# Environment
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+MAILTO=ops@cargobit.local
+
+# Environment variables
+DATABASE_URL=postgresql://user:pass@localhost:5432/cargobit
+BACKUP_DIR=/var/backups/cargobit
+
+# =============================================================================
+# BACKUP SCHEDULE
+# =============================================================================
+
+# Full backup - Daily at 2 AM
+0 2 * * * postgres /opt/cargobit/ops/backup-db.sh full >> /var/log/cargobit/backup.log 2>&1
+
+# WAL archive sync - Every 15 minutes (for PITR)
+*/15 * * * * postgres /opt/cargobit/ops/backup-db.sh wal >> /var/log/cargobit/wal-sync.log 2>&1
+
+# =============================================================================
+# MAINTENANCE
+# =============================================================================
+
+# Database vacuum analyze - Daily at 3 AM
+0 3 * * * postgres vacuumdb -h localhost -U postgres -d cargobit --analyze >> /var/log/cargobit/maintenance.log 2>&1
+
+# Audit log verification - Daily at 4 AM
+0 4 * * * postgres cd /opt/cargobit && npx ts-node src/jobs/auditVerify.ts >> /var/log/cargobit/audit-verify.log 2>&1
+
+# Audit log export - Weekly on Sunday at 5 AM
+0 5 * * 0 postgres cd /opt/cargobit && npx ts-node ops/export-audit-log.ts >> /var/log/cargobit/audit-export.log 2>&1
+
+# =============================================================================
+# CLEANUP
+# =============================================================================
+
+# Cleanup old logs - Monthly
+0 0 1 * * postgres find /var/log/cargobit -name "*.log" -mtime +90 -delete
+
+# =============================================================================
+# MONITORING
+# =============================================================================
+
+# Check backup age - Every hour
+0 * * * * postgres test $(find /var/backups/cargobit -name "cargobit_full_*.sql.gz" -mtime -1 | wc -l) -gt 0 || echo "WARNING: No backup in 24h" | mail -s "Backup Alert" ops@cargobit.local
+
+# =============================================================================
+# KUBERNETES CRONJOB EQUIVALENT
+# =============================================================================
+#
+# apiVersion: batch/v1
+# kind: CronJob
+# metadata:
+#   name: cargobit-backup
+#   namespace: cargobit
+# spec:
+#   schedule: "0 2 * * *"
+#   concurrencyPolicy: Forbid
+#   jobTemplate:
+#     spec:
+#       template:
+#         spec:
+#           containers:
+#           - name: backup
+#             image: cargobit/backup:latest
+#             command: ["/opt/cargobit/ops/backup-db.sh", "full"]
+#             env:
+#             - name: DATABASE_URL
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: cargobit-secrets
+#                   key: database-url
+#             volumeMounts:
+#             - name: backup-storage
+#               mountPath: /var/backups/cargobit
+#           volumes:
+#           - name: backup-storage
+#             persistentVolumeClaim:
+#               claimName: backup-pvc
+#           restartPolicy: OnFailure
