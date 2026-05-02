@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  :root {
+    --text: #1F2937;
+    --text-sub: #6B7280;
+    --text-muted: #9CA3AF;
+    --bg: #FFFFFF;
+    --surface: #F9FAFB;
+    --border: #E5E7EB;
+    --blue: #3B82F6;
+    --cyan: #06B6D4;
+    --purple: #8B5CF6;
+    --amber: #F59E0B;
+    --green: #10B981;
+    --red: #EF4444;
+    --connector: #94A3B8;
+  }
+  
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  
+  #root { 
+    width: fit-content; 
+    min-width: 1200px; 
+    margin: 0 auto; 
+    padding: 48px 40px; 
+  }
+
+  .title {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  
+  .subtitle {
+    font-size: 14px;
+    color: var(--text-sub);
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  /* Layer containers */
+  .layer {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 24px;
+    position: relative;
+  }
+  
+  .layer-title {
+    position: absolute;
+    top: -12px;
+    left: 20px;
+    background: var(--bg);
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-sub);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Component boxes */
+  .components {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  
+  .component {
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    min-width: 180px;
+    text-align: center;
+    position: relative;
+  }
+  
+  .component.highlight {
+    border-color: var(--blue);
+    background: #EFF6FF;
+  }
+  
+  .component.redis {
+    border-color: var(--red);
+    background: #FEF2F2;
+  }
+  
+  .component.postgres {
+    border-color: var(--cyan);
+    background: #ECFEFF;
+  }
+  
+  .component.audit {
+    border-color: var(--purple);
+    background: #F5F3FF;
+  }
+  
+  .component-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+  
+  .component-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  
+  .component-desc {
+    font-size: 11px;
+    color: var(--text-sub);
+  }
+
+  /* Data flow section */
+  .flow-section {
+    margin: 32px 0;
+  }
+  
+  .flow-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  
+  .flow-diagram {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  
+  .flow-box {
+    background: white;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+    font-weight: 500;
+    text-align: center;
+    min-width: 120px;
+  }
+  
+  .flow-box.primary {
+    border-color: var(--blue);
+    background: #EFF6FF;
+  }
+  
+  .flow-arrow {
+    color: var(--connector);
+    font-size: 20px;
+    font-weight: bold;
+  }
+
+  /* Architecture grid */
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 32px;
+  }
+  
+  .arch-section {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  
+  .arch-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .arch-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  
+  .arch-item-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  
+  .arch-item-icon.blue { background: #DBEAFE; color: var(--blue); }
+  .arch-item-icon.green { background: #D1FAE5; color: var(--green); }
+  .arch-item-icon.amber { background: #FEF3C7; color: var(--amber); }
+  .arch-item-icon.purple { background: #EDE9FE; color: var(--purple); }
+  
+  .arch-item-content {
+    flex: 1;
+  }
+  
+  .arch-item-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  
+  .arch-item-desc {
+    font-size: 11px;
+    color: var(--text-sub);
+    margin-top: 2px;
+  }
+
+  /* Connection lines */
+  .connections {
+    position: relative;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .connection-line {
+    width: 2px;
+    height: 40px;
+    background: var(--connector);
+    position: relative;
+  }
+  
+  .connection-line::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: -4px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--connector);
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    margin-top: 32px;
+    padding: 16px 24px;
+    background: #F9FAFB;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text);
+  }
+  
+  .legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    border: 2px solid;
+  }
+
+  /* Week 1 Timeline */
+  .timeline {
+    margin-top: 32px;
+    padding: 20px;
+    background: var(--surface);
+    border-radius: 12px;
+    border: 2px solid var(--border);
+  }
+  
+  .timeline-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  
+  .timeline-items {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+  }
+  
+  .timeline-items::before {
+    content: '';
+    position: absolute;
+    top: 16px;
+    left: 40px;
+    right: 40px;
+    height: 2px;
+    background: var(--border);
+  }
+  
+  .timeline-item {
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+  
+  .timeline-dot {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: white;
+    border: 3px solid var(--blue);
+    margin: 0 auto 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--blue);
+  }
+  
+  .timeline-dot.active {
+    background: var(--blue);
+    color: white;
+  }
+  
+  .timeline-label {
+    font-size: 11px;
+    color: var(--text);
+    font-weight: 500;
+  }
+  
+  .timeline-sublabel {
+    font-size: 10px;
+    color: var(--text-sub);
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="title">CargoBit Architecture - Woche 1 Blocker</div>
+  <div class="subtitle">PostgreSQL + Redis + Audit Logs - Produktionsreife Infrastruktur</div>
+
+  <!-- Application Layer -->
+  <div class="layer">
+    <div class="layer-title">Application Layer</div>
+    <div class="components">
+      <div class="component highlight">
+        <div class="component-icon">🌐</div>
+        <div class="component-name">Next.js API</div>
+        <div class="component-desc">REST Endpoints</div>
+      </div>
+      <div class="component highlight">
+        <div class="component-icon">🔐</div>
+        <div class="component-name">Auth Service</div>
+        <div class="component-desc">JWT + Sessions</div>
+      </div>
+      <div class="component">
+        <div class="component-icon">💳</div>
+        <div class="component-name">Payment Service</div>
+        <div class="component-desc">Stripe Integration</div>
+      </div>
+      <div class="component">
+        <div class="component-icon">📊</div>
+        <div class="component-name">Reconciliation</div>
+        <div class="component-desc">Scoring Engine</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connection arrows -->
+  <div class="connections">
+    <svg width="800" height="60" viewBox="0 0 800 60">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#94A3B8"/>
+        </marker>
+      </defs>
+      <line x1="200" y1="0" x2="200" y2="50" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="400" y1="0" x2="400" y2="50" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+      <line x1="600" y1="0" x2="600" y2="50" stroke="#94A3B8" stroke-width="2" marker-end="url(#arrow)"/>
+    </svg>
+  </div>
+
+  <!-- Infrastructure Layer -->
+  <div class="layer">
+    <div class="layer-title">Infrastructure Layer</div>
+    <div class="components">
+      <div class="component postgres">
+        <div class="component-icon">🐘</div>
+        <div class="component-name">PostgreSQL</div>
+        <div class="component-desc">Neon / Primary DB</div>
+      </div>
+      <div class="component redis">
+        <div class="component-icon">⚡</div>
+        <div class="component-name">Redis</div>
+        <div class="component-desc">Rate Limiting + Cache</div>
+      </div>
+      <div class="component audit">
+        <div class="component-icon">📋</div>
+        <div class="component-name">Audit Logs</div>
+        <div class="component-desc">Hash-Chain + S3</div>
+      </div>
+      <div class="component">
+        <div class="component-icon">☁️</div>
+        <div class="component-name">S3 / R2</div>
+        <div class="component-desc">Backups + Exports</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Flow -->
+  <div class="flow-section">
+    <div class="flow-title">Request Flow mit Rate Limiting</div>
+    <div class="flow-diagram">
+      <div class="flow-box primary">Client Request</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">Rate Limiter<br><small style="color:var(--text-sub)">Redis Token Bucket</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">Auth Check</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">Business Logic</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box primary">PostgreSQL</div>
+    </div>
+    <div class="flow-diagram" style="margin-top: 12px;">
+      <div class="flow-box"></div>
+      <span class="flow-arrow"></span>
+      <div class="flow-box" style="border-color: var(--purple); background: #F5F3FF;">Audit Log<br><small style="color:var(--text-sub)">Hash-Chain</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box" style="border-color: var(--amber); background: #FFF7ED;">S3 Export<br><small style="color:var(--text-sub)">Daily</small></div>
+      <div class="flow-box"></div>
+      <div class="flow-box"></div>
+    </div>
+  </div>
+
+  <!-- Architecture Details -->
+  <div class="arch-grid">
+    <div class="arch-section">
+      <div class="arch-section-title">PostgreSQL Migration</div>
+      <div class="arch-item">
+        <div class="arch-item-icon blue">✓</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Neon Serverless Postgres</div>
+          <div class="arch-item-desc">Free tier, auto-scaling, PITR included</div>
+        </div>
+      </div>
+      <div class="arch-item">
+        <div class="arch-item-icon blue">✓</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Connection Pooling</div>
+          <div class="arch-item-desc">Prisma pool_size=10, prepared statements</div>
+        </div>
+      </div>
+      <div class="arch-item">
+        <div class="arch-item-icon blue">✓</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Daily Backups</div>
+          <div class="arch-item-desc">pg_dump + S3, 30-day retention</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="arch-section">
+      <div class="arch-section-title">Redis Rate Limiting</div>
+      <div class="arch-item">
+        <div class="arch-item-icon red" style="background: #FEE2E2;">⚡</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Upstash Redis</div>
+          <div class="arch-item-desc">Serverless, TLS, auto-scaling</div>
+        </div>
+      </div>
+      <div class="arch-item">
+        <div class="arch-item-icon red" style="background: #FEE2E2;">⚡</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Token Bucket Algorithm</div>
+          <div class="arch-item-desc">Sliding window, per-endpoint limits</div>
+        </div>
+      </div>
+      <div class="arch-item">
+        <div class="arch-item-icon red" style="background: #FEE2E2;">⚡</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Circuit Breaker Fallback</div>
+          <div class="arch-item-desc">Graceful degradation bei Redis-Ausfall</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="arch-section">
+      <div class="arch-section-title">Stripe Webhook Security</div>
+      <div class="arch-item">
+        <div class="arch-item-icon green">🔒</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Signature Validation</div>
+          <div class="arch-item-desc">Jeder Webhook wird kryptografisch verifiziert</div>
+        </div>
+      </div>
+      <div class="arch-item">
+        <div class="arch-item-icon green">🔒</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Idempotency Keys</div>
+          <div class="arch-item-desc">Replay protection via processedEvents table</div>
+        </div>
+      </div>
+      <div class="arch-item">
+        <div class="arch-item-icon green">🔒</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Raw Body Parsing</div>
+          <div class="arch-item-desc">Signature-intakte Body-Verarbeitung</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="arch-section">
+      <div class="arch-section-title">Audit Log Hardening</div>
+      <div class="arch-item">
+        <div class="arch-item-icon purple">🔗</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Hash-Chain (SHA256)</div>
+          <div class="arch-item-desc">Jeder Eintrag hash=SHA256(prev + current)</div>
+        </div>
+      </div>
+      <div class="arch-item">
+        <div class="arch-item-icon purple">🔗</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">Write-Only Constraint</div>
+          <div class="arch-item-desc">Trigger verhindert UPDATE/DELETE</div>
+        </div>
+      </div>
+      <div class="arch-item">
+        <div class="arch-item-icon purple">🔗</div>
+        <div class="arch-item-content">
+          <div class="arch-item-title">S3 Glacier Archive</div>
+          <div class="arch-item-desc">Daily export, 90-day retention, KMS encrypted</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Week 1 Timeline -->
+  <div class="timeline">
+    <div class="timeline-title">Woche 1 Implementierungs-Timeline</div>
+    <div class="timeline-items">
+      <div class="timeline-item">
+        <div class="timeline-dot active">1</div>
+        <div class="timeline-label">PostgreSQL</div>
+        <div class="timeline-sublabel">Migration</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot active">2</div>
+        <div class="timeline-label">Redis</div>
+        <div class="timeline-sublabel">Rate Limiting</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot active">3</div>
+        <div class="timeline-label">Backups</div>
+        <div class="timeline-sublabel">PITR</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot">4</div>
+        <div class="timeline-label">Stripe</div>
+        <div class="timeline-sublabel">Webhooks</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot">5</div>
+        <div class="timeline-label">Audit Logs</div>
+        <div class="timeline-sublabel">Hardening</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot">6</div>
+        <div class="timeline-label">Testing</div>
+        <div class="timeline-sublabel">Staging</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot">7</div>
+        <div class="timeline-label">Deploy</div>
+        <div class="timeline-sublabel">Production</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="border-color: var(--blue); background: #EFF6FF;"></div>
+      Application
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="border-color: var(--cyan); background: #ECFEFF;"></div>
+      PostgreSQL
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="border-color: var(--red); background: #FEF2F2;"></div>
+      Redis
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="border-color: var(--purple); background: #F5F3FF;"></div>
+      Audit
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="border-color: var(--amber); background: #FFF7ED;"></div>
+      Backup/S3
+    </div>
+  </div>
+</div>
+</body>
+</html>
