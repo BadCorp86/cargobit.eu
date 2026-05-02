@@ -28,6 +28,7 @@
 | 11 | Developer Handbook | ✅ 40 Seiten |
 | 12 | System Hardening Guide | ✅ 60 Seiten |
 | 13 | Full System Export | ✅ Vollständig |
+| 14 | Executive Summary | ✅ 25 Seiten |
 
 ---
 
@@ -374,6 +375,7 @@ node pipeline/run.js
 
 | Dokument | Beschreibung | Umfang |
 |----------|--------------|--------|
+| `docs/executive-summary.md` | Executive Summary für Stakeholder | 25 Seiten |
 | `docs/developer-handbook.md` | Vollständiges Entwicklerhandbuch | 40 Seiten |
 | `docs/system-hardening-guide.md` | Security, Ops, Compliance Hardening | 60 Seiten |
 | `docs/repository-guide.md` | Full System Export Dokumentation | 30 Seiten |
@@ -402,6 +404,7 @@ Bei Fragen oder Problemen:
 
 ## Quick Links
 
+- 📊 [Executive Summary](docs/executive-summary.md)
 - 📘 [Developer Handbook](docs/developer-handbook.md)
 - 🔐 [System Hardening Guide](docs/system-hardening-guide.md)
 - 📦 [Repository Guide](docs/repository-guide.md)
