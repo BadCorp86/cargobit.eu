@@ -1,0 +1,163 @@
+// Prisma Schema for CargoBit Payment System
+// Version: 1.0.0
+// Generated: 2026-05-02
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// USER MANAGEMENT
+// =============================================================================
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String?
+  stripeCustomerId String?  @unique
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  payments        Payment[]
+  auditLogs       AuditLog[]
+  
+  @@index([email])
+  @@index([stripeCustomerId])
+  @@map("users")
+}
+
+// =============================================================================
+// PAYMENT PROCESSING
+// =============================================================================
+
+model Payment {
+  id                    String        @id @default(cuid())
+  userId                String
+  amount                Decimal       @db.Decimal(10, 2)
+  currency              String        @default("EUR")
+  status                PaymentStatus @default(PENDING)
+  stripePaymentIntentId String?       @unique
+  stripeChargeId        String?       @unique
+  description           String?
+  metadata              Json?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  processedAt           DateTime?
+  
+  // Relations
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auditLogs             AuditLog[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([stripePaymentIntentId])
+  @@index([stripeChargeId])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+// =============================================================================
+// AUDIT LOGGING (COMPLIANCE)
+// =============================================================================
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String?
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?
+  userAgent   String?
+  requestId   String?
+  paymentId   String?
+  createdAt   DateTime  @default(now())
+  
+  // Relations
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  payment     Payment?  @relation(fields: [paymentId], references: [id])
+  
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([requestId])
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// WEBHOOK EVENT TRACKING
+// =============================================================================
+
+model WebhookEvent {
+  id              String    @id @default(cuid())
+  stripeEventId   String    @unique
+  eventType       String
+  processed       Boolean   @default(false)
+  processingError String?
+  payload         Json
+  signature       String
+  receivedAt      DateTime  @default(now())
+  processedAt     DateTime?
+  retryCount      Int       @default(0)
+  
+  @@index([stripeEventId])
+  @@index([eventType])
+  @@index([processed])
+  @@index([receivedAt])
+  @@map("webhook_events")
+}
+
+// =============================================================================
+// RATE LIMITING (Database Fallback)
+// =============================================================================
+
+model RateLimitCounter {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  count       Int       @default(0)
+  windowStart DateTime  @default(now())
+  expiresAt   DateTime
+  
+  @@index([key])
+  @@index([expiresAt])
+  @@map("rate_limit_counters")
+}
+
+// =============================================================================
+// BACKUP METADATA
+// =============================================================================
+
+model BackupMetadata {
+  id           String     @id @default(cuid())
+  backupType   String     // full, incremental, pitr
+  status       String     // pending, running, completed, failed
+  sizeBytes    BigInt?
+  storagePath  String?
+  startedAt    DateTime   @default(now())
+  completedAt  DateTime?
+  checksum     String?
+  errorMessage String?
+  
+  @@index([backupType])
+  @@index([status])
+  @@index([startedAt])
+  @@map("backup_metadata")
+}
