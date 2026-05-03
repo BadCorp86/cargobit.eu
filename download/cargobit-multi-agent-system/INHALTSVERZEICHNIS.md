@@ -18,9 +18,10 @@
 | Developer Portal | 25 | ✅ |
 | Developer Portal Advanced | 4 | ✅ |
 | Developer Portal Governance | 4 | ✅ |
+| Developer Portal Architecture | 1 | ✅ |
 | Roadmaps & Evolution | 8 | ✅ |
 | Multi-Agent System | 15 | ✅ |
-| **Gesamt** | **142+** | ✅ |
+| **Gesamt** | **143+** | ✅ |
 
 ---
 
@@ -431,7 +432,15 @@
 
 ---
 
-## 18. Multi-Agent System
+## 18. Developer Portal - Architecture Blueprint (Block BB)
+
+| Datei | Beschreibung | Block |
+|-------|--------------|-------|
+| `developer-portal-enterprise-architecture-blueprint.md` | Enterprise Architecture Blueprint (Master-Artefakt) | Block BB |
+
+---
+
+## 19. Multi-Agent System
 
 ### 16.1 Agents
 
@@ -618,6 +627,7 @@ cargobit-multi-agent-system/
 | AL-AO | Security & Future | Threat Model, Pentest, ADR, Vision |
 | AP-AS | Advanced Systems | AI-Integration, Self-Healing, Scoring, Multi-Region |
 | AX-BA | Governance Master | API/Event/Data Governance, Compliance |
+| BB | Architecture Blueprint | Enterprise Architecture (Master-Artefakt) |
 
 ---
 
