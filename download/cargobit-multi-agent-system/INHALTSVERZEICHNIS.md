@@ -21,7 +21,7 @@
 | Developer Portal Architecture | 4 | ✅ |
 | Roadmaps & Evolution | 8 | ✅ |
 | Multi-Agent System | 15 | ✅ |
-| **Gesamt** | **146+** | ✅ |
+| **Gesamt** | **147+** | ✅ |
 
 ---
 
@@ -464,7 +464,15 @@
 
 ---
 
-## 22. Multi-Agent System
+## 22. Developer Portal - Security Hardening (Block BF)
+
+| Datei | Beschreibung | Block |
+|-------|--------------|-------|
+| `developer-portal-api-proxy-engine-security-hardening-plan.md` | Security Hardening Plan - API Proxy Engine | Block BF |
+
+---
+
+## 23. Multi-Agent System
 
 ### 16.1 Agents
 
@@ -655,6 +663,7 @@ cargobit-multi-agent-system/
 | BC | C4 Level 3 | Tools Service Component Model |
 | BD | C4 Level 4 | API Proxy Engine (Implementierungs-Referenz) |
 | BE | Security Threat Model | STRIDE für API Proxy Engine |
+| BF | Security Hardening | Hardening Plan für API Proxy Engine |
 
 ---
 
