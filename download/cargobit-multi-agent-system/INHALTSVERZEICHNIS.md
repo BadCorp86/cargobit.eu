@@ -21,7 +21,7 @@
 | Developer Portal Architecture | 4 | ✅ |
 | Roadmaps & Evolution | 8 | ✅ |
 | Multi-Agent System | 15 | ✅ |
-| **Gesamt** | **148+** | ✅ |
+| **Gesamt** | **149+** | ✅ |
 
 ---
 
@@ -480,7 +480,15 @@
 
 ---
 
-## 24. Multi-Agent System
+## 24. Developer Portal - RACI/Operating Model (Block BH)
+
+| Datei | Beschreibung | Block |
+|-------|--------------|-------|
+| `developer-portal-tools-service-raci-operating-model.md` | RACI/Operating Model - Tools Service & API Proxy Engine | Block BH |
+
+---
+
+## 25. Multi-Agent System
 
 ### 16.1 Agents
 
@@ -673,6 +681,7 @@ cargobit-multi-agent-system/
 | BE | Security Threat Model | STRIDE für API Proxy Engine |
 | BF | Security Hardening | Hardening Plan für API Proxy Engine |
 | BG | Performance Budget | Latenzmodell für API Proxy Engine |
+| BH | RACI/Operating Model | Verantwortlichkeiten für Tools Service |
 
 ---
 
