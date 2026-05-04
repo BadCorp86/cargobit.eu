@@ -21,7 +21,7 @@
 | Developer Portal Architecture | 4 | ✅ |
 | Roadmaps & Evolution | 8 | ✅ |
 | Multi-Agent System | 15 | ✅ |
-| **Gesamt** | **147+** | ✅ |
+| **Gesamt** | **148+** | ✅ |
 
 ---
 
@@ -472,7 +472,15 @@
 
 ---
 
-## 23. Multi-Agent System
+## 23. Developer Portal - Performance Budget (Block BG)
+
+| Datei | Beschreibung | Block |
+|-------|--------------|-------|
+| `developer-portal-api-proxy-engine-performance-budget.md` | Performance-Budget & Latenzmodell - API Proxy Engine | Block BG |
+
+---
+
+## 24. Multi-Agent System
 
 ### 16.1 Agents
 
@@ -664,6 +672,7 @@ cargobit-multi-agent-system/
 | BD | C4 Level 4 | API Proxy Engine (Implementierungs-Referenz) |
 | BE | Security Threat Model | STRIDE für API Proxy Engine |
 | BF | Security Hardening | Hardening Plan für API Proxy Engine |
+| BG | Performance Budget | Latenzmodell für API Proxy Engine |
 
 ---
 
