@@ -3304,3 +3304,60 @@ k6 run ops/load-tests/k6-export-load-param.js \
 ```
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: block-cf-debug-verify
+Agent: Main Agent
+Task: Block CF — Debug Checklist for Reviewers + cosign Verify Snippets
+
+## Work Log:
+
+### 1. Debug Checklist for Reviewers
+- Datei: `/home/z/my-project/download/cargobit-multi-agent-system/developer-portal-debug-checklist-verify-snippets.md` - NEU
+- Zweck: Schnelle Copy/Paste-Checkliste für CI-Failure-Triage
+- Sektionen:
+  - Repo and Branch (Repo, Branch, Commit)
+  - CI Run (Workflow/Job, Start time, Runner type)
+  - Unit Tests (Status, Failing tests)
+  - Build (Docker log, Base image)
+  - Trivy Scan (Status, Top findings with CVE)
+  - Signing (Method, Logs, Rekor entry)
+  - Registry Push (Status, Tags)
+  - Verification (Command, Output)
+  - Environment and Secrets (Secrets present, OIDC/ID token)
+  - Quick Remediations (Trivy, Signing, Push)
+  - Attachments (Logs, Reproduce commands)
+
+### 2. GitHub Actions cosign Verify Job
+- Keyless Verify Workflow Snippet
+- Install cosign via curl/tar
+- Verify image signature with OIDC
+- Optional keyed verify variant (commented)
+
+### 3. GitLab CI cosign Verify Job
+- Verify Stage in gitlab-ci.yml
+- Docker-in-Docker Service
+- Keyless verification script
+- Branch-scoped execution
+
+### 4. Quick Integration Notes
+- Keyless vs keyed guidance
+- Failure handling recommendations
+- Attestations (SBOM, provenance)
+
+## Stage Summary:
+
+### Block CF Metadata:
+| Field | Value |
+|-------|-------|
+| Block ID | CF |
+| Title | Debug Checklist + Verify Snippets |
+| Category | CI/CD, Security, Troubleshooting |
+| Related Blocks | CC (GitHub Actions), CD (GitLab CI), CE (cosign Verify) |
+
+### Verwendung:
+1. **Reviewers**: Copy/Paste Checklist in MR/PR Comments bei CI-Failures
+2. **CI Engineers**: Add Verify Job to Deploy Workflows
+3. **Security Teams**: Verify Signatures before Production Deployment
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
