@@ -3361,3 +3361,66 @@ Task: Block CF — Debug Checklist for Reviewers + cosign Verify Snippets
 3. **Security Teams**: Verify Signatures before Production Deployment
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: block-cl-release-steps
+Agent: Main Agent
+Task: Block CL — Nächste konkrete Schritte zum Abschluss und Release
+
+## Work Log:
+
+### 1. Patches anwenden und Branches prüfen
+- Interaktives Script Command
+- Git show Commands für CI-Dateien
+- Validierungs-Checkliste (4 Items)
+
+### 2. Sandbox Secrets und OIDC konfigurieren
+- GitHub Actions Secrets Tabelle (5 Secrets)
+- GitLab CI Variables Tabelle (3 Variables)
+- OIDC Permissions YAML
+- Validierungs-Checkliste (4 Items)
+
+### 3. CI Run beobachten und Logs sammeln
+- Pipeline Stages ASCII Diagramm
+- Prüfungen Tabelle (5 Stages)
+- Artefakte Tabelle (4 Artefakte)
+- Validierungs-Checkliste (5 Items)
+
+### 4. Verifikation lokal und in CI
+- Keyless Verify Command
+- Keyed Verify Command
+- SBOM und Trivy lokal Commands
+- Verifikation Matrix Tabelle
+- Validierungs-Checkliste (3 Items)
+
+### 5. Canary Rollout, Monitoring und Rollback
+- Canary Rollout YAML Beispiel
+- Health Checks Tabelle (5 Metrics)
+- Prometheus Queries (3 Queries)
+- Rollback Commands (5 Commands)
+- Validierungs-Checkliste (5 Items)
+
+### 6. Final Promotion, Post-Release Aufgaben
+- Promotion Flow ASCII Diagramm
+- Promotion Checklist (6 Items)
+- Post-Release Aufgaben Tabelle (6 Items)
+- Key Rotation Zeitplan Tabelle
+- Owners Tabelle (4 Rollen)
+- RACI Matrix (6 Aufgaben x 4 Rollen)
+
+### 7. Nächste Artefakte Optionen
+- (1) Canary-Deployment-Manifest
+- (2) Incident-Template für Signatur/Trivy-Failures
+- (3) Key-Rotation Kalender-Template
+
+## Stage Summary:
+
+### Block CL Metadata:
+| Field | Value |
+|-------|-------|
+| Block ID | CL |
+| Title | Nächste konkrete Schritte zum Abschluss und Release |
+| Category | Release Management, CI/CD, Operations |
+| Related Blocks | CI (Release Checklist), CG (Incident Response), CK (Patch 0011) |
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
