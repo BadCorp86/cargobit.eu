@@ -3561,3 +3561,78 @@ Task: Block CP — Konkrete To-Do Checkliste vor Veröffentlichung
 | Related Blocks | CL (Release Steps), CI (Release Checklist), CM (Canary Manifest) |
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
+
+---
+Task ID: block-cq-ci-job-snippets
+Agent: Main Agent
+Task: Block CQ — CI-Job-Snippets (syft, trivy, cosign, Kyverno)
+
+## Work Log:
+
+### 1. Syft SBOM Generation Job
+- GitHub Actions Workflow (vollständig)
+  - Syft v1.0.0 gepinnt
+  - SPDX JSON, CycloneDX JSON, Table Output
+  - Attestation Predicate
+  - Artifact Upload
+  - Release Upload
+- GitLab CI Job
+  - Syft v1.0.0 gepinnt
+  - Multi-format Output
+  - Artifacts mit 30 Tagen Retention
+
+### 2. Trivy Pinned Version Scan Job
+- GitHub Actions Workflow (vollständig)
+  - Trivy v0.43.0 gepinnt
+  - JSON, SARIF, Table Output
+  - GitHub Security SARIF Upload
+  - Finding Summary (CRITICAL, HIGH, MEDIUM, LOW)
+  - Pass/Fail Output
+- GitLab CI Job
+  - Trivy v0.43.0 gepinnt
+  - JSON Output mit Vulnerability Report
+  - Exit Code konfigurierbar
+
+### 3. cosign Sign/Verify Jobs
+- GitHub Actions Workflow (vollständig)
+  - Keyless Signing mit OIDC
+  - Keyed Signing Fallback
+  - Rekor Index Extraction
+  - Certificate Verification
+  - Verify Job für PRs
+- GitLab CI Jobs
+  - Keyless Signing mit SIGSTORE_ID_TOKEN
+  - Verify Job
+  - Artifacts Upload
+
+### 4. Kyverno Policy Vorlage
+- ClusterPolicy: verify-cosign-signature
+  - Keyless Verification
+  - SBOM Attestation Required
+  - Vulnerability Scanning Attestation
+- ClusterPolicy: block-unsigned-images
+  - Enforce signed images
+  - Require digest (immutable tags)
+- Keyed Signing Policy Variante
+- Test Resources (unsigned/signed)
+- Installation Commands
+
+### 5. Complete CI Pipeline Example
+- GitHub Actions Full Pipeline
+  - build → trivy → sbom → sign → push → deploy-gate
+  - Job Dependencies
+
+## Stage Summary:
+
+### Block CQ Metadata:
+| Field | Value |
+|-------|-------|
+| Block ID | CQ |
+| Title | CI-Job-Snippets (syft, trivy, cosign, Kyverno) |
+| Category | CI/CD, Security, Kubernetes |
+| Related Blocks | CP (Pre-Release Checklist), CM (Canary Manifest), CD (GitLab CI) |
+
+### Datei:
+`/home/z/my-project/download/cargobit-multi-agent-system/developer-portal-ci-job-snippets.md`
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
