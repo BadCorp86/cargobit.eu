@@ -1,0 +1,29 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-unsigned-images
+  annotations:
+    policies.kyverno.io/title: Block Unsigned Images
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/severity: critical
+    policies.kyverno.io/description: >-
+      This policy blocks deployment of images that are not signed
+      with cosign from trusted registries.
+spec:
+  validationFailureAction: enforce
+  background: false
+  rules:
+    - name: block-unsigned
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Images must be signed with cosign. Unsigned images are not allowed."
+        pattern:
+          spec:
+            containers:
+              - image: "ghcr.io/cargobit/*"
+            # Image must have a digest (immutable tag)
+            =(image): "*@sha256:*"

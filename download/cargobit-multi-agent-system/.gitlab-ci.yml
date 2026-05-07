@@ -1,0 +1,275 @@
+# GitLab CI/CD Pipeline for governance-postcheck
+# ================================================
+
+stages:
+  - build
+  - security
+  - sbom
+  - sign
+  - verify
+  - deploy
+
+variables:
+  # Pinned versions for reproducibility
+  TRIVY_VERSION: "0.43.0"
+  SYFT_VERSION: "1.0.0"
+  COSIGN_VERSION: "2.1.0"
+  
+  # Image configuration
+  IMAGE_NAME: "$CI_REGISTRY_IMAGE/governance-postcheck"
+  IMAGE_TAG: "$CI_COMMIT_SHA"
+  
+  # Trivy configuration
+  TRIVY_SEVERITY: "HIGH,CRITICAL"
+  TRIVY_EXIT_CODE: "1"
+
+# ============================================
+# Build Stage
+# ============================================
+build-image:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      docker build \
+        -f governance-postcheck/Dockerfile.hardened \
+        -t ${IMAGE_NAME}:${IMAGE_TAG} \
+        -t ${IMAGE_NAME}:latest \
+        .
+    - docker push ${IMAGE_NAME}:${IMAGE_TAG}
+    - docker push ${IMAGE_NAME}:latest
+  only:
+    - branches
+    - tags
+
+# ============================================
+# Security Stage - Trivy Scan
+# ============================================
+trivy-scan:
+  stage: security
+  image: docker:24.0.5
+  services:
+    - docker:24-dind
+  before_script:
+    - apk add --no-cache curl jq
+    - curl -sSfL https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz | tar xz -C /usr/local/bin
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      # Run Trivy scan
+      trivy image \
+        --input ${IMAGE_NAME}:${IMAGE_TAG} \
+        --format json \
+        --output trivy-results.json \
+        --severity ${TRIVY_SEVERITY} \
+        --ignore-unfixed \
+        --no-progress \
+        --exit-code ${TRIVY_EXIT_CODE} || SCAN_FAILED=1
+      
+      # Generate summary
+      CRITICAL=$(cat trivy-results.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo "0")
+      HIGH=$(cat trivy-results.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo "0")
+      MEDIUM=$(cat trivy-results.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' 2>/dev/null || echo "0")
+      LOW=$(cat trivy-results.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' 2>/dev/null || echo "0")
+      
+      echo ""
+      echo "=== Trivy Scan Summary ==="
+      echo "CRITICAL: ${CRITICAL}"
+      echo "HIGH: ${HIGH}"
+      echo "MEDIUM: ${MEDIUM}"
+      echo "LOW: ${LOW}"
+      echo ""
+      
+      if [ "${SCAN_FAILED:-0}" -eq 1 ]; then
+        echo "❌ Trivy scan failed"
+        exit 1
+      else
+        echo "✅ Trivy scan passed"
+      fi
+  artifacts:
+    name: "trivy-scan-${CI_COMMIT_SHA}"
+    paths:
+      - trivy-results.json
+    reports:
+      vulnerability: trivy-results.json
+    expire_in: 30 days
+  needs:
+    - build-image
+  only:
+    - branches
+    - tags
+
+# ============================================
+# SBOM Stage - Generate SBOM
+# ============================================
+generate-sbom:
+  stage: sbom
+  image: docker:24.0.5
+  services:
+    - docker:24-dind
+  before_script:
+    - apk add --no-cache curl
+    - curl -sSfL https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz | tar xz -C /usr/local/bin
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      syft ${IMAGE_NAME}:${IMAGE_TAG} \
+        --output spdx-json=sbom-spdx.json \
+        --output cyclonedx-json=sbom-cyclonedx.json \
+        --output table=sbom-table.txt
+    - cat sbom-table.txt
+  artifacts:
+    name: "sbom-${CI_COMMIT_SHA}"
+    paths:
+      - sbom-spdx.json
+      - sbom-cyclonedx.json
+      - sbom-table.txt
+    expire_in: 30 days
+  needs:
+    - build-image
+  only:
+    - branches
+    - tags
+
+# ============================================
+# Sign Stage - cosign Keyless Signing
+# ============================================
+cosign-sign:
+  stage: sign
+  image: docker:24.0.5
+  services:
+    - docker:24-dind
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  before_script:
+    - apk add --no-cache curl jq
+    - curl -sSL https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64 -o /usr/local/bin/cosign
+    - chmod +x /usr/local/bin/cosign
+    - cosign version
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      IMAGE_REF="${IMAGE_NAME}:${IMAGE_TAG}"
+      
+      echo "=== Signing Image (Keyless) ==="
+      echo "Image: ${IMAGE_REF}"
+      
+      # Keyless signing with OIDC
+      cosign sign --yes \
+        --identity-token ${SIGSTORE_ID_TOKEN} \
+        --annotations="repo=${CI_PROJECT_PATH}" \
+        --annotations="pipeline=${CI_PIPELINE_ID}" \
+        --annotations="commit=${CI_COMMIT_SHA}" \
+        ${IMAGE_REF}
+      
+      echo ""
+      echo "✅ Image signed successfully"
+      
+      # Get Rekor index
+      REKOR_INDEX=$(cosign verify --keyless --output=json ${IMAGE_REF} 2>/dev/null | jq -r '.[0].bundle.Payload.body' | base64 -d 2>/dev/null | jq -r '.logIndex' 2>/dev/null || echo "unknown")
+      echo "Rekor log index: ${REKOR_INDEX}"
+  artifacts:
+    name: "cosign-signing-${CI_COMMIT_SHA}"
+    paths:
+      - verify-output.json
+    expire_in: 30 days
+  needs:
+    - trivy-scan
+    - generate-sbom
+  only:
+    - branches
+    - tags
+
+# ============================================
+# Verify Stage - cosign Verification
+# ============================================
+cosign-verify:
+  stage: verify
+  image: docker:24.0.5
+  services:
+    - docker:24-dind
+  before_script:
+    - apk add --no-cache curl
+    - curl -sSL https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64 -o /usr/local/bin/cosign
+    - chmod +x /usr/local/bin/cosign
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - |
+      IMAGE_REF="${IMAGE_NAME}:${IMAGE_TAG}"
+      
+      echo "=== Verifying Image Signature ==="
+      echo "Image: ${IMAGE_REF}"
+      
+      # Keyless verify
+      cosign verify --keyless ${IMAGE_REF}
+      
+      echo ""
+      echo "✅ Signature verification passed"
+  needs:
+    - cosign-sign
+  only:
+    - branches
+    - tags
+
+# ============================================
+# Deploy Stage - Canary
+# ============================================
+deploy-canary:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  environment:
+    name: canary
+    url: https://canary.governance-postcheck.cargobit.io
+  script:
+    - |
+      echo "=== Deploying to Canary ==="
+      
+      # Update canary deployment
+      kubectl set image deployment/governance-postcheck-canary \
+        app=${IMAGE_NAME}:${IMAGE_TAG} \
+        -n canary
+      
+      # Wait for rollout
+      kubectl rollout status deployment/governance-postcheck-canary \
+        -n canary --timeout=300s
+      
+      echo "✅ Deployed to Canary"
+  needs:
+    - cosign-verify
+  only:
+    - main
+  when: manual
+
+# ============================================
+# Deploy Stage - Production
+# ============================================
+deploy-production:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  environment:
+    name: production
+    url: https://governance-postcheck.cargobit.io
+  script:
+    - |
+      echo "=== Deploying to Production ==="
+      
+      # Update production deployment
+      kubectl set image deployment/governance-postcheck \
+        app=${IMAGE_NAME}:${IMAGE_TAG} \
+        -n production
+      
+      # Wait for rollout
+      kubectl rollout status deployment/governance-postcheck \
+        -n production --timeout=300s
+      
+      echo "✅ Deployed to Production"
+  needs:
+    - deploy-canary
+  only:
+    - main
+  when: manual

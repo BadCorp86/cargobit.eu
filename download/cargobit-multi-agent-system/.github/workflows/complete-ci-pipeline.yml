@@ -1,0 +1,215 @@
+name: Complete CI Pipeline
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/governance-postcheck
+
+jobs:
+  # ============================================
+  # Job 1: Build and Test
+  # ============================================
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./governance-postcheck/Dockerfile.hardened
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Run unit tests
+        run: |
+          docker run --rm \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            pytest governance-postcheck/tests -v
+
+  # ============================================
+  # Job 2: Trivy Security Scan
+  # ============================================
+  trivy:
+    needs: build
+    uses: ./.github/workflows/trivy-scan.yml
+    with:
+      image-tag: ${{ github.sha }}
+      fail-on-severity: 'HIGH,CRITICAL'
+
+  # ============================================
+  # Job 3: SBOM Generation
+  # ============================================
+  sbom:
+    needs: build
+    uses: ./.github/workflows/sbom-generation.yml
+    with:
+      image-tag: ${{ github.sha }}
+
+  # ============================================
+  # Job 4: Sign Image with cosign
+  # ============================================
+  sign:
+    needs: [trivy, sbom]
+    uses: ./.github/workflows/cosign-sign-verify.yml
+    with:
+      image-tag: ${{ github.sha }}
+      keyless: true
+    secrets: inherit
+
+  # ============================================
+  # Job 5: Deploy Gate - Verify before deploy
+  # ============================================
+  deploy-gate:
+    needs: sign
+    runs-on: ubuntu-latest
+    outputs:
+      ready-for-deploy: ${{ steps.verify.outputs.ready }}
+    
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.1.0'
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Verify image signature
+        id: verify
+        run: |
+          IMAGE_REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          
+          echo "=== Final Verification Gate ==="
+          echo "Image: ${IMAGE_REF}"
+          echo ""
+          
+          # Verify signature
+          cosign verify --keyless \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository_owner }}" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            ${IMAGE_REF}
+          
+          echo ""
+          echo "✅ All checks passed - ready for deployment"
+          echo "ready=true" >> $GITHUB_OUTPUT
+
+  # ============================================
+  # Job 6: Deploy to Canary (main branch only)
+  # ============================================
+  deploy-canary:
+    needs: deploy-gate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: canary
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+      
+      - name: Configure Kubernetes credentials
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+      
+      - name: Deploy to Canary
+        run: |
+          IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} | cut -d'@' -f2)
+          
+          # Update canary deployment
+          kubectl set image deployment/governance-postcheck-canary \
+            app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${IMAGE_DIGEST} \
+            -n canary
+          
+          # Wait for rollout
+          kubectl rollout status deployment/governance-postcheck-canary \
+            -n canary --timeout=300s
+          
+          echo "✅ Deployed to Canary namespace"
+
+  # ============================================
+  # Job 7: Promote to Production (manual approval)
+  # ============================================
+  deploy-production:
+    needs: deploy-canary
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+      
+      - name: Configure Kubernetes credentials
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+      
+      - name: Deploy to Production
+        run: |
+          IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} | cut -d'@' -f2)
+          
+          # Update production deployment
+          kubectl set image deployment/governance-postcheck \
+            app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${IMAGE_DIGEST} \
+            -n production
+          
+          # Wait for rollout
+          kubectl rollout status deployment/governance-postcheck \
+            -n production --timeout=300s
+          
+          echo "✅ Deployed to Production"
+      
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          files: |
+            sbom-spdx.json
+            trivy-results.json

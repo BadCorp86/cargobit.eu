@@ -1,0 +1,78 @@
+name: SBOM Generation
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  workflow_call:
+    inputs:
+      image-tag:
+        description: 'Image tag to generate SBOM for'
+        required: true
+        type: string
+    outputs:
+      sbom-artifact:
+        description: 'SBOM artifact name'
+        value: sbom-${{ inputs.image-tag }}
+
+jobs:
+  generate-sbom:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up image reference
+        id: image
+        run: |
+          if [ "${{ inputs.image-tag }}" != "" ]; then
+            echo "image-ref=ghcr.io/${{ github.repository_owner }}/governance-postcheck:${{ inputs.image-tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "image-ref=ghcr.io/${{ github.repository_owner }}/governance-postcheck:${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Install Syft
+        run: |
+          SYFT_VERSION="1.0.0"
+          curl -sSfL https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz | tar xz -C /usr/local/bin
+          syft version
+      
+      - name: Generate SBOM (SPDX JSON)
+        run: |
+          syft ${{ steps.image.outputs.image-ref }} \
+            --output spdx-json=sbom-spdx.json \
+            --output cyclonedx-json=sbom-cyclonedx.json \
+            --output table=sbom-table.txt
+          
+          echo "=== SBOM Summary ==="
+          cat sbom-table.txt
+      
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: |
+            sbom-spdx.json
+            sbom-cyclonedx.json
+            sbom-table.txt
+          retention-days: 30
+      
+      - name: Upload SBOM to release (if tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            sbom-spdx.json
+            sbom-cyclonedx.json
