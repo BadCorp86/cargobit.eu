@@ -3492,3 +3492,72 @@ Task: Blocks CM, CN, CO — Drei Artefakte erstellt
 | CO | Key-Rotation Kalender | Security, Compliance |
 
 ### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT (3 Artefakte)
+
+---
+Task ID: block-cp-pre-release-todo
+Agent: Main Agent
+Task: Block CP — Konkrete To-Do Checkliste vor Veröffentlichung
+
+## Work Log:
+
+### 1. Secrets und OIDC prüfen
+- GitHub Actions Secrets Tabelle (4 Secrets)
+- GitLab CI Variables Tabelle (3 Variables)
+- OIDC Verification Code Snippets
+- Validierungs-Checkliste (4 Items)
+
+### 2. Trivy und SBOM
+- Trivy pinning Commands
+- SBOM generation Command
+- Trivy scan Command
+- Artefakte upload YAML
+- Policy Tabelle (4 Severities)
+- Validierungs-Checkliste (5 Items)
+
+### 3. Signatur-Verifikation
+- CI Sign Job Bash Commands
+- GitHub Actions Workflow (vollständig)
+- Lokale Prüfung Command
+- Fallback (Keyed) Command
+- Validierungs-Checkliste (4 Items)
+
+### 4. Canary Deploy und Monitoring
+- Kubernetes Ingress Canary YAML
+- Health Probes YAML
+- Prometheus SLOs YAML
+- Prometheus Alerts YAML
+- Rollback Test Commands
+- Validierungs-Checkliste (6 Items)
+
+### 5. Admission Enforcement
+- Deploy Pipeline Gate YAML
+- Kyverno Policy YAML
+- OPA Gatekeeper Policy YAML
+- Test Commands
+- Validierungs-Checkliste (4 Items)
+
+### 6. Runbooks und Key Rotation
+- KEY_ROTATION.md Template
+- Rotation Drill Script
+- Emergency Rotation Script
+- Kalender 2026
+- Validierungs-Checkliste (5 Items)
+
+### 7. Quick Verification Commands Summary
+- Trivy, SBOM, Signing, Kubernetes, Key Rotation
+
+### 8. Go/No-Go Kriterien
+- Go-Kriterien Tabelle (5 Items)
+- No-Go-Kriterien Tabelle (4 Items)
+
+## Stage Summary:
+
+### Block CP Metadata:
+| Field | Value |
+|-------|-------|
+| Block ID | CP |
+| Title | Konkrete To-Do Checkliste vor Veröffentlichung |
+| Category | Release Management, Go-Live Checklist |
+| Related Blocks | CL (Release Steps), CI (Release Checklist), CM (Canary Manifest) |
+
+### Status: ✅ VOLLSTÄNDIG IMPLEMENTIERT
