@@ -1,0 +1,65 @@
+# Prometheus Alert Rules for Task 5: Reconciliation Reports
+# Add to your existing prometheus/alerts/ or SLO rules file
+
+groups:
+- name: reconciliation-reports.rules
+  rules:
+  # Critical: Any export failure should be investigated
+  - alert: ReportExportFailures
+    expr: increase(report_exports_failed_total[5m]) > 0
+    for: 1m
+    labels:
+      severity: critical
+      team: payments
+    annotations:
+      summary: "Report export failures detected"
+      description: "There were {{ $value }} report export failures in the last 5 minutes. Check worker logs and S3 connectivity."
+      runbook_url: "https://wiki.cargobit.io/runbooks/report-export-failures"
+
+  # Warning: High export duration indicates potential issues
+  - alert: ReportExportDurationHigh
+    expr: histogram_quantile(0.95, sum(rate(report_export_duration_seconds_bucket[5m])) by (le)) > 60
+    for: 5m
+    labels:
+      severity: warning
+      team: payments
+    annotations:
+      summary: "High report export duration p95"
+      description: "p95 export duration exceeded 60s. Current value: {{ $value }}s. Consider scaling workers or optimizing queries."
+      runbook_url: "https://wiki.cargobit.io/runbooks/report-export-performance"
+
+  # Warning: Many exports running simultaneously might indicate backlog
+  - alert: ReportExportInProgressHigh
+    expr: report_export_in_progress > 5
+    for: 5m
+    labels:
+      severity: warning
+      team: payments
+    annotations:
+      summary: "Many report exports in progress"
+      description: "More than 5 exports are in progress for over 5 minutes. Current: {{ $value }}. Check worker health."
+      runbook_url: "https://wiki.cargobit.io/runbooks/report-export-backlog"
+
+  # Warning: Export queue building up
+  - alert: ReportExportQueueGrowing
+    expr: increase(report_exports_queued_total[10m]) - increase(report_exports_completed_total[10m]) > 10
+    for: 5m
+    labels:
+      severity: warning
+      team: payments
+    annotations:
+      summary: "Report export queue is growing"
+      description: "Export queue has grown by {{ $value }} jobs in the last 10 minutes. Workers may be falling behind."
+      runbook_url: "https://wiki.cargobit.io/runbooks/report-export-backlog"
+
+  # Info: No exports completed recently (might be expected, or might indicate stuck jobs)
+  - alert: NoReportExportsCompleted
+    expr: increase(report_exports_completed_total[1h]) == 0 and report_export_in_progress > 0
+    for: 15m
+    labels:
+      severity: info
+      team: payments
+    annotations:
+      summary: "No report exports completed recently"
+      description: "No exports have completed in the last hour despite {{ $value }} in progress. Workers may be stuck."
+      runbook_url: "https://wiki.cargobit.io/runbooks/report-export-stuck"

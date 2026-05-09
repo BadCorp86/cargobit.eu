@@ -1,0 +1,542 @@
+{
+  "info": {
+    "name": "CargoBit Webhooks API",
+    "description": "Task 6: Webhook Notifications for Reconciliation Events\n\nAPI Collection für Webhook-Management und Event-Dispatching.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000/api",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "webhook_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "delivery_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{admin_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Webhook Configuration",
+      "item": [
+        {
+          "name": "List Webhooks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks?page=1&limit=20&status=active",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number for pagination"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "description": "Filter by status: active, paused, disabled, failed"
+                },
+                {
+                  "key": "event_type",
+                  "value": "",
+                  "description": "Filter by subscribed event type",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List all webhook configurations with optional filters"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Webhook",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has webhook id', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.exist;",
+                  "    pm.collectionVariables.set('webhook_id', jsonData.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"External ERP Integration\",\n  \"description\": \"Sends reconciliation events to ERP system\",\n  \"url\": \"https://erp.example.com/webhooks/cargobit\",\n  \"method\": \"POST\",\n  \"events\": [\n    \"payout.reconciled\",\n    \"payout.failed\",\n    \"reconciliation.run_completed\",\n    \"export.completed\"\n  ],\n  \"authType\": \"hmac_sha256\",\n  \"authSecret\": \"whsec_test_secret_key_12345\",\n  \"headers\": [\n    {\n      \"key\": \"X-Source\",\n      \"value\": \"CargoBit\"\n    },\n    {\n      \"key\": \"X-Environment\",\n      \"value\": \"production\"\n    }\n  ],\n  \"retryConfig\": {\n    \"maxRetries\": 5,\n    \"initialDelayMs\": 1000,\n    \"maxDelayMs\": 300000,\n    \"backoffMultiplier\": 2,\n    \"retryOnStatusCodes\": [408, 429, 500, 502, 503, 504]\n  },\n  \"timeoutMs\": 30000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks"]
+            },
+            "description": "Create a new webhook configuration"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Webhook with Bearer Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Analytics Platform\",\n  \"description\": \"Sends all events to analytics platform\",\n  \"url\": \"https://analytics.example.com/api/webhooks/cargobit\",\n  \"method\": \"POST\",\n  \"events\": [\n    \"payout.open\",\n    \"payout.reconciled\",\n    \"payout.failed\",\n    \"payout.disputed\",\n    \"reconciliation.run_started\",\n    \"reconciliation.run_completed\",\n    \"export.completed\",\n    \"export.failed\"\n  ],\n  \"authType\": \"bearer_token\",\n  \"authToken\": \"tok_analytics_platform_xxx\",\n  \"headers\": [],\n  \"retryConfig\": {\n    \"maxRetries\": 3,\n    \"initialDelayMs\": 2000,\n    \"maxDelayMs\": 60000,\n    \"backoffMultiplier\": 2\n  },\n  \"timeoutMs\": 15000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks"]
+            },
+            "description": "Create webhook with Bearer token authentication"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Webhook by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}"]
+            },
+            "description": "Get a specific webhook configuration by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Webhook",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"External ERP Integration (Updated)\",\n  \"description\": \"Updated: Sends reconciliation events to ERP system\",\n  \"events\": [\n    \"payout.reconciled\",\n    \"payout.failed\",\n    \"payout.disputed\",\n    \"reconciliation.run_completed\",\n    \"export.completed\",\n    \"export.failed\"\n  ],\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}"]
+            },
+            "description": "Update an existing webhook configuration"
+          },
+          "response": []
+        },
+        {
+          "name": "Pause Webhook",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"paused\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}"]
+            },
+            "description": "Pause a webhook (stop sending events)"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Webhook",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}"]
+            },
+            "description": "Delete a webhook configuration"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhook Testing",
+      "item": [
+        {
+          "name": "Test Webhook",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Test delivery was created', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsondata.success).to.be.true;",
+                  "    pm.expect(jsonData.deliveryId).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"payout.reconciled\",\n  \"payload\": {\n    \"payoutId\": \"po_test_123\",\n    \"amount\": 15000.00,\n    \"currency\": \"EUR\",\n    \"status\": \"reconciled\",\n    \"reconciledAt\": \"2026-04-24T14:30:00Z\",\n    \"reference\": \"TXN-2026-001\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks/{{webhook_id}}/test",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "{{webhook_id}}", "test"]
+            },
+            "description": "Send a test event to the webhook endpoint"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Deliveries",
+      "item": [
+        {
+          "name": "List Deliveries",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has deliveries array', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.deliveries).to.be.an('array');",
+                  "    if (jsonData.deliveries.length > 0) {",
+                  "        pm.collectionVariables.set('delivery_id', jsonData.deliveries[0].id);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/deliveries?page=1&limit=50&status=delivered",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "deliveries"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "status",
+                  "value": "delivered",
+                  "description": "pending, processing, delivered, failed, retrying, dead_letter"
+                },
+                {
+                  "key": "webhook_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "event_type",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from",
+                  "value": "",
+                  "description": "ISO date string",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "",
+                  "description": "ISO date string",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List webhook deliveries with filters"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Delivery by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/deliveries/{{delivery_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "deliveries", "{{delivery_id}}"]
+            },
+            "description": "Get details of a specific delivery"
+          },
+          "response": []
+        },
+        {
+          "name": "Replay Delivery",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/deliveries/{{delivery_id}}/replay",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "deliveries", "{{delivery_id}}", "replay"]
+            },
+            "description": "Replay a failed or dead-letter delivery"
+          },
+          "response": []
+        },
+        {
+          "name": "List Pending Deliveries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/deliveries?status=pending&limit=100",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "deliveries"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "List pending deliveries (queue monitoring)"
+          },
+          "response": []
+        },
+        {
+          "name": "List Dead Letter Queue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/deliveries?status=dead_letter&limit=100",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "deliveries"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "dead_letter"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "List dead letter queue items"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Statistics & Monitoring",
+      "item": [
+        {
+          "name": "Get Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/statistics",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "statistics"]
+            },
+            "description": "Get overall webhook statistics"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Event Types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/webhooks/event-types",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "event-types"]
+            },
+            "description": "List all available event types"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Event Dispatch (Internal)",
+      "item": [
+        {
+          "name": "Dispatch payout.reconciled Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Service",
+                "value": "reconciliation-service"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"payout.reconciled\",\n  \"entityType\": \"payout\",\n  \"entityId\": \"po_abc123\",\n  \"payload\": {\n    \"payoutId\": \"po_abc123\",\n    \"amount\": 25000.00,\n    \"currency\": \"EUR\",\n    \"status\": \"reconciled\",\n    \"stripePayoutId\": \"po_stripe_xxx\",\n    \"reconciledAt\": \"2026-04-24T15:00:00Z\",\n    \"reference\": \"TXN-2026-00123\",\n    \"companyId\": \"comp_xyz\",\n    \"companyName\": \"Test Logistics GmbH\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks/dispatch",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "dispatch"]
+            },
+            "description": "Internal endpoint to dispatch events (called by reconciliation service)"
+          },
+          "response": []
+        },
+        {
+          "name": "Dispatch reconciliation.run_completed Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Service",
+                "value": "reconciliation-service"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"reconciliation.run_completed\",\n  \"entityType\": \"reconciliation_run\",\n  \"entityId\": \"run_20260424_001\",\n  \"payload\": {\n    \"runId\": \"run_20260424_001\",\n    \"startedAt\": \"2026-04-24T14:00:00Z\",\n    \"completedAt\": \"2026-04-24T14:05:30Z\",\n    \"duration\": 330,\n    \"totalPayouts\": 150,\n    \"reconciled\": 147,\n    \"open\": 2,\n    \"failed\": 1,\n    \"disputed\": 0,\n    \"trigger\": \"scheduled\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks/dispatch",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "dispatch"]
+            },
+            "description": "Dispatch reconciliation run completed event"
+          },
+          "response": []
+        },
+        {
+          "name": "Dispatch export.completed Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Internal-Service",
+                "value": "reports-service"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"export.completed\",\n  \"entityType\": \"export_job\",\n  \"entityId\": \"exp_xyz789\",\n  \"payload\": {\n    \"exportId\": \"exp_xyz789\",\n    \"format\": \"csv\",\n    \"recordCount\": 5000,\n    \"fileSize\": 524288,\n    \"downloadUrl\": \"https://s3.example.com/exports/reconciliation-20260424.csv\",\n    \"expiresAt\": \"2026-04-25T15:00:00Z\",\n    \"requestedBy\": \"admin@example.com\",\n    \"filters\": {\n      \"status\": \"reconciled\",\n      \"from\": \"2026-04-01\",\n      \"to\": \"2026-04-24\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks/dispatch",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "dispatch"]
+            },
+            "description": "Dispatch export completed event"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

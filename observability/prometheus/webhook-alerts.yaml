@@ -1,0 +1,206 @@
+# =============================================================================
+# CargoBit Webhook Alert Rules
+# Task 6: Webhook Notifications for Reconciliation Events
+# =============================================================================
+
+groups:
+  - name: webhook_alerts
+    rules:
+      # -------------------------------------------------------------------------
+      # Critical Alerts
+      # -------------------------------------------------------------------------
+      - alert: WebhookDeliveryFailures
+        expr: increase(webhook_delivery_status_total{status="failed"}[5m]) > 5
+        for: 1m
+        labels:
+          severity: critical
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "Webhook delivery failures detected"
+          description: "More than 5 webhook deliveries have failed in the last 5 minutes. Check webhook endpoint health and Dead Letter Queue."
+          runbook_url: "https://wiki.internal/cargobit/runbooks/webhook-delivery-failures"
+          dashboard_url: "/d/cargobit-webhooks"
+
+      - alert: WebhookAutoDisabled
+        expr: increase(webhooks_total{status="failed"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "Webhook automatically disabled due to failures"
+          description: "A webhook has been automatically disabled after reaching the failure threshold (10 consecutive failures). Webhook ID: {{ $labels.webhook_id }}"
+          runbook_url: "https://wiki.internal/cargobit/runbooks/webhook-auto-disabled"
+
+      - alert: WebhookDeadLetterQueueGrowing
+        expr: webhook_dead_letter_queue_size > 50
+        for: 10m
+        labels:
+          severity: critical
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "Dead Letter Queue is growing"
+          description: "Dead Letter Queue has {{ $value }} items. Review failed deliveries and consider manual intervention or endpoint fixes."
+          runbook_url: "https://wiki.internal/cargobit/runbooks/webhook-dlq"
+
+      # -------------------------------------------------------------------------
+      # Warning Alerts
+      # -------------------------------------------------------------------------
+      - alert: WebhookQueueBacklog
+        expr: webhook_pending_deliveries > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "Webhook delivery queue backlog"
+          description: "More than 100 webhook deliveries are pending. Check worker capacity and endpoint response times."
+          runbook_url: "https://wiki.internal/cargobit/runbooks/webhook-queue-backlog"
+
+      - alert: WebhookDeliveryLatencyHigh
+        expr: histogram_quantile(0.95, sum(rate(webhook_delivery_duration_seconds_bucket[5m])) by (le)) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "High webhook delivery latency"
+          description: "P95 webhook delivery duration is above 10 seconds. Target endpoints may be slow or unresponsive."
+          runbook_url: "https://wiki.internal/cargobit/runbooks/webhook-latency"
+
+      - alert: WebhookDeliverySuccessRateLow
+        expr: |
+          (
+            sum(rate(webhook_delivery_status_total{status="delivered"}[5m]))
+            /
+            sum(rate(webhook_delivery_status_total[5m]))
+          ) < 0.95
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "Webhook delivery success rate below 95%"
+          description: "Webhook delivery success rate is {{ $value | humanizePercentage }}. Target is >95%."
+          runbook_url: "https://wiki.internal/cargobit/runbooks/webhook-success-rate"
+
+      - alert: WebhookRetryQueueGrowing
+        expr: webhook_retry_queue_size > 50
+        for: 10m
+        labels:
+          severity: warning
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "Webhook retry queue is growing"
+          description: "Retry queue has {{ $value }} items. Endpoints may be temporarily unavailable."
+          runbook_url: "https://wiki.internal/cargobit/runbooks/webhook-retry-queue"
+
+      - alert: WebhookWorkerDown
+        expr: up{job="payments-webhook-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+          component: webhooks
+        annotations:
+          summary: "Webhook worker is down"
+          description: "Webhook worker pods are not responding. Events are not being delivered."
+          runbook_url: "https://wiki.internal/cargobit/runbooks/webhook-worker-down"
+
+      # -------------------------------------------------------------------------
+      # Informational Alerts
+      # -------------------------------------------------------------------------
+      - alert: WebhookPaused
+        expr: increase(webhooks_total{status="paused"}[1h]) > 0
+        for: 0m
+        labels:
+          severity: info
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "Webhook has been paused"
+          description: "A webhook was manually paused. Review if this was intentional."
+
+      - alert: NoActiveWebhooks
+        expr: sum(webhooks_total{status="active"}) == 0
+        for: 30m
+        labels:
+          severity: info
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "No active webhooks configured"
+          description: "There are no active webhooks. If this is unexpected, verify webhook configurations."
+
+      # -------------------------------------------------------------------------
+      # Event-Specific Alerts
+      # -------------------------------------------------------------------------
+      - alert: HighVolumePayoutFailedEvents
+        expr: increase(webhook_events_dispatched_total{event_type="payout.failed"}[1h]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+          component: reconciliation
+        annotations:
+          summary: "High volume of payout.failed events"
+          description: "{{ $value }} payout.failed events in the last hour. Investigate payout processing issues."
+
+      - alert: HighVolumeExportFailedEvents
+        expr: increase(webhook_events_dispatched_total{event_type="export.failed"}[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: payments
+          component: reports
+        annotations:
+          summary: "High volume of export.failed events"
+          description: "{{ $value }} export.failed events in the last hour. Check report worker and S3 connectivity."
+
+      # -------------------------------------------------------------------------
+      # HTTP Status Code Alerts
+      # -------------------------------------------------------------------------
+      - alert: WebhookEndpoint5xxErrors
+        expr: |
+          sum(increase(webhook_delivery_duration_seconds_count{status_code=~"5.."}[5m])) by (webhook_id) > 3
+        for: 2m
+        labels:
+          severity: warning
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "Webhook endpoint returning 5xx errors"
+          description: "Webhook {{ $labels.webhook_id }} is returning server errors. Endpoint may be experiencing issues."
+
+      - alert: WebhookEndpoint4xxErrors
+        expr: |
+          sum(increase(webhook_delivery_duration_seconds_count{status_code=~"4.."}[5m])) by (webhook_id) > 5
+        for: 5m
+        labels:
+          severity: info
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "Webhook endpoint returning 4xx errors"
+          description: "Webhook {{ $labels.webhook_id }} is receiving client errors. Verify URL and authentication."
+
+      - alert: WebhookEndpointTimeouts
+        expr: |
+          sum(increase(webhook_delivery_status_total{status="failed"}[5m])) by (webhook_id) > 3
+          and on(webhook_id)
+          sum(increase(webhook_delivery_duration_seconds_count{status_code="0"}[5m])) by (webhook_id) > 3
+        for: 2m
+        labels:
+          severity: warning
+          team: payments
+          component: webhooks
+        annotations:
+          summary: "Webhook endpoint timing out"
+          description: "Webhook {{ $labels.webhook_id }} is timing out. Consider increasing timeout or contacting endpoint owner."

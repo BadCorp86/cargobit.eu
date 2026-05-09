@@ -1,0 +1,121 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "sum by (result) (increase(report_exports_total[1d]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Report Exports (last 24h)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 6 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "report_export_in_progress",
+          "refId": "A"
+        }
+      ],
+      "title": "Exports In Progress",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 6 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(report_export_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Export Duration p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "report_exports_queued_total",
+          "legendFormat": "Queued",
+          "refId": "A"
+        },
+        {
+          "expr": "report_exports_completed_total",
+          "legendFormat": "Completed",
+          "refId": "B"
+        },
+        {
+          "expr": "report_exports_failed_total",
+          "legendFormat": "Failed",
+          "refId": "C"
+        }
+      ],
+      "title": "Export Job Counts by Status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 18 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "rate(report_exports_completed_total[5m])",
+          "refId": "A"
+        }
+      ],
+      "title": "Exports/sec (completed)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 18 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "rate(report_exports_failed_total[5m])",
+          "refId": "A"
+        }
+      ],
+      "title": "Exports/sec (failed)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 18 },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "report_exports_running",
+          "refId": "A"
+        }
+      ],
+      "title": "Currently Running",
+      "type": "stat"
+    }
+  ],
+  "schemaVersion": 30,
+  "style": "dark",
+  "tags": ["payments", "reconciliation", "reports"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "Reconciliation Reports Dashboard",
+  "version": 1
+}

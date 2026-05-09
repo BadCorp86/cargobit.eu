@@ -1,0 +1,359 @@
+# Prometheus Alert Rules for CargoBit Payment System
+# Task 4: Payout Reconciliation
+# Task 5: Reconciliation Reporting & Export
+#
+# Deployment:
+#   kubectl apply -f prometheus-alerts-reconciliation-reports.yaml -n monitoring
+#   OR add to PrometheusRule CRD in Kubernetes
+#
+# Version: 1.0
+# Created: 2026-04-24
+
+groups:
+  # ============================================================================
+  # Task 5: Report Export Alerts
+  # ============================================================================
+  - name: reconciliation-reports.rules
+    rules:
+      # --------------------------------------------------------------------------
+      # CRITICAL: Report Export Failures
+      # --------------------------------------------------------------------------
+      - alert: ReportExportFailures
+        expr: increase(report_exports_total{result="failure"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          service: reports
+          runbook_url: "https://wiki.internal/cargobit/runbooks/report-export-failures"
+        annotations:
+          summary: "Report export failures detected"
+          description: |
+            There were {{ $value }} report export failures in the last 5 minutes.
+            Check the export_jobs table and worker logs for details.
+            
+            Affected job IDs:
+            {{ with query "topk(5, report_exports_failed_total)" }}{{ . | first | label }}{{ end }}
+            
+            Action items:
+            1. Check worker logs: kubectl logs -l app=report-worker -n production
+            2. Verify S3 connectivity and permissions
+            3. Check export_jobs table for error details
+          dashboard_url: "https://grafana.internal/d/reconciliation-reports"
+
+      # --------------------------------------------------------------------------
+      # WARNING: High Export Duration
+      # --------------------------------------------------------------------------
+      - alert: ReportExportDurationHigh
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(report_export_duration_seconds_bucket[5m])) by (le)
+          ) > 60
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: reports
+        annotations:
+          summary: "High report export duration (p95)"
+          description: |
+            The 95th percentile of report export duration is {{ $value | humanizeDuration }}.
+            This exceeds the 60 second threshold.
+            
+            Possible causes:
+            - Large export data volume
+            - S3 latency issues
+            - Memory pressure on worker pods
+            
+            Action: Check worker resource utilization and S3 metrics.
+
+      # --------------------------------------------------------------------------
+      # WARNING: Many Exports In Progress
+      # --------------------------------------------------------------------------
+      - alert: ReportExportInProgressHigh
+        expr: report_export_in_progress > 5
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          service: reports
+        annotations:
+          summary: "Many report exports in progress"
+          description: |
+            {{ $value }} report exports have been in progress for over 10 minutes.
+            This may indicate stuck or slow jobs.
+            
+            Action items:
+            1. Check for stuck jobs: SELECT * FROM export_jobs WHERE status = 'processing' AND created_at < NOW() - INTERVAL '10 minutes';
+            2. Verify worker health
+            3. Consider scaling worker replicas
+
+      # --------------------------------------------------------------------------
+      # WARNING: Export Queue Backlog
+      # --------------------------------------------------------------------------
+      - alert: ReportExportQueueBacklog
+        expr: report_export_queue_size > 10
+        for: 15m
+        labels:
+          severity: warning
+          team: backend
+          service: reports
+        annotations:
+          summary: "Report export queue backlog building"
+          description: |
+            Export queue has {{ $value }} pending jobs for more than 15 minutes.
+            Worker may be under-provisioned or experiencing issues.
+            
+            Action: Scale worker replicas or check for processing bottlenecks.
+
+      # --------------------------------------------------------------------------
+      # INFO: Export Success Rate Low
+      # --------------------------------------------------------------------------
+      - alert: ReportExportSuccessRateLow
+        expr: |
+          (
+            sum(rate(report_exports_total{result="success"}[1h]))
+            /
+            sum(rate(report_exports_total[1h]))
+          ) < 0.95
+        for: 30m
+        labels:
+          severity: info
+          team: backend
+          service: reports
+        annotations:
+          summary: "Report export success rate below 95%"
+          description: |
+            Export success rate is {{ $value | humanizePercentage }} over the last hour.
+            Target is ≥ 95%.
+            
+            Review recent failures and identify patterns.
+
+  # ============================================================================
+  # Task 4: Reconciliation Alerts
+  # ============================================================================
+  - name: reconciliation.rules
+    rules:
+      # --------------------------------------------------------------------------
+      # CRITICAL: Reconciliation Run Failures
+      # --------------------------------------------------------------------------
+      - alert: ReconciliationRunFailed
+        expr: increase(reconciliation_runs_total{status="failed"}[1h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+          service: reconciliation
+          runbook_url: "https://wiki.internal/cargobit/runbooks/reconciliation-failures"
+        annotations:
+          summary: "Reconciliation run failed"
+          description: |
+            Reconciliation run failed {{ $value }} time(s) in the last hour.
+            
+            Action items:
+            1. Check CronJob logs: kubectl logs -l app=reconciliation-cronjob -n production
+            2. Verify database connectivity
+            3. Check for data inconsistencies
+
+      # --------------------------------------------------------------------------
+      # WARNING: Reconciliation Duration High
+      # --------------------------------------------------------------------------
+      - alert: ReconciliationDurationHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(reconciliation_run_duration_seconds_bucket[1h])) by (le)
+          ) > 300
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          service: reconciliation
+        annotations:
+          summary: "Reconciliation run duration exceeds threshold"
+          description: |
+            95th percentile reconciliation duration is {{ $value | humanizeDuration }}.
+            Threshold is 5 minutes (300s).
+            
+            Consider optimizing queries or increasing resources.
+
+      # --------------------------------------------------------------------------
+      # WARNING: High Open Payouts Count
+      # --------------------------------------------------------------------------
+      - alert: OpenPayoutsHigh
+        expr: reconciliation_open_payouts_gauge > 100
+        for: 1h
+        labels:
+          severity: warning
+          team: backend
+          service: reconciliation
+        annotations:
+          summary: "High number of open payouts pending reconciliation"
+          description: |
+            {{ $value }} payouts are in 'open' status, awaiting reconciliation.
+            Normal operations should clear these within 6 hours.
+            
+            Action: Review reconciliation CronJob execution and payout status.
+
+      # --------------------------------------------------------------------------
+      # CRITICAL: Reconciliation Not Running
+      # --------------------------------------------------------------------------
+      - alert: ReconciliationNotRunning
+        expr: |
+          increase(reconciliation_runs_total[6h]) == 0
+        for: 15m
+        labels:
+          severity: critical
+          team: backend
+          service: reconciliation
+        annotations:
+          summary: "Reconciliation CronJob not running"
+          description: |
+            No reconciliation runs detected in the last 6 hours.
+            Expected schedule: every 6 hours.
+            
+            Action items:
+            1. Check CronJob status: kubectl get cronjob payments-reconciliation -n production
+            2. Verify leader lock is not stuck
+            3. Check for pod scheduling issues
+
+      # --------------------------------------------------------------------------
+      # INFO: Reconciliation Errors
+      # --------------------------------------------------------------------------
+      - alert: ReconciliationErrors
+        expr: increase(reconciliation_errors_total[1h]) > 5
+        for: 10m
+        labels:
+          severity: info
+          team: backend
+          service: reconciliation
+        annotations:
+          summary: "Reconciliation errors detected"
+          description: |
+            {{ $value }} reconciliation errors in the last hour.
+            Check logs for specific error patterns.
+
+  # ============================================================================
+  # Infrastructure: Worker Health
+  # ============================================================================
+  - name: report-worker.rules
+    rules:
+      # --------------------------------------------------------------------------
+      # CRITICAL: Report Worker Down
+      # --------------------------------------------------------------------------
+      - alert: ReportWorkerDown
+        expr: |
+          sum(kube_deployment_status_replicas_available{deployment="payments-report-worker"})
+          <
+          sum(kube_deployment_spec_replicas{deployment="payments-report-worker"})
+        for: 5m
+        labels:
+          severity: critical
+          team: devops
+          service: report-worker
+        annotations:
+          summary: "Report worker pods unavailable"
+          description: |
+            Report worker deployment has {{ $value }} available replicas.
+            Expected: all configured replicas.
+            
+            Action items:
+            1. Check pod status: kubectl get pods -l app=report-worker -n production
+            2. Check events: kubectl describe deployment payments-report-worker -n production
+            3. Review resource limits and OOMKills
+
+      # --------------------------------------------------------------------------
+      # WARNING: Worker Memory High
+      # --------------------------------------------------------------------------
+      - alert: ReportWorkerMemoryHigh
+        expr: |
+          sum(container_memory_working_set_bytes{pod=~"payments-report-worker.*"})
+          /
+          sum(kube_pod_container_resource_limits{pod=~"payments-report-worker.*", resource="memory"})
+          > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          service: report-worker
+        annotations:
+          summary: "Report worker memory usage high"
+          description: |
+            Worker memory usage is at {{ $value | humanizePercentage }} of limit.
+            Risk of OOMKill if trend continues.
+            
+            Action: Consider increasing memory limits or optimizing memory usage.
+
+      # --------------------------------------------------------------------------
+      # WARNING: Worker Restarts Frequent
+      # --------------------------------------------------------------------------
+      - alert: ReportWorkerRestartsFrequent
+        expr: |
+          increase(kube_pod_container_status_restarts_total{pod=~"payments-report-worker.*"}[1h]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: report-worker
+        annotations:
+          summary: "Report worker restarting frequently"
+          description: |
+            Worker pods restarted {{ $value }} times in the last hour.
+            This indicates instability.
+            
+            Check for crash loops, OOMKills, or unhandled exceptions.
+
+  # ============================================================================
+  # Composite Alerts: Business Logic
+  # ============================================================================
+  - name: reconciliation-business.rules
+    rules:
+      # --------------------------------------------------------------------------
+      # CRITICAL: Payout Processing Stalled
+      # --------------------------------------------------------------------------
+      - alert: PayoutProcessingStalled
+        expr: |
+          reconciliation_open_payouts_gauge > 50
+          and
+          increase(reconciliation_runs_total{status="success"}[6h]) < 1
+        for: 30m
+        labels:
+          severity: critical
+          team: backend
+          service: reconciliation
+          oncall: "backend-oncall"
+        annotations:
+          summary: "Payout processing appears stalled"
+          description: |
+            {{ $value }} open payouts exist but no successful reconciliation runs.
+            Business impact: Payouts not being processed.
+            
+            IMMEDIATE ACTION REQUIRED:
+            1. Check reconciliation CronJob execution
+            2. Verify database connectivity
+            3. Escalate to backend on-call if unresolved
+
+      # --------------------------------------------------------------------------
+      # WARNING: Export Dependency Degraded
+      # --------------------------------------------------------------------------
+      - alert: ExportDependencyDegraded
+        expr: |
+          (
+            sum(rate(report_exports_total{result="failure"}[30m]))
+            /
+            sum(rate(report_exports_total[30m]))
+          ) > 0.5
+          and
+          ALERTS{alertname="ReportWorkerDown"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: reports
+        annotations:
+          summary: "Export failures correlated with worker issues"
+          description: |
+            High export failure rate ({{ $value | humanizePercentage }}) detected
+            while report worker is experiencing availability issues.
+            
+            Root cause likely: worker unavailability.
+            Monitor worker recovery.

@@ -1,0 +1,105 @@
+*** Begin Patch
+*** Update File: src/reports/worker/report-processor.ts
+@@
+-import { Queue, Worker, Job } from 'bullmq';
+-import { S3 } from 'aws-sdk';
+-import { createObjectCsvStringifier } from 'csv-writer';
+-import { Pool } from 'pg';
+-import client from 'prom-client';
++import { Queue, Worker, Job } from 'bullmq';
++import { S3 } from 'aws-sdk';
++import { createObjectCsvStringifier } from 'csv-writer';
++import { Pool } from 'pg';
++import client from 'prom-client';
++import retry from 'async-retry';
++import { PassThrough } from 'stream';
+@@
+-      // Stream query results
+-      const clientConn = await pg.connect();
+-      try {
+-        const query = 'SELECT id, user_id, amount_cents, status, created_at FROM payouts WHERE status = $1 ORDER BY created_at DESC';
+-        const stream = clientConn.query(new (require('pg-query-stream'))(query, ['paid']));
+-        const csvStringifier = createObjectCsvStringifier({
+-          header: [
+-            { id: 'id', title: 'id' },
+-            { id: 'user_id', title: 'user_id' },
+-            { id: 'amount_cents', title: 'amount_cents' },
+-            { id: 'status', title: 'status' },
+-            { id: 'created_at', title: 'created_at' },
+-          ],
+-        });
+-
+-        // Collect rows into a buffer stream and upload to S3 in chunks
+-        const chunks: string[] = [];
+-        for await (const row of stream) {
+-          chunks.push(csvStringifier.stringifyRecords([row]));
+-          if (chunks.length >= 1000) {
+-            // flush chunk to S3 part or buffer
+-          }
+-        }
+-        const csvHeader = csvStringifier.getHeaderString();
+-        const csvBody = csvHeader + chunks.join('');
+-        const key = `exports/reconciliation-${job.data.jobId}.csv`;
+-
+-        await s3.putObject({
+-          Bucket: process.env.EXPORT_BUCKET!,
+-          Key: key,
+-          Body: csvBody,
+-          ContentType: 'text/csv',
+-        }).promise();
++      // Stream query results and multipart upload to S3 to avoid buffering entire file
++      const clientConn = await pg.connect();
++      try {
++        const query = 'SELECT id, user_id, amount_cents, status, created_at FROM payouts WHERE status = $1 ORDER BY created_at DESC';
++        const QueryStream = require('pg-query-stream');
++        const stream = clientConn.query(new QueryStream(query, ['paid']));
++
++        const csvStringifier = createObjectCsvStringifier({
++          header: [
++            { id: 'id', title: 'id' },
++            { id: 'user_id', title: 'user_id' },
++            { id: 'amount_cents', title: 'amount_cents' },
++            { id: 'status', title: 'status' },
++            { id: 'created_at', title: 'created_at' },
++          ],
++        });
++
++        const pass = new PassThrough();
++
++        // Start multipart upload with retries
++        const key = `exports/reconciliation-${job.data.jobId}.csv`;
++        const uploadPromise = retry(async () => {
++          const managed = s3.upload({
++            Bucket: process.env.EXPORT_BUCKET!,
++            Key: key,
++            Body: pass,
++            ContentType: 'text/csv',
++          });
++          return managed.promise();
++        }, {
++          retries: 3,
++          factor: 2,
++          minTimeout: 1000,
++        });
++
++        // Write header first
++        pass.write(csvStringifier.getHeaderString());
++
++        // Stream rows and write CSV lines to pass-through
++        for await (const row of stream) {
++          const line = csvStringifier.stringifyRecords([row]);
++          if (!pass.write(line)) {
++            await new Promise(resolve => pass.once('drain', resolve));
++          }
++        }
++
++        pass.end();
++        const uploadResult = await uploadPromise;
++        const url = `s3://${process.env.EXPORT_BUCKET}/${key}`;
++        await pg.query('UPDATE export_jobs SET status = $1, result_url = $2, updated_at = now() WHERE id = $3', ['done', url, job.data.jobId]);
++        runsTotal.inc({ result: 'success' });
++        return { url, uploadResult };
+      } finally {
+        clientConn.release();
+      }
+*** End Patch

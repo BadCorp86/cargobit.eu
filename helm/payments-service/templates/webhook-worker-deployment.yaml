@@ -1,0 +1,151 @@
+{{/*
+CargoBit Webhook Worker Deployment
+Task 6: Webhook Notifications for Reconciliation Events
+*/}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "payments-service.fullname" . }}-webhook-worker
+  labels:
+    {{- include "payments-service.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-worker
+spec:
+  replicas: {{ .Values.webhooks.worker.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "payments-service.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webhook-worker
+  template:
+    metadata:
+      labels:
+        {{- include "payments-service.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: webhook-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+        {{- with .Values.webhooks.worker.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "payments-service.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.webhooks.worker.podSecurityContext | nindent 8 }}
+      containers:
+        - name: webhook-worker
+          securityContext:
+            {{- toYaml .Values.webhooks.worker.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - node
+            - dist/workers/webhook-worker.js
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.environment | default "production" }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database | default "payments-secrets" }}
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.redis | default "payments-secrets" }}
+                  key: redis-url
+            - name: WEBHOOK_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.webhooks | default "payments-secrets" }}
+                  key: webhook-signing-secret
+            {{- with .Values.webhooks.worker.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: 3000
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.webhooks.worker.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      {{- with .Values.webhooks.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webhooks.worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webhooks.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- if .Values.webhooks.worker.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "payments-service.fullname" . }}-webhook-worker
+  labels:
+    {{- include "payments-service.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "payments-service.fullname" . }}-webhook-worker
+  minReplicas: {{ .Values.webhooks.worker.hpa.minReplicas | default 1 }}
+  maxReplicas: {{ .Values.webhooks.worker.hpa.maxReplicas | default 10 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.webhooks.worker.hpa.targetCPUUtilization | default 70 }}
+    - type: External
+      external:
+        metric:
+          name: webhook_pending_deliveries
+          selector:
+            matchLabels:
+              namespace: {{ .Release.Namespace }}
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.webhooks.worker.hpa.targetPendingDeliveries | default "100" }}
+---
+{{- end }}
+{{- if .Values.webhooks.worker.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "payments-service.fullname" . }}-webhook-worker
+  labels:
+    {{- include "payments-service.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.webhooks.worker.pdb.minAvailable | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "payments-service.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webhook-worker
+---
+{{- end }}
