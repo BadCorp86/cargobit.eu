@@ -18,7 +18,7 @@
 
 import { prisma } from '@/lib/db';
 import type { TransportStatus, JobEventType } from '@prisma/client';
-import { broadcastJobStatus, broadcastTracking } from './redis-publisher.service';
+import { broadcastJobStatus, broadcastTrackingUpdate } from './redis-publisher.service';
 
 // ============================================
 // TYPES
@@ -290,7 +290,14 @@ export async function updateTracking(
   });
   
   // Broadcast via Redis
-  await broadcastTracking(jobId, driverId, latitude, longitude, options);
+  await broadcastTrackingUpdate({
+    jobId,
+    driverId,
+    latitude,
+    longitude,
+    speed: options?.speed,
+    heading: options?.heading,
+  });
   
   return { success: true };
 }

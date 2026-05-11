@@ -773,3 +773,29 @@ export class AdminAuthService {
 
 export const adminAuthService = new AdminAuthService();
 export { AdminRole };
+
+/**
+ * Log an admin action for audit purposes.
+ * Convenience function for services that need to log admin actions.
+ */
+export async function logAdminAction(
+  adminId: string,
+  action: string,
+  entityType: string,
+  entityId?: string,
+  dataBefore?: any,
+  dataAfter?: any,
+  metadata?: any
+): Promise<void> {
+  await prisma.adminAuditLog.create({
+    data: {
+      adminId,
+      action,
+      entityType,
+      entityId: entityId || '',
+      dataBefore: dataBefore ? JSON.stringify(dataBefore) : null,
+      dataAfter: dataAfter ? JSON.stringify(dataAfter) : null,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+    },
+  });
+}

@@ -12,7 +12,7 @@
  */
 
 import { prisma } from '@/lib/db';
-import { broadcastMatch, broadcastUserNotification } from './redis-publisher.service';
+import { broadcastMatchResult, notifyUser } from './redis-publisher.service';
 
 // ============================================
 // TYPES
@@ -470,7 +470,12 @@ export async function notifyTopCandidates(
     const rank = i + 1;
     
     // Broadcast via Redis to user's personal channel
-    await broadcastMatch(jobId, transporter.id, score, rank);
+    await broadcastMatchResult({
+      matchId: `${jobId}_${transporter.id}`,
+      jobId,
+      score,
+      transporterId: transporter.id,
+    });
     notified++;
   }
   
@@ -566,10 +571,10 @@ export async function notifyNewBid(
   shipperUserId: string
 ): Promise<void> {
   // Notify shipper directly
-  await broadcastUserNotification(
+  await notifyUser(
     shipperUserId,
-    'NEW_BID',
     `Neues Angebot für Ihren Transport: ${price.toFixed(2)} EUR`,
+    'info',
     { transportId, bidId, driverId, price }
   );
 }
@@ -577,6 +582,37 @@ export async function notifyNewBid(
 // ============================================
 // EXPORTS
 // ============================================
+
+export interface JobRequirements {
+  jobId: string;
+  originRegion: string;
+  destinationRegion: string;
+  weightKg: number;
+  volumeM3?: number;
+  pickupDate?: Date;
+  isInternational?: boolean;
+  transitCountries?: string[];
+}
+
+/**
+ * Match transporters for a job - convenience wrapper for runMatching.
+ * This is the main entry point for the matching service.
+ */
+export async function matchTransportersForJob(
+  requirements: JobRequirements
+): Promise<RankedTransporter[]> {
+  const job: Job = {
+    id: requirements.jobId,
+    originRegion: requirements.originRegion,
+    destinationRegion: requirements.destinationRegion,
+    weightKg: requirements.weightKg,
+  };
+
+  const candidates = await getCandidateTransporters(job);
+  const ranked = await rankTransporters(job, candidates);
+
+  return ranked;
+}
 
 export const matchingService = {
   computeHeuristic,
@@ -589,4 +625,5 @@ export const matchingService = {
   notifyTopCandidates,
   runMatching,
   notifyNewBid,
+  matchTransportersForJob,
 };

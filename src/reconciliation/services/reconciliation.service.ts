@@ -1,4 +1,3 @@
-import { Injectable, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 // Types
@@ -24,9 +23,10 @@ export interface ReconciliationDiff {
   diff_amount: number;
 }
 
-@Injectable()
+/**
+ * Reconciliation Service - Plain TypeScript version
+ */
 export class ReconciliationService {
-  private readonly logger = new Logger(ReconciliationService.name);
   private prisma: PrismaClient;
 
   constructor() {
@@ -34,7 +34,7 @@ export class ReconciliationService {
   }
 
   /**
-   * Listet alle offenen Payouts mit Status-Differenzen
+   * List all open payouts with status differences
    */
   async listOpenPayouts(filters?: {
     status?: string;
@@ -66,13 +66,13 @@ export class ReconciliationService {
       orderBy: { created_at: 'desc' },
     });
 
-    // Berechne Differenzen (Stub - in Produktion würde hier Stripe API verglichen)
+    // Calculate differences (stub - in production this would compare with Stripe API)
     return payouts.map((p) => ({
       id: p.id,
       amount_cents: p.amountCents,
       currency: p.currency,
       status: p.status,
-      diff: 0, // TODO: Tatsächliche Differenz berechnen
+      diff: 0, // TODO: Calculate actual difference
       created_at: p.createdAt,
       updated_at: p.updatedAt,
       stripe_transfer_id: p.stripeTransferId,
@@ -82,7 +82,7 @@ export class ReconciliationService {
   }
 
   /**
-   * Markiert einen Payout manuell
+   * Manually mark a payout
    */
   async markPayout(
     payoutId: string,
@@ -90,7 +90,7 @@ export class ReconciliationService {
     actorId: string
   ): Promise<{ ok: boolean; payout: any; event: any }> {
     return await this.prisma.$transaction(async (tx) => {
-      // Payout laden
+      // Load payout
       const payout = await tx.payout.findUnique({
         where: { id: payoutId },
       });
@@ -99,10 +99,10 @@ export class ReconciliationService {
         throw new Error(`Payout ${payoutId} not found`);
       }
 
-      // Neuen Status bestimmen
+      // Determine new status
       const newStatus = payload.status === 'resolved' ? 'paid' : payout.status;
 
-      // Payout aktualisieren
+      // Update payout
       const updatedPayout = await tx.payout.update({
         where: { id: payoutId },
         data: {
@@ -118,7 +118,7 @@ export class ReconciliationService {
         },
       });
 
-      // Event erstellen
+      // Create event
       const event = await tx.payoutEvent.create({
         data: {
           payoutId,
@@ -146,9 +146,7 @@ export class ReconciliationService {
         },
       });
 
-      this.logger.log(
-        `Payout ${payoutId} marked as ${payload.status} by ${actorId}`
-      );
+      console.log(`Payout ${payoutId} marked as ${payload.status} by ${actorId}`);
 
       return {
         ok: true,
@@ -167,14 +165,14 @@ export class ReconciliationService {
   }
 
   /**
-   * Führt Reconciliation durch und vergleicht mit Stripe
+   * Run reconciliation and compare with Stripe
    */
   async runReconciliation(): Promise<{
     processed: number;
     diffs: ReconciliationDiff[];
     errors: string[];
   }> {
-    this.logger.log('Starting reconciliation run...');
+    console.log('Starting reconciliation run...');
 
     const result = {
       processed: 0,
@@ -183,34 +181,34 @@ export class ReconciliationService {
     };
 
     try {
-      // Offene Payouts laden
+      // Load open payouts
       const openPayouts = await this.listOpenPayouts({ limit: 1000 });
       result.processed = openPayouts.length;
 
-      this.logger.log(`Found ${openPayouts.length} open payouts`);
+      console.log(`Found ${openPayouts.length} open payouts`);
 
-      // TODO: Stripe API Vergleich
-      // Für jeden Payout: Stripe Transfer Status abfragen und vergleichen
-      // Bei Differenz: payout_event erstellen
+      // TODO: Stripe API comparison
+      // For each payout: query Stripe Transfer status and compare
+      // On difference: create payout_event
 
       for (const payout of openPayouts) {
-        // Stub: Hier würde der Stripe API Call stehen
+        // Stub: Here would be the Stripe API call
         // const stripeTransfer = await stripe.transfers.retrieve(payout.stripe_transfer_id);
       }
 
-      this.logger.log(
+      console.log(
         `Reconciliation complete: ${result.processed} processed, ${result.diffs.length} diffs found`
       );
-    } catch (error) {
-      this.logger.error('Reconciliation failed:', error);
-      result.errors.push(error.message);
+    } catch (error: any) {
+      console.error('Reconciliation failed:', error);
+      result.errors.push(error?.message || 'Unknown error');
     }
 
     return result;
   }
 
   /**
-   * Generiert Reconciliation Report
+   * Generate reconciliation report
    */
   async generateReport(): Promise<{
     total_open: number;
@@ -241,9 +239,9 @@ export class ReconciliationService {
   }
 
   /**
-   * Cleanup beim Beenden
+   * Cleanup on shutdown
    */
-  async onModuleDestroy() {
+  async disconnect() {
     await this.prisma.$disconnect();
   }
 }

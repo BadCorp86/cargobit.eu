@@ -730,3 +730,20 @@ export async function markPayoutFailed(
 
   return { success: true };
 }
+
+// ============================================
+// EXPORTS
+// ============================================
+
+/**
+ * Payout service singleton for convenient access.
+ */
+export const payoutService = {
+  createPayout,
+  listPayouts,
+  getPayout,
+  retryPayout,
+  cancelPayout,
+  markPayoutPaid,
+  markPayoutFailed,
+};

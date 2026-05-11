@@ -24,11 +24,39 @@
  * ```
  */
 
-import { NextRequest } from 'next/server';
-import { handleStripeWebhook } from '@/services/stripe-webhook.service';
+import { NextRequest, NextResponse } from 'next/server';
+import { dispatchStripeEvent, StripeEvent } from '@/services/stripe-webhook.service';
 
 export async function POST(request: NextRequest) {
-  return handleStripeWebhook(request);
+  try {
+    const body = await request.text();
+    const signature = request.headers.get('stripe-signature');
+    
+    // Parse the Stripe event
+    let event: StripeEvent;
+    try {
+      event = JSON.parse(body) as StripeEvent;
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
+    
+    const result = await dispatchStripeEvent(event);
+    
+    if (result.success) {
+      return NextResponse.json({ received: true });
+    } else {
+      return NextResponse.json(
+        { error: result.error || 'Webhook processing failed' },
+        { status: 400 }
+      );
+    }
+  } catch (error) {
+    console.error('[StripeWebhook] Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
 }
 
 // Stripe webhooks need raw body - disable body parsing

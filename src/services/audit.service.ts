@@ -696,3 +696,297 @@ export {
   InMemoryAuditStore,
   ACTION_RETENTION_MAP,
 };
+
+// =============================================================================
+// AUDIT SERVICE SINGLETON (For API Routes)
+// =============================================================================
+
+import {
+  AuditEntityType,
+  AuditDecision,
+  AuditRiskLevel,
+  AuditLogEntry,
+  CreateAuditLogRequest,
+  CreateAuditLogResponse,
+  AuditEntityResponse,
+  AuditSearchParams,
+  AuditSearchResponse,
+  AuditStatsResponse,
+  AuditActorType,
+} from '../types/audit';
+
+/**
+ * In-memory audit log store for the singleton service.
+ * Maps to the types/audit.ts interfaces.
+ */
+class AuditLogStore {
+  private entries: AuditLogEntry[] = [];
+
+  async append(entry: AuditLogEntry): Promise<void> {
+    this.entries.push(entry);
+  }
+
+  async queryByEntity(entityType: AuditEntityType, entityId: string): Promise<AuditLogEntry[]> {
+    return this.entries.filter(
+      (e) => e.entityType === entityType && e.entityId === entityId
+    );
+  }
+
+  async search(params: AuditSearchParams): Promise<AuditLogEntry[]> {
+    let results = [...this.entries];
+
+    if (params.actorId) {
+      results = results.filter((e) => e.actorId === params.actorId);
+    }
+    if (params.entityId) {
+      results = results.filter((e) => e.entityId === params.entityId);
+    }
+    if (params.entityType) {
+      results = results.filter((e) => e.entityType === params.entityType);
+    }
+    if (params.action) {
+      results = results.filter((e) => e.action === params.action);
+    }
+    if (params.decision) {
+      results = results.filter((e) => e.decision === params.decision);
+    }
+    if (params.riskLevel) {
+      results = results.filter((e) => e.riskLevel === params.riskLevel);
+    }
+    if (params.from) {
+      results = results.filter((e) => new Date(e.createdAt) >= params.from!);
+    }
+    if (params.to) {
+      results = results.filter((e) => new Date(e.createdAt) <= params.to!);
+    }
+
+    // Sort by createdAt descending
+    results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return results;
+  }
+
+  getAll(): AuditLogEntry[] {
+    return [...this.entries];
+  }
+}
+
+// Singleton store instance
+let _auditLogStore: AuditLogStore | null = null;
+
+function getAuditLogStore(): AuditLogStore {
+  if (!_auditLogStore) {
+    _auditLogStore = new AuditLogStore();
+  }
+  return _auditLogStore;
+}
+
+/**
+ * Generate a unique audit ID.
+ */
+function generateAuditId(): string {
+  const timestamp = Date.now().toString(36).padStart(10, '0');
+  const random = Math.random().toString(36).substring(2, 12);
+  return `audit_${timestamp}${random}`;
+}
+
+/**
+ * Audit service singleton for API routes.
+ * Provides the interface expected by /api/audit/* routes.
+ */
+export const auditService = {
+  /**
+   * Get all audit events for a specific entity.
+   */
+  async getEntityEvents(
+    entityType: AuditEntityType,
+    entityId: string,
+    options?: { limit?: number; offset?: number }
+  ): Promise<AuditEntityResponse> {
+    const store = getAuditLogStore();
+    const events = await store.queryByEntity(entityType, entityId);
+
+    // Apply pagination
+    const offset = options?.offset ?? 0;
+    const limit = options?.limit ?? 100;
+    const paginatedEvents = events.slice(offset, offset + limit);
+
+    // Calculate last risk score
+    const riskEvents = events.filter((e) => e.riskScore !== undefined);
+    const lastRiskScore = riskEvents.length > 0
+      ? riskEvents[riskEvents.length - 1].riskScore
+      : undefined;
+
+    return {
+      entity: {
+        type: entityType,
+        id: entityId,
+      },
+      events: paginatedEvents,
+      total: events.length,
+      lastRiskScore,
+    };
+  },
+
+  /**
+   * Search audit logs with filters.
+   */
+  async search(params: AuditSearchParams): Promise<AuditSearchResponse> {
+    const store = getAuditLogStore();
+    const allResults = await store.search(params);
+
+    const offset = params.offset ?? 0;
+    const limit = params.limit ?? 50;
+    const paginatedResults = allResults.slice(offset, offset + limit);
+
+    return {
+      events: paginatedResults,
+      total: allResults.length,
+      limit,
+      offset,
+    };
+  },
+
+  /**
+   * Get aggregated statistics.
+   */
+  async getStats(): Promise<AuditStatsResponse> {
+    const store = getAuditLogStore();
+    const events = store.getAll();
+    const now = new Date();
+
+    const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const last30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Count events by time range
+    const eventsLast24h = events.filter((e) => new Date(e.createdAt) >= last24h).length;
+    const eventsLast7d = events.filter((e) => new Date(e.createdAt) >= last7d).length;
+    const eventsLast30d = events.filter((e) => new Date(e.createdAt) >= last30d).length;
+
+    // Count by risk level
+    const highRiskEvents = events.filter((e) => e.riskLevel === AuditRiskLevel.RED).length;
+    const mediumRiskEvents = events.filter((e) => e.riskLevel === AuditRiskLevel.YELLOW).length;
+    const lowRiskEvents = events.filter((e) => e.riskLevel === AuditRiskLevel.GREEN).length;
+
+    // Count actions
+    const actionCounts = new Map<string, number>();
+    events.forEach((e) => {
+      const count = actionCounts.get(e.action) ?? 0;
+      actionCounts.set(e.action, count + 1);
+    });
+    const topActions = Array.from(actionCounts.entries())
+      .map(([action, count]) => ({ action, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Count decisions
+    const decisionCounts = new Map<string, number>();
+    events.forEach((e) => {
+      if (e.decision) {
+        const count = decisionCounts.get(e.decision) ?? 0;
+        decisionCounts.set(e.decision, count + 1);
+      }
+    });
+    const topDecisions = Array.from(decisionCounts.entries())
+      .map(([decision, count]) => ({ decision, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Risk level distribution
+    const riskLevelDistribution = {
+      green: lowRiskEvents,
+      yellow: mediumRiskEvents,
+      red: highRiskEvents,
+      unknown: events.length - highRiskEvents - mediumRiskEvents - lowRiskEvents,
+    };
+
+    // Source service distribution
+    const serviceCounts = new Map<string, number>();
+    events.forEach((e) => {
+      if (e.sourceService) {
+        const count = serviceCounts.get(e.sourceService) ?? 0;
+        serviceCounts.set(e.sourceService, count + 1);
+      }
+    });
+    const sourceServiceDistribution = Array.from(serviceCounts.entries())
+      .map(([service, count]) => ({ service, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return {
+      totalEvents: events.length,
+      highRiskEvents,
+      mediumRiskEvents,
+      lowRiskEvents,
+      eventsLast24h,
+      eventsLast7d,
+      eventsLast30d,
+      topActions,
+      topDecisions,
+      riskLevelDistribution,
+      sourceServiceDistribution,
+    };
+  },
+
+  /**
+   * Create a new audit log entry.
+   */
+  async log(request: CreateAuditLogRequest): Promise<CreateAuditLogResponse> {
+    try {
+      const store = getAuditLogStore();
+      const auditId = generateAuditId();
+
+      const entry: AuditLogEntry = {
+        id: auditId,
+        actorType: request.actorType ?? AuditActorType.USER,
+        actorId: request.actorId,
+        action: request.action,
+        decision: request.decision,
+        riskScore: request.riskScore,
+        riskLevel: request.riskLevel,
+        entityType: request.entityType,
+        entityId: request.entityId,
+        metadata: request.metadata,
+        correlationId: request.correlationId,
+        sourceService: request.sourceService,
+        supportTicketId: request.supportTicketId,
+        ipAddress: request.ipAddress,
+        userAgent: request.userAgent,
+        createdAt: new Date(),
+      };
+
+      await store.append(entry);
+
+      return {
+        status: 'ok',
+        auditId,
+      };
+    } catch (error) {
+      console.error('[AuditService] Failed to create audit log:', error);
+      return {
+        status: 'error',
+        auditId: '',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  },
+
+  /**
+   * Batch create audit log entries.
+   */
+  async logBatch(events: CreateAuditLogRequest[]): Promise<{ success: number; failed: number }> {
+    let success = 0;
+    let failed = 0;
+
+    for (const event of events) {
+      const result = await this.log(event);
+      if (result.status === 'ok') {
+        success++;
+      } else {
+        failed++;
+      }
+    }
+
+    return { success, failed };
+  },
+};

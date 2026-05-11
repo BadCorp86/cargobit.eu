@@ -7,13 +7,13 @@
  * @version 1.0.0
  */
 
-import { client as promClient, Registry } from 'prom-client';
+import * as promClient from 'prom-client';
 
 // =============================================================================
 // REGISTRY
 // =============================================================================
 
-// Use default registry or create a custom one
+// Use default registry
 const register = promClient.register;
 
 // =============================================================================

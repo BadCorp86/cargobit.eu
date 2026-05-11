@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { reconciliationScoreService, ScoreLevel } from '@/services/reconciliation-score.service';
-import { adminAuthGuard } from '@/lib/admin-auth';
+import { verifyAdminAuth } from '@/lib/admin-auth';
 
 // =============================================================================
 // GET /api/admin/reconciliation/scores - List scores
@@ -20,8 +20,8 @@ import { adminAuthGuard } from '@/lib/admin-auth';
 export async function GET(request: NextRequest) {
   try {
     // Auth check
-    const authResult = await adminAuthGuard(request);
-    if (!authResult.authorized) {
+    const auth = await verifyAdminAuth(request);
+    if (!auth.valid) {
       return NextResponse.json(
         { error: 'Unauthorized', code: 'UNAUTHORIZED' },
         { status: 401 }
@@ -105,8 +105,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Auth check
-    const authResult = await adminAuthGuard(request);
-    if (!authResult.authorized) {
+    const auth = await verifyAdminAuth(request);
+    if (!auth.valid) {
       return NextResponse.json(
         { error: 'Unauthorized', code: 'UNAUTHORIZED' },
         { status: 401 }
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
         body.payoutId,
         body.newScore,
         reason || 'Manual override',
-        authResult.user?.id || 'unknown'
+        auth.userId || 'unknown'
       );
 
       return NextResponse.json({
