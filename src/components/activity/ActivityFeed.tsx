@@ -2,10 +2,16 @@
 
 /**
  * Activity Feed Component
- * Recent Activities with Icons and Timestamps
+ * Recent Activities with Slide-In Animations
+ * 
+ * Features:
+ * - Staggered slide-in animations
+ * - Hover effects with glow
+ * - Smooth transitions
  */
 
 import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
 
 interface Activity {
@@ -96,6 +102,20 @@ function ActivityIcon({ type }: { type: Activity['type'] }) {
   }
 }
 
+const activityVariants = {
+  hidden: { opacity: 0, x: 20, scale: 0.95 },
+  visible: (i: number) => ({
+    opacity: 1,
+    x: 0,
+    scale: 1,
+    transition: {
+      delay: i * 0.08,
+      duration: 0.4,
+      ease: 'easeOut',
+    },
+  }),
+};
+
 export default function ActivityFeed({
   items = DEFAULT_ACTIVITIES,
   title = 'Letzte Aktivitäten',
@@ -105,40 +125,87 @@ export default function ActivityFeed({
   const displayedItems = maxItems ? items.slice(0, maxItems) : items;
 
   return (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <button className="text-[#00D4FF] text-sm hover:underline">Alle anzeigen</button>
-      </CardHeader>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.4 }}
+    >
+      <Card className={className}>
+        <CardHeader>
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.5 }}
+          >
+            <CardTitle>{title}</CardTitle>
+          </motion.div>
+          <motion.button 
+            className="text-[#00D4FF] text-sm hover:underline"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+            whileHover={{ scale: 1.05 }}
+          >
+            Alle anzeigen
+          </motion.button>
+        </CardHeader>
 
-      <CardContent className="p-0">
-        <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-          {displayedItems.map((activity) => {
-            const color = ACTIVITY_COLORS[activity.type];
+        <CardContent className="p-0">
+          <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+            <AnimatePresence mode="popLayout">
+              {displayedItems.map((activity, index) => {
+                const color = ACTIVITY_COLORS[activity.type];
 
-            return (
-              <div
-                key={activity.id}
-                className="flex items-start gap-3 p-4 hover:bg-white/[0.03] transition-colors cursor-pointer group border-b border-white/[0.05] last:border-b-0"
-              >
-                <div
-                  className="p-2 rounded-lg mt-0.5 transition-transform group-hover:scale-110"
-                  style={{ backgroundColor: `${color}20`, color }}
-                >
-                  <ActivityIcon type={activity.type} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium group-hover:text-[#00D4FF] transition-colors">
-                    {activity.title}
-                  </p>
-                  <p className="text-white/40 text-xs truncate">{activity.description}</p>
-                </div>
-                <span className="text-white/30 text-xs whitespace-nowrap">{activity.time}</span>
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+                return (
+                  <motion.div
+                    key={activity.id}
+                    custom={index}
+                    variants={activityVariants}
+                    initial="hidden"
+                    animate="visible"
+                    layout
+                    whileHover={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      x: 4,
+                    }}
+                    className="flex items-start gap-3 p-4 cursor-pointer group border-b border-white/[0.05] last:border-b-0"
+                  >
+                    <motion.div
+                      className="p-2 rounded-lg mt-0.5"
+                      style={{ backgroundColor: `${color}20`, color }}
+                      whileHover={{ 
+                        scale: 1.15, 
+                        rotate: 5,
+                        boxShadow: `0 0 15px ${color}40`,
+                      }}
+                      transition={{ type: 'spring', stiffness: 400 }}
+                    >
+                      <ActivityIcon type={activity.type} />
+                    </motion.div>
+                    <div className="flex-1 min-w-0">
+                      <motion.p 
+                        className="text-white text-sm font-medium group-hover:text-[#00D4FF] transition-colors"
+                        whileHover={{ x: 2 }}
+                      >
+                        {activity.title}
+                      </motion.p>
+                      <p className="text-white/40 text-xs truncate">{activity.description}</p>
+                    </div>
+                    <motion.span 
+                      className="text-white/30 text-xs whitespace-nowrap"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: index * 0.08 + 0.2 }}
+                    >
+                      {activity.time}
+                    </motion.span>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }
