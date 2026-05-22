@@ -116,9 +116,7 @@ export class LoginStep2Dto {
     }
 
     // Code validation
-    if (!this.code) {
-      errors.push('Code ist erforderlich');
-    } else if (!/^\d{6}$/.test(this.code) && !/^[A-F0-9]{8}$/i.test(this.code)) {
+    if (this.code && !/^\d{6}$/.test(this.code) && !/^[A-F0-9]{8}$/i.test(this.code)) {
       // Must be 6 digits (TOTP) or 8 hex chars (backup code)
       errors.push('Code muss 6-stellig sein oder ein Backup-Code sein');
     }

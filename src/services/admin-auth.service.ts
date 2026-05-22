@@ -83,9 +83,29 @@ export interface DecodedAdminToken {
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'cargobit-admin-secret-change-in-production';
 const TOKEN_EXPIRY_HOURS = 8;
 const TOKEN_EXPIRY_SECONDS = TOKEN_EXPIRY_HOURS * 60 * 60;
+const ENV_ADMIN_ID = 'env-admin';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MINUTES = 30;
+
+function getEnvAdmin() {
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
+  const role = (process.env.ADMIN_ROLE || 'ADMIN') as AdminRole;
+
+  if (!email || !password) {
+    return null;
+  }
+
+  return {
+    id: ENV_ADMIN_ID,
+    email,
+    password,
+    role,
+    isActive: true,
+    is2faEnabled: false,
+  };
+}
 
 // ============================================
 // ROLE PERMISSIONS
@@ -193,9 +213,29 @@ export class AdminAuthService {
     password: string,
     ipAddress: string
   ): Promise<{ success: true; data: AdminLoginStep1Response } | { success: false; error: string }> {
-    const admin = await prisma.adminUser.findUnique({
-      where: { email: email.toLowerCase() },
-    });
+    const normalizedEmail = email.toLowerCase();
+    const envAdmin = getEnvAdmin();
+
+    if (envAdmin?.email === normalizedEmail && envAdmin.password === password) {
+      return {
+        success: true,
+        data: {
+          requires2fa: false,
+          email: envAdmin.email,
+        },
+      };
+    }
+
+    let admin;
+    try {
+      admin = await prisma.adminUser.findUnique({
+        where: { email: normalizedEmail },
+      });
+    } catch (error) {
+      console.error('[AdminAuth] Admin database lookup failed:', error);
+      await this.logFailedAttempt(email, ipAddress, 'admin_db_unavailable');
+      return { success: false, error: 'Admin-Login ist nicht konfiguriert' };
+    }
     
     // Invalid credentials
     if (!admin) {
@@ -264,8 +304,27 @@ export class AdminAuthService {
     ipAddress: string,
     userAgent?: string
   ): Promise<{ success: true; data: AdminLoginTokenResponse } | { success: false; error: string }> {
+    const normalizedEmail = email.toLowerCase();
+    const envAdmin = getEnvAdmin();
+
+    if (envAdmin?.email === normalizedEmail) {
+      return {
+        success: true,
+        data: {
+          accessToken: this.createJwtToken(envAdmin.id, envAdmin.role),
+          tokenType: 'bearer',
+          expiresIn: TOKEN_EXPIRY_SECONDS,
+          admin: {
+            id: envAdmin.id,
+            email: envAdmin.email,
+            role: envAdmin.role,
+          },
+        },
+      };
+    }
+
     const admin = await prisma.adminUser.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email: normalizedEmail },
     });
     
     if (!admin || !admin.isActive) {
@@ -285,7 +344,7 @@ export class AdminAuthService {
     await this.resetFailedAttempts(admin.id);
     
     // Create session and token
-    const session = await this.createSession(admin.id, ipAddress, userAgent);
+    const session = await this.createSession(admin.id, admin.role, ipAddress, userAgent);
     
     // Update last login
     await prisma.adminUser.update({
@@ -336,6 +395,17 @@ export class AdminAuthService {
   async verifyToken(token: string): Promise<AdminUser | null> {
     try {
       const decoded = jwt.verify(token, ADMIN_JWT_SECRET) as DecodedAdminToken;
+      const envAdmin = getEnvAdmin();
+
+      if (envAdmin && decoded.sub === envAdmin.id) {
+        return {
+          id: envAdmin.id,
+          email: envAdmin.email,
+          role: envAdmin.role,
+          isActive: envAdmin.isActive,
+          is2faEnabled: envAdmin.is2faEnabled,
+        };
+      }
       
       const admin = await prisma.adminUser.findUnique({
         where: { id: decoded.sub },
@@ -376,6 +446,24 @@ export class AdminAuthService {
   ): Promise<{ admin: AdminUser; decoded: DecodedAdminToken } | null> {
     try {
       const decoded = jwt.verify(token, ADMIN_JWT_SECRET) as DecodedAdminToken;
+      const envAdmin = getEnvAdmin();
+
+      if (envAdmin && decoded.sub === envAdmin.id) {
+        if (!allowedRoles.includes(envAdmin.role)) {
+          return null;
+        }
+
+        return {
+          admin: {
+            id: envAdmin.id,
+            email: envAdmin.email,
+            role: envAdmin.role,
+            isActive: envAdmin.isActive,
+            is2faEnabled: envAdmin.is2faEnabled,
+          },
+          decoded,
+        };
+      }
       
       if (!allowedRoles.includes(decoded.role)) {
         return null;
@@ -418,6 +506,15 @@ export class AdminAuthService {
   // ============================================
   
   async logout(token: string): Promise<void> {
+    try {
+      const decoded = jwt.verify(token, ADMIN_JWT_SECRET) as DecodedAdminToken;
+      if (decoded.sub === ENV_ADMIN_ID) {
+        return;
+      }
+    } catch {
+      return;
+    }
+
     await prisma.adminSession.deleteMany({
       where: { token },
     });
@@ -586,10 +683,11 @@ export class AdminAuthService {
   
   private async createSession(
     adminId: string,
+    role: AdminRole,
     ipAddress: string,
     userAgent?: string
   ): Promise<{ token: string; refreshToken: string; id: string }> {
-    const token = this.generateToken();
+    const token = this.createJwtToken(adminId, role);
     const refreshToken = this.generateRefreshToken();
     const sessionId = crypto.randomUUID();
     
@@ -612,8 +710,12 @@ export class AdminAuthService {
     return { token, refreshToken, id: sessionId };
   }
   
-  private generateToken(): string {
-    return crypto.randomBytes(32).toString('base64url');
+  private createJwtToken(adminId: string, role: AdminRole): string {
+    return jwt.sign(
+      { sub: adminId, role },
+      ADMIN_JWT_SECRET,
+      { expiresIn: TOKEN_EXPIRY_SECONDS }
+    );
   }
   
   private generateRefreshToken(): string {

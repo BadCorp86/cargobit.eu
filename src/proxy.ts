@@ -49,6 +49,7 @@ const ROUTE_PROTECTION: Record<string, RouteConfig> = {
   '/api/wallet/deposit': { requiresAuth: true, riskLevel: 'MEDIUM' },
   
   // Admin routes
+  '/api/admin/auth': { requiresAuth: false, riskLevel: 'MEDIUM', rateLimit: { requests: 20, windowMs: 60000 } },
   '/api/admin': { requiresAuth: true, requiredRoles: ['ADMIN'], riskLevel: 'HIGH' },
   '/api/admin/users': { requiresAuth: true, requiredRoles: ['ADMIN'], riskLevel: 'HIGH' },
   '/api/admin/verification': { requiresAuth: true, requiredRoles: ['ADMIN', 'SUPPORT'], riskLevel: 'HIGH' },
@@ -194,7 +195,8 @@ export async function proxy(request: NextRequest) {
   // Authentication check
   if (config.requiresAuth) {
     const sessionToken = request.headers.get('authorization')?.replace('Bearer ', '') ||
-                         request.cookies.get('session_token')?.value;
+                         request.cookies.get('session_token')?.value ||
+                         request.cookies.get('admin_session')?.value;
 
     if (!sessionToken) {
       return NextResponse.json(
@@ -205,6 +207,17 @@ export async function proxy(request: NextRequest) {
         },
         { status: 401 }
       );
+    }
+
+    // Admin API routes perform JWT + role validation in their route handlers.
+    // The proxy only verifies that an admin session cookie/header exists.
+    if (pathname.startsWith('/api/admin')) {
+      const response = NextResponse.next();
+      response.headers.set('X-Content-Type-Options', 'nosniff');
+      response.headers.set('X-Frame-Options', 'DENY');
+      response.headers.set('X-XSS-Protection', '1; mode=block');
+      response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+      return response;
     }
 
     // Validate session (would normally check against database)

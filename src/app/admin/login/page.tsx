@@ -47,7 +47,7 @@ export default function AdminLoginPage() {
         return;
       }
       
-      if (data.requires2fa) {
+      if (data.requires_2fa) {
         setStep('2fa');
       } else {
         // No 2FA required - login directly
