@@ -40,25 +40,25 @@
   --color-chart-5: #EF4444;
   
   /* Legacy compatibility */
-  --color-background: var(--color-cb-dark);
-  --color-foreground: var(--color-text-primary);
-  --color-card: var(--color-glass-bg);
-  --color-card-foreground: var(--color-text-primary);
-  --color-popover: var(--color-glass-bg);
-  --color-popover-foreground: var(--color-text-primary);
-  --color-primary: #1C7ED6;
-  --color-primary-foreground: #FFFFFF;
-  --color-secondary: rgba(255, 255, 255, 0.1);
-  --color-secondary-foreground: #FFFFFF;
-  --color-muted: rgba(255, 255, 255, 0.05);
-  --color-muted-foreground: var(--color-text-secondary);
-  --color-accent: #00D4FF;
-  --color-accent-foreground: #FFFFFF;
-  --color-destructive: #EF4444;
-  --color-destructive-foreground: #FFFFFF;
-  --color-border: var(--color-glass-border);
-  --color-input: rgba(255, 255, 255, 0.1);
-  --color-ring: #1C7ED6;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -67,11 +67,29 @@
   --radius-2xl: 20px;
 }
 
-/* Root Variables */
 :root {
+  color-scheme: light;
   --radius: 0.875rem;
-  --background: #06121C;
-  --foreground: #FFFFFF;
+  --background: #F8FAFC;
+  --foreground: #0F172A;
+  --card: rgba(255, 255, 255, 0.82);
+  --card-foreground: #0F172A;
+  --popover: rgba(255, 255, 255, 0.96);
+  --popover-foreground: #0F172A;
+  --primary: #1C7ED6;
+  --primary-foreground: #FFFFFF;
+  --secondary: rgba(15, 23, 42, 0.08);
+  --secondary-foreground: #0F172A;
+  --muted: rgba(15, 23, 42, 0.06);
+  --muted-foreground: #64748B;
+  --accent: #0EA5E9;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: rgba(15, 23, 42, 0.12);
+  --input: rgba(15, 23, 42, 0.12);
+  --ring: #1C7ED6;
+  --cb-page-end: #E0F2FE;
   --sidebar-width: 260px;
   --topbar-height: 70px;
   
@@ -81,15 +99,34 @@
   --transition-slow: 400ms;
 }
 
-/* Force Dark Mode */
-html {
+.dark {
+  --background: #06121C;
+  --foreground: #FFFFFF;
+  --card: rgba(255, 255, 255, 0.05);
+  --card-foreground: #FFFFFF;
+  --popover: rgba(6, 18, 28, 0.96);
+  --popover-foreground: #FFFFFF;
+  --primary: #1C7ED6;
+  --primary-foreground: #FFFFFF;
+  --secondary: rgba(255, 255, 255, 0.1);
+  --secondary-foreground: #FFFFFF;
+  --muted: rgba(255, 255, 255, 0.05);
+  --muted-foreground: #A0AEC0;
+  --accent: #00D4FF;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #1C7ED6;
+  --cb-page-end: #0B3C5D;
   color-scheme: dark;
 }
 
 body {
-  @apply bg-cb-dark text-foreground antialiased;
+  @apply bg-background text-foreground antialiased;
   font-family: 'Inter', system-ui, sans-serif;
-  background: linear-gradient(180deg, #06121C 0%, #0B3C5D 100%);
+  background: linear-gradient(180deg, var(--background) 0%, var(--cb-page-end) 100%);
   min-height: 100vh;
 }
 

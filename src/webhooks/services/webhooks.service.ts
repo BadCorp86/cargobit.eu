@@ -29,6 +29,7 @@ import {
   toWebhookResponseDto,
 } from '../dto/webhook.dto';
 import { webhookMetrics } from '../metrics/webhook.metrics';
+import { createHmac } from 'crypto';
 
 // =============================================================================
 // INTERFACES
@@ -539,9 +540,8 @@ export class WebhookService {
    * Generate HMAC signature for payload
    */
   private generateSignature(payload: Record<string, unknown>, secret: string): string {
-    const crypto = require('crypto');
     const payloadString = JSON.stringify(payload);
-    const hmac = crypto.createHmac('sha256', secret);
+    const hmac = createHmac('sha256', secret);
     hmac.update(payloadString);
     return `sha256=${hmac.digest('hex')}`;
   }

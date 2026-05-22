@@ -12,7 +12,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 
 interface StatusData {
   label: string;
@@ -50,8 +50,9 @@ export default function TransportStatusChart({
   const total = data.reduce((sum, d) => sum + d.value, 0);
   const radius = 70;
   const circumference = 2 * Math.PI * radius;
-
-  let cumulativePercent = 0;
+  const segmentOffsets = data.map((_, index) =>
+    data.slice(0, index).reduce((sum, item) => sum + item.percent, 0)
+  );
 
   return (
     <motion.div
@@ -101,8 +102,7 @@ export default function TransportStatusChart({
                 
                 {data.map((segment, i) => {
                   const strokeDasharray = `${(segment.percent / 100) * circumference} ${circumference}`;
-                  const strokeDashoffset = -(cumulativePercent / 100) * circumference;
-                  cumulativePercent += segment.percent;
+                  const strokeDashoffset = -(segmentOffsets[i] / 100) * circumference;
                   const isHovered = hoveredIndex === i;
 
                   return (

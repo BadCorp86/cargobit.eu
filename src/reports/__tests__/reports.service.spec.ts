@@ -26,7 +26,7 @@ describe('ReportsService', () => {
       recordExportDuration: jest.fn(),
     };
 
-    const module: TestingModule = await Test.createTestingModule({
+    const testingModule: TestingModule = await Test.createTestingModule({
       providers: [
         ReportsService,
         {
@@ -40,7 +40,7 @@ describe('ReportsService', () => {
       ],
     }).compile();
 
-    service = module.get<ReportsService>(ReportsService);
+    service = testingModule.get<ReportsService>(ReportsService);
   });
 
   describe('listReports', () => {

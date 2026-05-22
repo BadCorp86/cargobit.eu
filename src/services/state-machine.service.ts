@@ -500,8 +500,10 @@ export const riskStateMachine = new RiskStateMachineService();
 export const mitigationStateMachine = new MitigationStateMachineService();
 export const supportTicketStateMachine = new SupportTicketStateMachineService();
 
-export default {
+const stateMachines = {
   risk: riskStateMachine,
   mitigation: mitigationStateMachine,
   supportTicket: supportTicketStateMachine,
 };
+
+export default stateMachines;

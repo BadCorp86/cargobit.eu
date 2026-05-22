@@ -13,8 +13,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Card, CardHeader, CardContent, CardTitle, CardDescription } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
+import { Card, CardContent, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 interface DataPoint {
   month: string;
@@ -117,7 +117,7 @@ export default function RevenueChart({
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.7 }}
               >
-                <Badge variant="success" glow>
+                <Badge className="border-[#2ECC71]/30 bg-[#2ECC71]/20 text-[#2ECC71] shadow-lg shadow-[#2ECC71]/30">
                   <motion.svg 
                     className="w-3 h-3 mr-1" 
                     fill="none" 

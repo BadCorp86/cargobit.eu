@@ -104,8 +104,10 @@ export function getDevFetchOptions(
  * }));
  */
 
-export default {
+const devAuth = {
   DEV_USERS,
   getDevAuthHeaders,
   getDevFetchOptions,
 };
+
+export default devAuth;

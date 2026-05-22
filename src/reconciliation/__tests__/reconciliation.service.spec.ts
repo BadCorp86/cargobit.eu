@@ -28,11 +28,11 @@ describe('ReconciliationService', () => {
 
     (PrismaClient as any).mockImplementation(() => mockPrisma);
 
-    const module: TestingModule = await Test.createTestingModule({
+    const testingModule: TestingModule = await Test.createTestingModule({
       providers: [ReconciliationService],
     }).compile();
 
-    service = module.get<ReconciliationService>(ReconciliationService);
+    service = testingModule.get<ReconciliationService>(ReconciliationService);
   });
 
   afterEach(() => {

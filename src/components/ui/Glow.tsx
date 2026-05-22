@@ -281,7 +281,7 @@ export function PulseRing({
 }
 
 // Export all
-export default {
+const glowComponents = {
   Glow,
   BorderGlow,
   NeonText,
@@ -291,3 +291,5 @@ export default {
   SpotlightGlow,
   PulseRing,
 };
+
+export default glowComponents;

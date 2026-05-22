@@ -410,7 +410,7 @@ export function Ripple({
 }
 
 // Export all components
-export default {
+const motionComponents = {
   FadeIn,
   HoverCard,
   SlideIn,
@@ -423,3 +423,5 @@ export default {
   Floating,
   Ripple,
 };
+
+export default motionComponents;

@@ -92,6 +92,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
   const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  const connectRef = useRef<() => void>(() => {});
   const mountedRef = useRef(true);
 
   // Get WebSocket URL
@@ -176,7 +177,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
           reconnectTimeout.current = setTimeout(() => {
             reconnectAttempts.current++;
             console.log(`[WS] Reconnecting (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})...`);
-            connect();
+            connectRef.current();
           }, reconnectInterval);
         }
       };
@@ -196,6 +197,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     }
   }, [getWebSocketUrl, maxReconnectAttempts, reconnectInterval, onConnect, onDisconnect, onError, onMessage]);
 
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
+
   // Disconnect
   const disconnect = useCallback(() => {
     if (reconnectTimeout.current) {
@@ -213,13 +218,19 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   // Auto-connect on mount
   useEffect(() => {
     mountedRef.current = true;
+    let connectTimer: ReturnType<typeof setTimeout> | null = null;
     
     if (autoConnect) {
-      connect();
+      connectTimer = setTimeout(() => {
+        connect();
+      }, 0);
     }
     
     return () => {
       mountedRef.current = false;
+      if (connectTimer) {
+        clearTimeout(connectTimer);
+      }
       disconnect();
     };
   }, [autoConnect, connect, disconnect]);

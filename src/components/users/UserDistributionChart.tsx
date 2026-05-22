@@ -12,7 +12,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 
 interface UserData {
   label: string;

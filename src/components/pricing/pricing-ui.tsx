@@ -450,4 +450,6 @@ export function PricingStats({ stats }: PricingStatsProps) {
   );
 }
 
-export default { PricingInfoCard, BidInput, PricingStats };
+const pricingComponents = { PricingInfoCard, BidInput, PricingStats };
+
+export default pricingComponents;

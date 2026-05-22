@@ -12,7 +12,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/Card';
+import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 
 interface Service {
   name: string;
