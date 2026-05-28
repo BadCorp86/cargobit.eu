@@ -4,7 +4,7 @@
  * Run with: bunx prisma db seed
  *
  * Creates:
- * - 10 Test Users (Shipper, Dispatcher, Driver, Admin, Support, Marketer)
+ * - Test users for shippers, carrier teams, drivers, admin, support and marketing
  * - 5 Companies
  * - 10 Vehicles
  * - 8 Transports (various statuses)
@@ -27,6 +27,7 @@ const PASSWORDS = {
   admin: 'Admin123!@#',
   support: 'Support123!@#',
   shipper: 'Shipper123!@#',
+  carrier: 'Carrier123!@#',
   dispatcher: 'Dispatcher123!@#',
   driver: 'Driver123!@#',
   marketer: 'Marketer123!@#',
@@ -70,7 +71,10 @@ async function main() {
   // Create Shippers
   const shippers = await createShippers(roles, companies);
 
-  // Create Dispatchers
+  // Create carrier company owners
+  const carrierOwners = await createCarrierOwners(roles, companies);
+
+  // Create carrier team dispatchers
   const dispatchers = await createDispatchers(roles, companies);
 
   // Create Drivers
@@ -182,8 +186,11 @@ async function createRoles() {
     shipperPrivate: await prisma.role.create({
       data: { name: UserRole.SHIPPER_PRIVATE, description: 'Versender (Privat)' }
     }),
+    carrier: await prisma.role.create({
+      data: { name: UserRole.CARRIER, description: 'Spedition / Transportunternehmen (Hauptkonto)' }
+    }),
     dispatcher: await prisma.role.create({
-      data: { name: UserRole.DISPATCHER, description: 'Disponent / Spediteur' }
+      data: { name: UserRole.DISPATCHER, description: 'Disponent innerhalb einer Spedition' }
     }),
     driverSelfEmployed: await prisma.role.create({
       data: { name: UserRole.DRIVER_SELF_EMPLOYED, description: 'Selbstständiger Fahrer' }
@@ -367,10 +374,54 @@ async function createShippers(roles: any, companies: any[]) {
 }
 
 // ===========================================
+// CREATE CARRIER COMPANY OWNERS
+// ===========================================
+async function createCarrierOwners(roles: any, companies: any[]) {
+  console.log('🚚 Creating carrier company owners...');
+
+  const passwordHash = await bcrypt.hash(PASSWORDS.carrier, SALT_ROUNDS);
+
+  const owners = await Promise.all([
+    prisma.user.create({
+      data: {
+        email: 'carrier1@cargobit.eu',
+        passwordHash,
+        firstName: 'Anna',
+        lastName: 'Schmidt',
+        phone: '+49 40 5550001',
+        language: 'de',
+        status: UserStatus.ACTIVE,
+        roles: { create: [{ roleId: roles.carrier.id }] },
+        companyUsers: {
+          create: [{ companyId: companies[0].id, roleInCompany: 'owner' }]
+        }
+      }
+    }),
+    prisma.user.create({
+      data: {
+        email: 'carrier2@cargobit.eu',
+        passwordHash,
+        firstName: 'Mehmet',
+        lastName: 'Yilmaz',
+        phone: '+49 89 5550002',
+        language: 'de',
+        status: UserStatus.ACTIVE,
+        roles: { create: [{ roleId: roles.carrier.id }] },
+        companyUsers: {
+          create: [{ companyId: companies[1].id, roleInCompany: 'owner' }]
+        }
+      }
+    }),
+  ]);
+
+  return owners;
+}
+
+// ===========================================
 // CREATE DISPATCHERS
 // ===========================================
 async function createDispatchers(roles: any, companies: any[]) {
-  console.log('📋 Creating dispatchers...');
+  console.log('📋 Creating carrier team dispatchers...');
 
   const passwordHash = await bcrypt.hash(PASSWORDS.dispatcher, SALT_ROUNDS);
 
@@ -789,31 +840,31 @@ async function createPlans() {
         monthlyFee: 0,
         commissionPercent: 14,
         walletFeePercent: 3.5,
-        featuresJson: JSON.stringify({ maxTransports: 10, support: 'email', insurance: false, ads: false }),
+        featuresJson: JSON.stringify({ maxTransports: 10, support: 'email', insurance: false, ads: false, pricesExcludeVat: true, vatNotice: 'zzgl. gesetzlicher MwSt.' }),
       },
       {
         name: PlanName.STARTER,
-        monthlyFee: 29,
-        yearlyFee: 290,
+        monthlyFee: 89,
+        yearlyFee: 890,
         commissionPercent: 10,
         walletFeePercent: 2.5,
-        featuresJson: JSON.stringify({ maxTransports: 50, support: 'email', insurance: true, ads: false }),
+        featuresJson: JSON.stringify({ maxTransports: 50, support: 'email', insurance: true, ads: false, pricesExcludeVat: true, vatNotice: 'zzgl. gesetzlicher MwSt.' }),
       },
       {
         name: PlanName.PROFESSIONAL,
-        monthlyFee: 99,
-        yearlyFee: 990,
+        monthlyFee: 149,
+        yearlyFee: 1490,
         commissionPercent: 7,
         walletFeePercent: 2.0,
-        featuresJson: JSON.stringify({ maxTransports: 200, support: 'phone', insurance: true, ads: true }),
+        featuresJson: JSON.stringify({ maxTransports: 200, support: 'phone', insurance: true, ads: true, pricesExcludeVat: true, vatNotice: 'zzgl. gesetzlicher MwSt.' }),
       },
       {
         name: PlanName.ENTERPRISE,
-        monthlyFee: 299,
-        yearlyFee: 2990,
+        monthlyFee: 490,
+        yearlyFee: 4900,
         commissionPercent: 5,
         walletFeePercent: 1.5,
-        featuresJson: JSON.stringify({ maxTransports: -1, support: 'dedicated', insurance: true, ads: true }),
+        featuresJson: JSON.stringify({ maxTransports: -1, support: 'dedicated', insurance: true, ads: true, pricesExcludeVat: true, vatNotice: 'zzgl. gesetzlicher MwSt.' }),
       },
     ]
   });

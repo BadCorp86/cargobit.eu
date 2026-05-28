@@ -12,6 +12,7 @@ export type SystemRole =
   | 'SUPPORT'
   | 'SHIPPER_COMPANY'
   | 'SHIPPER_PRIVATE'
+  | 'CARRIER'
   | 'DISPATCHER'
   | 'DRIVER_SELF_EMPLOYED'
   | 'MARKETER';
@@ -191,23 +192,43 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
     // Verification
     'verification:read',
   ],
+
+  CARRIER: [
+    // Company owner / Spedition main account
+    'company:read', 'company:write', 'company:manage_members', 'company:manage_plans',
+    // Transport operations
+    'transport:read', 'transport:read_own', 'transport:write_own',
+    'transport:assign_driver', 'transport:update_status',
+    // Fleet and team
+    'vehicle:create', 'vehicle:read', 'vehicle:write', 'vehicle:delete',
+    'driver:create', 'driver:read', 'driver:write', 'driver:delete',
+    // Matching and offers
+    'matching:read', 'matching:assign',
+    'offer:create', 'offer:read',
+    // Finance
+    'wallet:read_own', 'wallet:withdraw_own',
+    'wallet:manage_payout_methods', 'wallet:view_all_transactions',
+    // Support and verification
+    'support:create_ticket', 'support:read_tickets',
+    'verification:read',
+  ],
   
   DISPATCHER: [
-    // Company (own)
-    'company:read', 'company:manage_members',
+    // Internal Spedition team role
+    'company:read',
     // Transport
     'transport:read', 'transport:read_own', 'transport:write_own',
     'transport:assign_driver', 'transport:update_status',
     // Vehicle
-    'vehicle:create', 'vehicle:read', 'vehicle:write', 'vehicle:delete',
+    'vehicle:read', 'vehicle:write',
     // Driver
-    'driver:create', 'driver:read', 'driver:write', 'driver:delete',
+    'driver:read', 'driver:write',
     // Matching
     'matching:read', 'matching:assign',
     // Offers
     'offer:create', 'offer:read',
-    // Wallet
-    'wallet:read_own', 'wallet:view_all_transactions',
+    // Wallet (read-only operational view, no payout control)
+    'wallet:read_own',
     // Support
     'support:create_ticket', 'support:read_tickets',
     // Verification
@@ -311,9 +332,14 @@ export const ROLE_VERIFICATION_REQUIREMENTS: Record<SystemRole, VerificationRequ
   SHIPPER_PRIVATE: [
     { type: 'KYC', required: true, level: 'standard', restrictsFeature: ['high_value_transports'] },
   ],
+  CARRIER: [
+    { type: 'KYC', required: true, level: 'standard' },
+    { type: 'KYB', required: true, level: 'standard', restrictsFeature: ['fleet_management', 'payouts'] },
+    { type: 'VEHICLE', required: true, restrictsFeature: ['make_offers', 'assign_driver'] },
+  ],
   DISPATCHER: [
     { type: 'KYC', required: true, level: 'standard' },
-    { type: 'KYB', required: false },
+    { type: 'KYB', required: false, restrictsFeature: ['company_owner_controls'] },
   ],
   DRIVER_SELF_EMPLOYED: [
     { type: 'KYC', required: true, level: 'standard' },

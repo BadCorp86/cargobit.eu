@@ -9,6 +9,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { Euro, Route, ShieldCheck, TriangleAlert, UsersRound } from 'lucide-react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { KpiCard, KpiGrid } from '@/components/kpi/KpiCard';
 import EuropeMap from '@/components/map/EuropeMap';
@@ -132,80 +133,45 @@ export default function DashboardPage() {
       value: stats?.users.total.toLocaleString() || '0',
       change: 12.5,
       changeLabel: '+23 heute',
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-          />
-        </svg>
-      ),
+      icon: <UsersRound className="h-6 w-6" />,
       color: 'blue' as const,
+      miniChartData: [36, 44, 48, 52, 58, 63, 61, 68, 72, 78, 83, 88],
     },
     {
       title: 'Aktive Transporte',
       value: stats?.jobs.active.toLocaleString() || '0',
       change: 8.2,
       changeLabel: '1,842 derzeit unterwegs',
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-        </svg>
-      ),
+      icon: <Route className="h-6 w-6" />,
       color: 'green' as const,
+      miniChartData: [54, 49, 57, 62, 56, 70, 75, 68, 80, 84, 77, 89],
     },
     {
       title: 'Umsatz (Monat)',
       value: formatCurrency(stats?.payments.totalAmountCents || 0),
       change: 23.6,
       changeLabel: 'vs. letzter Monat',
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      ),
-      color: 'purple' as const,
+      icon: <Euro className="h-6 w-6" />,
+      color: 'cyan' as const,
+      miniChartData: [40, 46, 44, 57, 52, 64, 68, 72, 69, 82, 87, 92],
     },
     {
       title: 'Ausstehende Verifizierungen',
       value: '47',
       change: -5.2,
       changeLabel: '5 heute bearbeitet',
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-          />
-        </svg>
-      ),
+      icon: <ShieldCheck className="h-6 w-6" />,
       color: 'yellow' as const,
+      miniChartData: [82, 76, 73, 68, 62, 58, 51, 48, 43, 39, 34, 30],
     },
     {
       title: 'Offene Streitfälle',
       value: stats?.disputes.open || '0',
       change: -15,
       changeLabel: '2 heute gelöst',
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-          />
-        </svg>
-      ),
+      icon: <TriangleAlert className="h-6 w-6" />,
       color: 'red' as const,
+      miniChartData: [78, 68, 72, 60, 54, 48, 42, 40, 36, 30, 25, 20],
     },
   ];
 
@@ -229,39 +195,23 @@ export default function DashboardPage() {
         {/* KPI Cards */}
         <KpiGrid columns={5}>
           {kpiCards.map((kpi, i) => (
-            <KpiCard key={i} {...kpi} />
+            <KpiCard key={i} delay={i * 0.06} {...kpi} />
           ))}
         </KpiGrid>
 
-        {/* Main Grid - Map & Analytics */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Map */}
-          <div className="xl:col-span-2">
+        <div className="grid grid-cols-1 gap-6 2xl:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="min-w-0 space-y-6">
             <EuropeMap />
-          </div>
-          
-          {/* Revenue Chart */}
-          <div className="xl:col-span-1">
             <RevenueChart />
+            <ActivityFeed />
           </div>
-        </div>
 
-        {/* Bottom Grid - Activity, Status, Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Activity Feed */}
-          <ActivityFeed />
-
-          {/* Transport Status */}
-          <TransportStatusChart />
-
-          {/* User Distribution */}
-          <UserDistributionChart />
-        </div>
-
-        {/* Quick Actions & System Status */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <QuickActions />
-          <SystemStatus />
+          <aside className="min-w-0 space-y-6">
+            <QuickActions />
+            <SystemStatus />
+            <TransportStatusChart />
+            <UserDistributionChart />
+          </aside>
         </div>
       </div>
     </DashboardLayout>

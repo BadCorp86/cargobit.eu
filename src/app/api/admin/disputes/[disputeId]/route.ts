@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { withAdminAuth, AdminRole } from '@/lib/admin-rbac';
+import { buildEvidenceWorkflowSummary, parseDisputeMetadata } from '@/lib/disputes/evidence-workflow';
 
 // ============================================
 // GET: DISPUTE DETAIL
@@ -17,10 +18,10 @@ import { withAdminAuth, AdminRole } from '@/lib/admin-rbac';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { disputeId: string } }
+  { params }: { params: Promise<{ disputeId: string }> | { disputeId: string } }
 ) {
   return withAdminAuth(request, async (admin) => {
-    const disputeId = params.disputeId;
+    const { disputeId } = await params;
     
     // Get dispute with relations
     const dispute = await prisma.dispute.findUnique({
@@ -73,6 +74,37 @@ export async function GET(
           select: { id: true, email: true },
         })
       : null;
+
+    const supportTickets = await prisma.supportTicket.findMany({
+      where: {
+        userId: dispute.createdById,
+        transportId: dispute.jobId,
+        category: 'DISPUTE_EVIDENCE',
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        subject: true,
+        description: true,
+        priority: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        resolvedAt: true,
+        closedAt: true,
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 3,
+          select: {
+            id: true,
+            senderRole: true,
+            message: true,
+            isInternal: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
     
     // Get message senders
     const senderIds = [...new Set(dispute.messages.map(m => m.senderId))];
@@ -81,6 +113,7 @@ export async function GET(
       select: { id: true, firstName: true, lastName: true, email: true },
     });
     const senderMap = new Map(senders.map(s => [s.id, s]));
+    const evidenceRequest = buildEvidenceWorkflowSummary(dispute.auditEvents);
     
     // Format result
     const result = {
@@ -142,6 +175,26 @@ export async function GET(
         uploadedBy: a.uploadedBy,
         createdAt: a.createdAt,
       })),
+
+      evidenceRequest,
+      supportTickets: supportTickets.map(ticket => ({
+        id: ticket.id,
+        subject: ticket.subject,
+        description: ticket.description,
+        priority: ticket.priority,
+        status: ticket.status,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+        resolvedAt: ticket.resolvedAt,
+        closedAt: ticket.closedAt,
+        messages: ticket.messages.map(message => ({
+          id: message.id,
+          senderRole: message.senderRole,
+          message: message.message,
+          isInternal: message.isInternal,
+          createdAt: message.createdAt,
+        })),
+      })),
       
       // Audit trail
       auditTrail: dispute.auditEvents.map(e => ({
@@ -149,7 +202,7 @@ export async function GET(
         eventType: e.eventType,
         oldStatus: e.oldStatus,
         newStatus: e.newStatus,
-        metadata: e.metadata ? JSON.parse(e.metadata) : null,
+        metadata: parseDisputeMetadata(e.metadata),
         createdAt: e.createdAt,
       })),
     };
@@ -164,10 +217,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { disputeId: string } }
+  { params }: { params: Promise<{ disputeId: string }> | { disputeId: string } }
 ) {
   return withAdminAuth(request, async (admin) => {
-    const disputeId = params.disputeId;
+    const { disputeId } = await params;
     
     // Parse body
     const body = await request.json();

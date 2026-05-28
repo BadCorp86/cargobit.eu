@@ -16,7 +16,7 @@ import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 
 interface Activity {
   id: number | string;
-  type: 'user' | 'transport' | 'payment' | 'verification' | 'dispute';
+  type: 'user' | 'transport' | 'payment' | 'verification' | 'dispute' | 'support';
   title: string;
   description: string;
   time: string;
@@ -34,10 +34,11 @@ const DEFAULT_ACTIVITIES: Activity[] = [
   { id: 2, type: 'transport', title: 'Transport abgeschlossen', description: 'HHG-2847 • Hamburg → München', time: 'vor 15 Min.' },
   { id: 3, type: 'payment', title: 'Auszahlung verarbeitet', description: '€2,450.00 an Fahrer #2847', time: 'vor 32 Min.' },
   { id: 4, type: 'verification', title: 'Verifizierung genehmigt', description: 'Fahrer Klaus Weber', time: 'vor 1 Std.' },
-  { id: 5, type: 'dispute', title: 'Neuer Streitfall', description: 'DIS-0847 • €1,200.00', time: 'vor 2 Std.' },
-  { id: 6, type: 'user', title: 'Benutzer gesperrt', description: 'Verstoß gegen Nutzungsbedingungen', time: 'vor 3 Std.' },
-  { id: 7, type: 'transport', title: 'Neuer Transport erstellt', description: 'TRN-4829 • Berlin → Wien', time: 'vor 4 Std.' },
-  { id: 8, type: 'payment', title: 'Einzahlung erhalten', description: '€15,000.00 von Spediteur #127', time: 'vor 5 Std.' },
+  { id: 5, type: 'support', title: 'Support Ticket eskaliert', description: 'SLA-284 • Zollunterlagen fehlen', time: 'vor 2 Std.' },
+  { id: 6, type: 'dispute', title: 'Neuer Streitfall', description: 'DIS-0847 • €1,200.00', time: 'vor 2 Std.' },
+  { id: 7, type: 'user', title: 'Benutzer gesperrt', description: 'Verstoß gegen Nutzungsbedingungen', time: 'vor 3 Std.' },
+  { id: 8, type: 'transport', title: 'Neuer Transport erstellt', description: 'TRN-4829 • Berlin → Wien', time: 'vor 4 Std.' },
+  { id: 9, type: 'payment', title: 'Einzahlung erhalten', description: '€15,000.00 von Spediteur #127', time: 'vor 5 Std.' },
 ];
 
 const ACTIVITY_COLORS: Record<string, string> = {
@@ -46,6 +47,7 @@ const ACTIVITY_COLORS: Record<string, string> = {
   payment: '#F39C12',
   verification: '#00D4FF',
   dispute: '#E74C3C',
+  support: '#1C7ED6',
 };
 
 function ActivityIcon({ type }: { type: Activity['type'] }) {
@@ -94,6 +96,17 @@ function ActivityIcon({ type }: { type: Activity['type'] }) {
             strokeLinejoin="round"
             strokeWidth={1.5}
             d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          />
+        </svg>
+      );
+    case 'support':
+      return (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M18.364 5.636a9 9 0 010 12.728m-12.728 0a9 9 0 010-12.728m9.9 2.828a5 5 0 010 7.072m-7.072 0a5 5 0 010-7.072M12 13a1 1 0 100-2 1 1 0 000 2z"
           />
         </svg>
       );

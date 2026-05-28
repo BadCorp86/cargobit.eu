@@ -5,66 +5,28 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import Stripe from 'stripe';
 import { db } from '@/lib/db';
+import { getSubscriptionPlanConfig } from '@/lib/billing/plans';
 
-// Stripe Price IDs (would be configured in env in production)
-const STRIPE_PRICES: Record<string, { monthly: string; yearly: string }> = {
+const STRIPE_PRICE_ENV_KEYS: Record<string, { monthly: string; yearly: string }> = {
   starter: {
-    monthly: 'price_starter_monthly_mock',
-    yearly: 'price_starter_yearly_mock',
+    monthly: 'STRIPE_PRICE_STARTER_MONTHLY',
+    yearly: 'STRIPE_PRICE_STARTER_YEARLY',
   },
   professional: {
-    monthly: 'price_professional_monthly_mock',
-    yearly: 'price_professional_yearly_mock',
+    monthly: 'STRIPE_PRICE_PROFESSIONAL_MONTHLY',
+    yearly: 'STRIPE_PRICE_PROFESSIONAL_YEARLY',
   },
   enterprise: {
-    monthly: 'price_enterprise_monthly_mock',
-    yearly: 'price_enterprise_yearly_mock',
+    monthly: 'STRIPE_PRICE_ENTERPRISE_MONTHLY',
+    yearly: 'STRIPE_PRICE_ENTERPRISE_YEARLY',
   },
 };
 
-// Plan configurations
-const PLAN_CONFIG: Record<string, {
-  name: string;
-  monthlyFee: number;
-  yearlyFee: number;
-  commissionPercent: number;
-  walletFeePercent: number;
-  features: string[];
-}> = {
-  free: {
-    name: 'Free',
-    monthlyFee: 0,
-    yearlyFee: 0,
-    commissionPercent: 14,
-    walletFeePercent: 3.5,
-    features: ['5 Transporte/Monat', 'Basis-Matching', 'E-Mail Support'],
-  },
-  starter: {
-    name: 'Starter',
-    monthlyFee: 89,
-    yearlyFee: 890,
-    commissionPercent: 10,
-    walletFeePercent: 3.5,
-    features: ['25 Transporte/Monat', 'Erweitertes Matching', 'Prioritäts-Support', 'API-Zugang'],
-  },
-  professional: {
-    name: 'Professional',
-    monthlyFee: 699,
-    yearlyFee: 6990,
-    commissionPercent: 8,
-    walletFeePercent: 3.5,
-    features: ['Unbegrenzte Transporte', 'Smart Matching Premium', '24/7 Support', 'API-Zugang', 'Automatische Dokumente', 'Custom Branding'],
-  },
-  enterprise: {
-    name: 'Enterprise',
-    monthlyFee: 0, // On request
-    yearlyFee: 0,
-    commissionPercent: 6,
-    walletFeePercent: 3.5,
-    features: ['Alles aus Professional', 'Dedizierter Account Manager', 'Individuelle Integration', 'SLA Garantie'],
-  },
-};
+const PLAN_CONFIG = getSubscriptionPlanConfig();
+
+type BillingCycle = 'monthly' | 'yearly';
 
 // Mock Stripe Checkout
 const mockStripeCheckout = {
@@ -78,6 +40,161 @@ const mockStripeCheckout = {
   },
 };
 
+function getStripePriceId(plan: string, billingCycle: 'monthly' | 'yearly') {
+  const envKey = STRIPE_PRICE_ENV_KEYS[plan]?.[billingCycle];
+  return envKey ? process.env[envKey] || `price_${plan}_${billingCycle}_mock` : undefined;
+}
+
+function getPublicAppUrl(request?: NextRequest) {
+  const localOrigin = request?.nextUrl.origin;
+  if (process.env.NODE_ENV !== 'production' && localOrigin?.startsWith('http')) {
+    return localOrigin;
+  }
+
+  const url = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_URL || process.env.VERCEL_URL || localOrigin || 'https://cargobit.eu';
+  return url.startsWith('http') ? url : `https://${url}`;
+}
+
+async function createStripeCheckoutSession(params: {
+  priceId: string;
+  userId: string;
+  companyId: string;
+  stripeCustomerId?: string | null;
+  plan: string;
+  billingCycle: BillingCycle;
+  metadata: Record<string, string | number>;
+  appUrl: string;
+  forceMock?: boolean;
+}) {
+  const appUrl = params.appUrl;
+
+  if (params.forceMock || !process.env.STRIPE_SECRET_KEY || params.priceId.includes('_mock')) {
+    const sessionId = `cs_mock_${Date.now()}`;
+    const session = await mockStripeCheckout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card', 'sepa_debit'],
+      line_items: [{
+        price: params.priceId,
+        quantity: 1,
+      }],
+      success_url: `${appUrl}/billing?checkout=mock_success&session_id=${sessionId}`,
+      cancel_url: `${appUrl}/billing?checkout=cancel`,
+      client_reference_id: params.userId,
+      metadata: params.metadata,
+    });
+
+    return {
+      ...session,
+      id: sessionId,
+      url: `${appUrl}/billing?checkout=mock_success&session_id=${sessionId}`,
+      provider: 'mock',
+    };
+  }
+
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const metadata = Object.fromEntries(
+    Object.entries(params.metadata).map(([key, value]) => [key, String(value)]),
+  );
+  const session = await stripe.checkout.sessions.create({
+    mode: 'subscription',
+    payment_method_types: ['card', 'sepa_debit'],
+    line_items: [{
+      price: params.priceId,
+      quantity: 1,
+    }],
+    ...(params.stripeCustomerId?.startsWith('cus_') ? { customer: params.stripeCustomerId } : {}),
+    success_url: `${appUrl}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appUrl}/billing?checkout=cancel`,
+    client_reference_id: params.userId,
+    metadata,
+    subscription_data: {
+      metadata,
+    },
+    automatic_tax: {
+      enabled: process.env.STRIPE_TAX_ENABLED === 'true',
+    },
+  });
+
+  return {
+    id: session.id,
+    url: session.url,
+    provider: 'stripe',
+  };
+}
+
+function subscriptionResponse(subscription: Record<string, unknown>, source = 'database') {
+  return NextResponse.json({
+    success: true,
+    subscription,
+    plans: PLAN_CONFIG,
+    source,
+  });
+}
+
+function freeSubscription(companyId?: string | null) {
+  return {
+    plan: 'free',
+    ...PLAN_CONFIG.free,
+    status: 'active',
+    currentPeriodEnd: null,
+    stripeSubscriptionId: null,
+    stripeCustomerId: null,
+    billingCycle: null,
+    cancelAtPeriodEnd: false,
+    companyId: companyId || null,
+  };
+}
+
+async function findCompanyOwner(userId: string) {
+  try {
+    const companyUser = await db.companyUser.findFirst({
+      where: { userId, roleInCompany: 'owner' },
+      include: {
+        company: {
+          select: {
+            stripeCustomerId: true,
+          },
+        },
+      },
+    });
+
+    const activePlan = companyUser
+      ? await db.companyPlan.findFirst({
+          where: {
+            companyId: companyUser.companyId,
+            OR: [
+              { validTo: null },
+              { validTo: { gte: new Date() } },
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            stripeCustomerId: true,
+          },
+        })
+      : null;
+
+    return {
+      companyId: companyUser?.companyId || null,
+      stripeCustomerId: companyUser?.company?.stripeCustomerId || activePlan?.stripeCustomerId || null,
+      source: 'database' as const,
+      dbAvailable: true,
+    };
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[Subscriptions] Company owner lookup failed, using development fallback:', error);
+      return {
+        companyId: 'demo-company',
+        stripeCustomerId: 'cus_demo_customer',
+        source: 'development_fallback' as const,
+        dbAvailable: false,
+      };
+    }
+
+    throw error;
+  }
+}
+
 // ============================================
 // GET /api/subscriptions/me - Get current subscription
 // ============================================
@@ -88,61 +205,57 @@ export async function GET(request: NextRequest) {
     // Get user's company
     const companyUser = await db.companyUser.findFirst({
       where: { userId },
-      include: { company: true },
+      include: {
+        company: {
+          select: {
+            stripeCustomerId: true,
+          },
+        },
+      },
     });
 
     if (!companyUser) {
       // Return free plan for users without company
-      return NextResponse.json({
-        success: true,
-        subscription: {
-          plan: 'free',
-          ...PLAN_CONFIG.free,
-          status: 'active',
-          currentPeriodEnd: null,
-          stripeSubscriptionId: null,
-        },
-      });
+      return subscriptionResponse(freeSubscription());
     }
 
     // Get company's active plan
     const companyPlan = await db.companyPlan.findFirst({
       where: {
         companyId: companyUser.companyId,
-        validTo: { gte: new Date() },
+        OR: [
+          { validTo: null },
+          { validTo: { gte: new Date() } },
+        ],
       },
       orderBy: { createdAt: 'desc' },
       include: { plan: true },
     });
 
     if (!companyPlan) {
-      return NextResponse.json({
-        success: true,
-        subscription: {
-          plan: 'free',
-          ...PLAN_CONFIG.free,
-          status: 'active',
-          currentPeriodEnd: null,
-          stripeSubscriptionId: null,
-          companyId: companyUser.companyId,
-        },
-      });
+      return subscriptionResponse(freeSubscription(companyUser.companyId));
     }
 
-    return NextResponse.json({
-      success: true,
-      subscription: {
-        plan: companyPlan.plan.name.toLowerCase(),
-        ...PLAN_CONFIG[companyPlan.plan.name.toLowerCase()] || PLAN_CONFIG.free,
-        status: 'active',
-        currentPeriodEnd: companyPlan.validTo,
-        validFrom: companyPlan.validFrom,
-        stripeSubscriptionId: null, // Would come from a subscription table
-        companyId: companyUser.companyId,
-      },
+    const planKey = companyPlan.plan.name.toLowerCase();
+    return subscriptionResponse({
+      plan: planKey,
+      ...(PLAN_CONFIG[planKey] || PLAN_CONFIG.free),
+      status: 'active',
+      currentPeriodEnd: companyPlan.validTo,
+      validFrom: companyPlan.validFrom,
+      stripeSubscriptionId: companyPlan.stripeSubscriptionId,
+      stripeCustomerId: companyPlan.stripeCustomerId || companyUser.company.stripeCustomerId,
+      billingCycle: companyPlan.billingCycle,
+      cancelAtPeriodEnd: companyPlan.cancelAtPeriodEnd,
+      stripeStatus: companyPlan.stripeStatus,
+      companyId: companyUser.companyId,
     });
   } catch (error) {
     console.error('Subscription fetch error:', error);
+    if (process.env.NODE_ENV !== 'production') {
+      return subscriptionResponse(freeSubscription('demo-company'), 'development_fallback');
+    }
+
     return NextResponse.json({
       error: 'InternalServerError',
       message: 'Fehler beim Abrufen des Abonnements',
@@ -157,8 +270,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { plan, billingCycle = 'monthly' } = body;
+    const { plan, billingCycle: requestedBillingCycle = 'monthly' } = body;
+    const billingCycle = requestedBillingCycle === 'yearly'
+      ? 'yearly'
+      : requestedBillingCycle === 'monthly'
+        ? 'monthly'
+        : null;
     const userId = request.headers.get('x-user-id') || 'demo-user';
+    const appUrl = getPublicAppUrl(request);
 
     // Validate plan
     if (!['starter', 'professional', 'enterprise'].includes(plan)) {
@@ -166,6 +285,14 @@ export async function POST(request: NextRequest) {
         error: 'ValidationError',
         message: 'Ungültiger Plan',
         code: 'INVALID_PLAN',
+      }, { status: 400 });
+    }
+
+    if (!billingCycle) {
+      return NextResponse.json({
+        error: 'ValidationError',
+        message: 'Ungültiger Abrechnungszeitraum',
+        code: 'INVALID_BILLING_CYCLE',
       }, { status: 400 });
     }
 
@@ -178,12 +305,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get user's company
-    const companyUser = await db.companyUser.findFirst({
-      where: { userId, roleInCompany: 'owner' },
-    });
-
-    if (!companyUser) {
+    const companyOwner = await findCompanyOwner(userId);
+    const companyId = companyOwner.companyId;
+    if (!companyId) {
       return NextResponse.json({
         error: 'PermissionError',
         message: 'Nur Firmeneigner können Abonnements abschließen',
@@ -192,7 +316,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Get price ID
-    const priceId = STRIPE_PRICES[plan]?.[billingCycle];
+    const priceId = getStripePriceId(plan, billingCycle);
+    const planConfig = PLAN_CONFIG[plan];
     if (!priceId) {
       return NextResponse.json({
         error: 'ConfigurationError',
@@ -201,22 +326,28 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Create Stripe Checkout Session
-    const session = await mockStripeCheckout.sessions.create({
-      mode: 'subscription',
-      payment_method_types: ['card', 'sepa_debit'],
-      line_items: [{
-        price: priceId,
-        quantity: 1,
-      }],
-      success_url: `${process.env.NEXT_PUBLIC_URL || 'https://cargobit.de'}/app?subscription=success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_URL || 'https://cargobit.de'}/app?subscription=cancel`,
-      client_reference_id: userId,
+    const selectedPrice = billingCycle === 'yearly'
+      ? planConfig.yearlyPrice
+      : planConfig.monthlyPrice;
+
+    const session = await createStripeCheckoutSession({
+      priceId,
+      userId,
+      companyId,
+      stripeCustomerId: companyOwner.stripeCustomerId,
+      plan,
+      billingCycle,
+      appUrl,
+      forceMock: !companyOwner.dbAvailable,
       metadata: {
         userId,
-        companyId: companyUser.companyId,
+        companyId,
         plan,
         billingCycle,
+        priceNet: selectedPrice.netAmount,
+        vatAmount: selectedPrice.vatAmount,
+        priceGross: selectedPrice.grossAmount,
+        vatPercent: selectedPrice.vatPercent,
       },
     });
 
@@ -224,11 +355,17 @@ export async function POST(request: NextRequest) {
       success: true,
       checkoutUrl: session.url,
       sessionId: session.id,
+      checkoutProvider: session.provider,
       plan,
       billingCycle,
-      price: billingCycle === 'yearly' 
-        ? PLAN_CONFIG[plan].yearlyFee 
-        : PLAN_CONFIG[plan].monthlyFee,
+      price: selectedPrice.netAmount,
+      priceNet: selectedPrice.netAmount,
+      vatPercent: selectedPrice.vatPercent,
+      vatAmount: selectedPrice.vatAmount,
+      priceGross: selectedPrice.grossAmount,
+      currency: selectedPrice.currency,
+      vatNotice: planConfig.vatNotice,
+      source: companyOwner.source,
     });
   } catch (error) {
     console.error('Checkout creation error:', error);

@@ -75,6 +75,17 @@ const NAV_ITEMS: NavItem[] = [
     roles: ['ADMIN', 'SUPPORT'],
   },
   {
+    id: 'insurance',
+    label: 'Versicherungen',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12.75l2 2 4-4m5.25-3.5A11.25 11.25 0 0112 21.75 11.25 11.25 0 013.75 7.25 11.25 11.25 0 0012 2.25a11.25 11.25 0 008.25 5z" />
+      </svg>
+    ),
+    href: '/admin/insurance',
+    roles: ['ADMIN', 'FINANCE'],
+  },
+  {
     id: 'users',
     label: 'Users',
     icon: (
@@ -110,6 +121,8 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { id: 'logs', label: 'Logs', icon: <span className="w-2 h-2" />, href: '/admin/system/logs', roles: ['ADMIN'] },
       { id: 'audit', label: 'Audit Trail', icon: <span className="w-2 h-2" />, href: '/admin/system/audit', roles: ['ADMIN'] },
+      { id: 'stripe', label: 'Stripe Setup', icon: <span className="w-2 h-2" />, href: '/admin/system/stripe', roles: ['ADMIN'] },
+      { id: 'operations', label: 'Operations', icon: <span className="w-2 h-2" />, href: '/admin/system/operations', roles: ['ADMIN'] },
       { id: 'settings', label: 'Settings', icon: <span className="w-2 h-2" />, href: '/admin/system/settings', roles: ['ADMIN'] },
     ],
   },

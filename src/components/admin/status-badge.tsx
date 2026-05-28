@@ -11,7 +11,7 @@ import React from 'react';
 // ============================================
 
 type PaymentStatus = 'succeeded' | 'pending' | 'failed' | 'refunded' | 'partial_refund';
-type DisputeStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+type DisputeStatus = 'open' | 'in_progress' | 'in_review' | 'awaiting_info' | 'resolved' | 'closed' | 'rejected' | 'refunded';
 type JobStatus = 'created' | 'published' | 'assigned' | 'in_transit' | 'completed' | 'cancelled';
 type UserStatus = 'active' | 'pending' | 'blocked' | 'suspended';
 
@@ -39,8 +39,11 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; label: string }>
   // Dispute statuses
   open: { bg: 'bg-red-100 dark:bg-red-900', text: 'text-red-800 dark:text-red-200', label: 'Offen' },
   in_progress: { bg: 'bg-blue-100 dark:bg-blue-900', text: 'text-blue-800 dark:text-blue-200', label: 'In Bearbeitung' },
+  in_review: { bg: 'bg-indigo-100 dark:bg-indigo-900', text: 'text-indigo-800 dark:text-indigo-200', label: 'In Prüfung' },
+  awaiting_info: { bg: 'bg-yellow-100 dark:bg-yellow-900', text: 'text-yellow-800 dark:text-yellow-200', label: 'Nachweise fehlen' },
   resolved: { bg: 'bg-green-100 dark:bg-green-900', text: 'text-green-800 dark:text-green-200', label: 'Gelöst' },
   closed: { bg: 'bg-gray-100 dark:bg-gray-700', text: 'text-gray-800 dark:text-gray-200', label: 'Geschlossen' },
+  rejected: { bg: 'bg-red-100 dark:bg-red-900', text: 'text-red-800 dark:text-red-200', label: 'Abgelehnt' },
   
   // Job/Transport statuses
   created: { bg: 'bg-gray-100 dark:bg-gray-700', text: 'text-gray-800 dark:text-gray-200', label: 'Erstellt' },
@@ -54,6 +57,13 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; label: string }>
   active: { bg: 'bg-green-100 dark:bg-green-900', text: 'text-green-800 dark:text-green-200', label: 'Aktiv' },
   blocked: { bg: 'bg-red-100 dark:bg-red-900', text: 'text-red-800 dark:text-red-200', label: 'Gesperrt' },
   suspended: { bg: 'bg-orange-100 dark:bg-orange-900', text: 'text-orange-800 dark:text-orange-200', label: 'Suspendiert' },
+
+  // Insurance/referral statuses
+  lead_created: { bg: 'bg-blue-100 dark:bg-blue-900', text: 'text-blue-800 dark:text-blue-200', label: 'Lead erstellt' },
+  redirected: { bg: 'bg-cyan-100 dark:bg-cyan-900', text: 'text-cyan-800 dark:text-cyan-200', label: 'Weitergeleitet' },
+  converted: { bg: 'bg-green-100 dark:bg-green-900', text: 'text-green-800 dark:text-green-200', label: 'Konvertiert' },
+  declined: { bg: 'bg-red-100 dark:bg-red-900', text: 'text-red-800 dark:text-red-200', label: 'Abgelehnt' },
+  expired: { bg: 'bg-gray-100 dark:bg-gray-700', text: 'text-gray-800 dark:text-gray-200', label: 'Abgelaufen' },
 };
 
 const SIZE_CLASSES = {
@@ -67,10 +77,11 @@ const SIZE_CLASSES = {
 // ============================================
 
 export function StatusBadge({ status, size = 'md', className = '' }: StatusBadgeProps) {
-  const config = STATUS_CONFIG[status] || {
+  const normalizedStatus = String(status || 'default').toLowerCase();
+  const config = STATUS_CONFIG[normalizedStatus] || {
     bg: 'bg-gray-100 dark:bg-gray-700',
     text: 'text-gray-800 dark:text-gray-200',
-    label: status,
+    label: String(status),
   };
 
   return (

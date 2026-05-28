@@ -1,4 +1,4 @@
-name: Database Migration
+name: Database Schema Deploy
 
 on:
   push:
@@ -6,6 +6,9 @@ on:
     paths:
       - 'prisma/schema.prisma'
       - 'prisma/migrations/**'
+      - 'scripts/production-readiness.mjs'
+      - 'src/lib/database-readiness.ts'
+      - 'package*.json'
   workflow_dispatch:
     inputs:
       environment:
@@ -19,11 +22,14 @@ on:
 
 env:
   NODE_VERSION: '24.x'
+  CI_DATABASE_URL: 'postgresql://test:test@localhost:5432/cargobit_schema_check?schema=public'
 
 jobs:
   validate-schema:
     name: Validate Schema
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ env.CI_DATABASE_URL }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -38,16 +44,16 @@ jobs:
         run: npm ci
 
       - name: Validate Prisma schema
-        run: npx prisma validate
+        run: npm run db:validate
 
-      - name: Check for pending migrations
-        run: npx prisma migrate status
+      - name: Generate Prisma Client
+        run: npx prisma generate
 
-  migrate-staging:
-    name: Migrate Staging Database
+  deploy-staging-schema:
+    name: Deploy Staging Database Schema
     runs-on: ubuntu-latest
     needs: validate-schema
-    if: github.ref == 'refs/heads/develop'
+    if: (github.event_name != 'workflow_dispatch' && github.ref == 'refs/heads/develop') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
     environment: staging
     steps:
       - name: Checkout repository
@@ -62,16 +68,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run migrations
-        run: npx prisma migrate deploy
+      - name: Deploy database schema
+        run: npm run db:deploy
         env:
-          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-  migrate-production:
-    name: Migrate Production Database
+  deploy-production-schema:
+    name: Deploy Production Database Schema
     runs-on: ubuntu-latest
     needs: validate-schema
-    if: github.ref == 'refs/heads/main'
+    if: (github.event_name != 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
     environment: production
     steps:
       - name: Checkout repository
@@ -91,12 +97,28 @@ jobs:
           echo "Creating database backup..."
           # Add your backup command here
 
-      - name: Run migrations
-        run: npx prisma migrate deploy
+      - name: Deploy database schema
+        run: npm run db:deploy
         env:
-          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Verify migration
-        run: npx prisma migrate status
+      - name: Verify production database readiness
+        run: node scripts/production-readiness.mjs --json
         env:
-          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          ADMIN_JWT_SECRET: ${{ secrets.ADMIN_JWT_SECRET }}
+          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_SUBSCRIPTION_WEBHOOK_SECRET: ${{ secrets.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET }}
+          STRIPE_PAYOUT_WEBHOOK_SECRET: ${{ secrets.STRIPE_PAYOUT_WEBHOOK_SECRET }}
+          STRIPE_PRICE_STARTER_MONTHLY: ${{ secrets.STRIPE_PRICE_STARTER_MONTHLY }}
+          STRIPE_PRICE_STARTER_YEARLY: ${{ secrets.STRIPE_PRICE_STARTER_YEARLY }}
+          STRIPE_PRICE_PROFESSIONAL_MONTHLY: ${{ secrets.STRIPE_PRICE_PROFESSIONAL_MONTHLY }}
+          STRIPE_PRICE_PROFESSIONAL_YEARLY: ${{ secrets.STRIPE_PRICE_PROFESSIONAL_YEARLY }}
+          STRIPE_PRICE_ENTERPRISE_MONTHLY: ${{ secrets.STRIPE_PRICE_ENTERPRISE_MONTHLY }}
+          STRIPE_PRICE_ENTERPRISE_YEARLY: ${{ secrets.STRIPE_PRICE_ENTERPRISE_YEARLY }}

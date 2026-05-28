@@ -17,6 +17,41 @@ Set these secrets in GitHub Repository Settings → Secrets and variables → Ac
 
 ---
 
+## CargoBit Production Readiness Secrets
+
+The `Production Readiness` workflow uses GitHub Environments named `staging` and `production`.
+Create the same secret names inside each environment so the workflow can verify the selected target.
+
+| Secret Name | Description |
+|-------------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string for the selected environment |
+| `ENCRYPTION_KEY` | Long random application encryption key |
+| `CRON_SECRET` | Long random secret for Vercel/GitHub cron route calls |
+| `ADMIN_EMAIL` | Admin login email |
+| `ADMIN_PASSWORD` | Admin login password |
+| `ADMIN_JWT_SECRET` | Long random admin JWT secret |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
+| `STRIPE_SECRET_KEY` | Stripe secret key |
+| `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET` | Stripe subscription webhook signing secret |
+| `STRIPE_PAYOUT_WEBHOOK_SECRET` | Stripe payout webhook signing secret |
+| `STRIPE_PRICE_STARTER_MONTHLY` | Stripe Price ID for Starter monthly |
+| `STRIPE_PRICE_STARTER_YEARLY` | Stripe Price ID for Starter yearly |
+| `STRIPE_PRICE_PROFESSIONAL_MONTHLY` | Stripe Price ID for Professional monthly |
+| `STRIPE_PRICE_PROFESSIONAL_YEARLY` | Stripe Price ID for Professional yearly |
+| `STRIPE_PRICE_ENTERPRISE_MONTHLY` | Stripe Price ID for Enterprise monthly |
+| `STRIPE_PRICE_ENTERPRISE_YEARLY` | Stripe Price ID for Enterprise yearly |
+| `SENDGRID_API_KEY` | Optional, required for real email sending |
+| `SENDGRID_FROM_EMAIL` | Sender address for system and invoice emails |
+
+Environment variable:
+
+| Variable Name | Description |
+|---------------|-------------|
+| `NEXT_PUBLIC_APP_URL` | Public app URL, for example `https://cargobit.eu` |
+| `SENDGRID_FROM_NAME` | Sender name, for example `CargoBit` |
+
+---
+
 ## Setting Secrets
 
 ### Via GitHub UI

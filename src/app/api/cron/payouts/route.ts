@@ -4,6 +4,8 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyCronRequest } from '@/lib/cron-auth';
+import { runPayoutCronJob } from '@/lib/payout-cron-runner';
 import { payoutScheduler } from '@/services/payout-scheduler.service';
 
 // ============================================
@@ -17,44 +19,10 @@ import { payoutScheduler } from '@/services/payout-scheduler.service';
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify cron secret to prevent unauthorized access
-    const authHeader = request.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
+    const authError = verifyCronRequest(request);
+    if (authError) return authError;
 
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({
-        error: 'UnauthorizedError',
-        message: 'Invalid cron secret',
-        code: 'UNAUTHORIZED',
-      }, { status: 401 });
-    }
-
-    // Run the scheduler
-    const result = await payoutScheduler.runScheduledPayouts();
-
-    // Check for reconciliation issues
-    const hasIssues = result.diffs.length > 0;
-
-    return NextResponse.json({
-      success: true,
-      timestamp: result.timestamp,
-      duration: result.duration,
-      summary: {
-        pendingProcessed: result.pendingPayouts,
-        successful: result.processedPayouts,
-        failed: result.failedPayouts,
-        reconciled: result.reconciledPayouts,
-      },
-      warnings: hasIssues ? result.diffs : undefined,
-    }, { 
-      status: 200,
-      headers: {
-        'X-Scheduler-Run': result.timestamp.toISOString(),
-        'X-Duration-Ms': result.duration.toString(),
-        'X-Has-Issues': hasIssues ? 'true' : 'false',
-      },
-    });
-
+    return runPayoutCronJob();
   } catch (error) {
     console.error('Cron payouts error:', error);
     return NextResponse.json({
@@ -71,6 +39,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const authError = verifyCronRequest(request);
+    if (authError) return authError;
+
     const health = await payoutScheduler.healthCheck();
     const stats = payoutScheduler.getStats();
 

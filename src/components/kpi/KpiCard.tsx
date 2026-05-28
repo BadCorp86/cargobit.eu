@@ -94,8 +94,11 @@ export function KpiCard({
         boxShadow: `0 0 30px ${styles.glowColor}`,
       }}
       whileTap={{ scale: 0.98 }}
-      className="group relative rounded-[18px] bg-white/[0.05] border border-white/[0.08] p-5 hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-300 cursor-pointer"
+      className="group relative min-h-[190px] cursor-pointer overflow-hidden rounded-[18px] border border-white/[0.08] bg-white/[0.05] p-5 transition-all duration-300 hover:border-white/[0.14] hover:bg-white/[0.08]"
     >
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-70" />
+      <div className={`absolute -right-10 -top-10 h-24 w-24 rounded-full bg-gradient-to-br ${styles.bg} blur-2xl transition-opacity duration-300 group-hover:opacity-100 opacity-60`} />
+
       {/* Animated Glow Effect */}
       <motion.div
         className={`absolute inset-0 rounded-[18px] ${styles.glow}`}
@@ -148,8 +151,8 @@ export function KpiCard({
 
         <div className="mb-3">
           <p className="text-white/40 text-sm font-medium mb-1">{title}</p>
-          <motion.p 
-            className="text-3xl font-bold text-white tracking-tight"
+          <motion.p
+            className="text-2xl font-bold tracking-tight text-white xl:text-3xl"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: delay + 0.1 }}

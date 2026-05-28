@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createInsuranceReferralQuote } from '@/lib/insurance/referral';
 
 /**
  * POST /api/insurance/policy
@@ -49,70 +50,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // In production, would validate quote exists and is not expired
-    // For demo, we create the policy directly
+    const referral = await createInsuranceReferralQuote({
+      transportId: orderId,
+      requestedByUserId: customerId,
+      requestedByRole: 'SHIPPER',
+      source: 'SHIPPER_CREATE',
+      cargoValueEur: body.cargoValueEur || 10000,
+      consentAccepted: Boolean(body.consentAccepted),
+      persistLead: true,
+      markRedirected: true,
+    });
 
-    // Generate policy ID
-    const policyId = `p_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    // Mock premium calculation (would come from quote in production)
-    const tierMultipliers: Record<string, number> = {
-      basis: 0.4,
-      standard: 1,
-      premium: 2,
-    };
-    
-    const basePremium = 24.90;
-    const premium = Math.round(basePremium * tierMultipliers[tier] * 100) / 100;
-
-    // Calculate commission (15% for standard, 12% for premium, 18% for basis)
-    const commissionRates: Record<string, number> = {
-      basis: 0.18,
-      standard: 0.15,
-      premium: 0.12,
-    };
-    const commission = Math.round(premium * commissionRates[tier] * 100) / 100;
-
-    // Determine provider
-    const providers: Record<string, string> = {
-      basis: 'HDI',
-      standard: 'Allianz',
-      premium: 'AXA',
-    };
-
-    // Coverage amounts
-    const coverages: Record<string, number> = {
-      basis: 10000,
-      standard: 50000,
-      premium: 100000,
-    };
-
-    // Create policy
-    const policy = {
-      policyId,
+    return NextResponse.json({
+      mode: 'partner_lead',
+      status: 'redirect_required',
       quoteId,
       orderId,
       customerId,
-      provider: providers[tier],
-      premium,
-      commission,
-      coverage: coverages[tier],
-      status: 'active',
       tier,
-      createdAt: new Date().toISOString(),
-      validFrom: new Date().toISOString(),
-      validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
-      pdfUrl: `https://api.cargobit.io/insurance/policies/${policyId}/pdf`,
-      policyNumber: `CB-2024-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
-    };
-
-    // In production:
-    // 1. Store policy in database
-    // 2. Trigger webhook to insurance provider
-    // 3. Generate PDF document
-    // 4. Send confirmation email
-
-    return NextResponse.json(policy, { status: 201 });
+      referral,
+      message: 'CargoBit erstellt keine Police direkt. Der Abschluss erfolgt extern beim lizenzierten Versicherer oder Makler.',
+    }, { status: 202 });
 
   } catch (error) {
     console.error('Policy creation error:', error);

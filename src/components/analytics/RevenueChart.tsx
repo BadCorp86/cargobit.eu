@@ -41,9 +41,9 @@ const DEFAULT_DATA: DataPoint[] = [
 
 export default function RevenueChart({
   data = DEFAULT_DATA,
-  title = 'Umsatz Übersicht',
+  title = 'Umsatzentwicklung',
   subtitle = 'Monatliche Entwicklung',
-  totalValue = '€1,234,567',
+  totalValue = '1.234.567 €',
   change = 23.6,
   className = '',
 }: RevenueChartProps) {

@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type UserRole = 'SHIPPER_PRIVATE' | 'SHIPPER_COMPANY' | 'DRIVER_SELF_EMPLOYED' | 'DISPATCHER' | 'ADMIN' | 'SUPPORT' | 'MARKETER';
+export type UserRole = 'SHIPPER_PRIVATE' | 'SHIPPER_COMPANY' | 'CARRIER' | 'DRIVER_SELF_EMPLOYED' | 'DISPATCHER' | 'ADMIN' | 'SUPPORT' | 'MARKETER';
+export type AccountType = 'SHIPPER' | 'TRANSPORT_SOLO' | 'CARRIER_COMPANY' | 'INTERNAL';
+export type OrganizationRole = 'OWNER' | 'OWNER_DRIVER' | 'DISPATCHER' | 'DRIVER' | 'ACCOUNTING' | 'ADMIN' | 'SUPPORT' | 'MARKETING' | 'MEMBER';
 
 export interface User {
   id: string;
@@ -9,6 +11,8 @@ export interface User {
   firstName: string;
   lastName: string;
   role: UserRole;
+  accountType?: AccountType;
+  organizationRole?: OrganizationRole;
   companyName?: string;
   phone?: string;
   language: string;
@@ -43,6 +47,28 @@ interface RegisterData {
   phone?: string;
 }
 
+function deriveAccountMeta(role: UserRole): Pick<User, 'accountType' | 'organizationRole'> {
+  switch (role) {
+    case 'CARRIER':
+      return { accountType: 'CARRIER_COMPANY', organizationRole: 'OWNER' };
+    case 'DISPATCHER':
+      return { accountType: 'CARRIER_COMPANY', organizationRole: 'DISPATCHER' };
+    case 'DRIVER_SELF_EMPLOYED':
+      return { accountType: 'TRANSPORT_SOLO', organizationRole: 'OWNER_DRIVER' };
+    case 'ADMIN':
+      return { accountType: 'INTERNAL', organizationRole: 'ADMIN' };
+    case 'SUPPORT':
+      return { accountType: 'INTERNAL', organizationRole: 'SUPPORT' };
+    case 'MARKETER':
+      return { accountType: 'INTERNAL', organizationRole: 'MARKETING' };
+    case 'SHIPPER_COMPANY':
+      return { accountType: 'SHIPPER', organizationRole: 'OWNER' };
+    case 'SHIPPER_PRIVATE':
+    default:
+      return { accountType: 'SHIPPER', organizationRole: 'MEMBER' };
+  }
+}
+
 // Demo users for testing
 const demoUsers: User[] = [
   {
@@ -51,6 +77,8 @@ const demoUsers: User[] = [
     firstName: 'Max',
     lastName: 'Müller',
     role: 'SHIPPER_COMPANY',
+    accountType: 'SHIPPER',
+    organizationRole: 'OWNER',
     companyName: 'Müller Logistics GmbH',
     phone: '+49 123 456789',
     language: 'de',
@@ -62,10 +90,45 @@ const demoUsers: User[] = [
   },
   {
     id: '2',
+    email: 'shipper.private@cargobit.eu',
+    firstName: 'Laura',
+    lastName: 'Becker',
+    role: 'SHIPPER_PRIVATE',
+    accountType: 'SHIPPER',
+    organizationRole: 'MEMBER',
+    phone: '+49 151 234567',
+    language: 'de',
+    emailVerified: true,
+    identityVerified: true,
+    rating: 4.6,
+    totalTransports: 8,
+    subscriptionPlan: 'FREE',
+  },
+  {
+    id: '3',
+    email: 'carrier@cargobit.eu',
+    firstName: 'Anna',
+    lastName: 'Schmidt',
+    role: 'CARRIER',
+    accountType: 'CARRIER_COMPANY',
+    organizationRole: 'OWNER',
+    companyName: 'Schmidt Spedition',
+    phone: '+49 555 123456',
+    language: 'de',
+    emailVerified: true,
+    identityVerified: true,
+    rating: 4.7,
+    totalTransports: 421,
+    subscriptionPlan: 'ENTERPRISE',
+  },
+  {
+    id: '4',
     email: 'driver@cargobit.eu',
     firstName: 'Thomas',
     lastName: 'Weber',
     role: 'DRIVER_SELF_EMPLOYED',
+    accountType: 'TRANSPORT_SOLO',
+    organizationRole: 'OWNER_DRIVER',
     phone: '+49 987 654321',
     language: 'de',
     emailVerified: true,
@@ -75,11 +138,13 @@ const demoUsers: User[] = [
     subscriptionPlan: 'STARTER',
   },
   {
-    id: '3',
+    id: '5',
     email: 'dispatcher@cargobit.eu',
     firstName: 'Anna',
     lastName: 'Schmidt',
     role: 'DISPATCHER',
+    accountType: 'CARRIER_COMPANY',
+    organizationRole: 'DISPATCHER',
     companyName: 'Schmidt Spedition',
     phone: '+49 555 123456',
     language: 'de',
@@ -90,11 +155,13 @@ const demoUsers: User[] = [
     subscriptionPlan: 'ENTERPRISE',
   },
   {
-    id: '4',
+    id: '6',
     email: 'admin@cargobit.eu',
     firstName: 'Admin',
     lastName: 'User',
     role: 'ADMIN',
+    accountType: 'INTERNAL',
+    organizationRole: 'ADMIN',
     language: 'de',
     emailVerified: true,
     identityVerified: true,
@@ -103,11 +170,13 @@ const demoUsers: User[] = [
     subscriptionPlan: 'ENTERPRISE',
   },
   {
-    id: '5',
+    id: '7',
     email: 'support@cargobit.eu',
     firstName: 'Lisa',
     lastName: 'Support',
     role: 'SUPPORT',
+    accountType: 'INTERNAL',
+    organizationRole: 'SUPPORT',
     language: 'de',
     emailVerified: true,
     identityVerified: true,
@@ -116,11 +185,13 @@ const demoUsers: User[] = [
     subscriptionPlan: 'ENTERPRISE',
   },
   {
-    id: '6',
+    id: '8',
     email: 'marketer@cargobit.eu',
     firstName: 'Peter',
     lastName: 'Marketing',
     role: 'MARKETER',
+    accountType: 'INTERNAL',
+    organizationRole: 'MARKETING',
     language: 'de',
     emailVerified: true,
     identityVerified: true,
@@ -159,6 +230,7 @@ export const useAuthStore = create<AuthState>()(
             firstName: email.split('@')[0],
             lastName: '',
             role: 'SHIPPER_PRIVATE',
+            ...deriveAccountMeta('SHIPPER_PRIVATE'),
             language: 'de',
             emailVerified: true,
             identityVerified: false,
@@ -186,6 +258,7 @@ export const useAuthStore = create<AuthState>()(
           firstName: data.firstName,
           lastName: data.lastName,
           role: data.role,
+          ...deriveAccountMeta(data.role),
           companyName: data.companyName,
           phone: data.phone,
           language: 'de',

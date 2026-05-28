@@ -11,6 +11,7 @@
  */
 
 import React from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -66,7 +67,7 @@ const DEFAULT_ACTIONS: QuickAction[] = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
       </svg>
     ),
-    color: '#9B59B6',
+    color: '#00D4FF',
     href: '/admin/reports',
   },
 ];
@@ -106,60 +107,68 @@ export default function QuickActions({
             {title}
           </motion.h3>
           <div className="space-y-2">
-            {actions.map((action, i) => (
-              <motion.button
-                key={i}
-                custom={i}
-                variants={actionVariants}
-                initial="hidden"
-                animate="visible"
-                onClick={action.onClick}
-                className="w-full relative flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-transparent hover:border-white/[0.08] transition-all group overflow-hidden"
-                whileHover={{ 
-                  scale: 1.02,
-                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                }}
-                whileTap={{ scale: 0.98 }}
-              >
-                {/* Glow effect on hover */}
+            {actions.map((action, i) => {
+              const content = (
+                <>
+                  <motion.div
+                    className="absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                    style={{
+                      background: `linear-gradient(90deg, ${action.color}24, transparent 72%)`,
+                    }}
+                  />
+                  <motion.div
+                    className="relative z-10 rounded-lg p-2"
+                    style={{ backgroundColor: `${action.color}20`, color: action.color }}
+                    whileHover={{
+                      scale: 1.15,
+                      rotate: 5,
+                      boxShadow: `0 0 20px ${action.color}40`,
+                    }}
+                    transition={{ type: 'spring', stiffness: 400 }}
+                  >
+                    {action.icon}
+                  </motion.div>
+                  <span className="z-10 text-sm font-medium text-white/70 transition-colors group-hover:text-white">
+                    {action.label}
+                  </span>
+                  <motion.svg
+                    className="z-10 ml-auto h-4 w-4 text-white/30"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    whileHover={{ x: 4, color: action.color }}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </motion.svg>
+                </>
+              );
+
+              return (
                 <motion.div
-                  className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                  style={{
-                    background: `radial-gradient(circle at left, ${action.color}15, transparent 70%)`,
+                  key={action.label}
+                  custom={i}
+                  variants={actionVariants}
+                  initial="hidden"
+                  animate="visible"
+                  whileHover={{
+                    scale: 1.02,
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
                   }}
-                />
-                
-                {/* Icon container */}
-                <motion.div
-                  className="relative p-2 rounded-lg z-10"
-                  style={{ backgroundColor: `${action.color}20`, color: action.color }}
-                  whileHover={{ 
-                    scale: 1.15, 
-                    rotate: 5,
-                    boxShadow: `0 0 20px ${action.color}40`,
-                  }}
-                  transition={{ type: 'spring', stiffness: 400 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="group relative overflow-hidden rounded-xl border border-transparent bg-white/[0.03] transition-all hover:border-white/[0.08]"
                 >
-                  {action.icon}
+                  {action.href ? (
+                    <Link href={action.href} className="flex w-full items-center gap-3 p-3">
+                      {content}
+                    </Link>
+                  ) : (
+                    <button type="button" onClick={action.onClick} className="flex w-full items-center gap-3 p-3">
+                      {content}
+                    </button>
+                  )}
                 </motion.div>
-                
-                {/* Label */}
-                <span className="text-white/70 text-sm font-medium group-hover:text-white transition-colors z-10">
-                  {action.label}
-                </span>
-                
-                {/* Arrow */}
-                <motion.svg
-                  className="w-4 h-4 text-white/30 ml-auto z-10"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  whileHover={{ x: 4, color: action.color }}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </motion.svg>
-              </motion.button>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>

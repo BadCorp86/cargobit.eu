@@ -23,11 +23,77 @@ interface Dispute {
   shipperEmail: string;
   transporterEmail: string;
   reason: string;
-  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  status: 'open' | 'in_progress' | 'in_review' | 'awaiting_info' | 'resolved' | 'closed' | 'rejected' | 'refunded';
   resolution?: string;
   refundAmountCents?: number;
+  supportTicket?: {
+    id: string;
+    subject?: string;
+    priority?: string;
+    status?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  } | null;
+  evidenceRequest?: {
+    requestedAt?: string;
+    dueAt?: string;
+    isOverdue?: boolean;
+    missingEvidence?: string[];
+  } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+function normalizeDisputeStatus(status?: string): Dispute['status'] {
+  const normalized = (status || 'open').toLowerCase();
+  if (normalized === 'awaiting_info') return 'awaiting_info';
+  if (normalized === 'in_review') return 'in_review';
+  if (normalized === 'refunded') return 'refunded';
+  if (normalized === 'rejected') return 'rejected';
+  if (normalized === 'closed') return 'closed';
+  return normalized === 'resolved' || normalized === 'in_progress' ? normalized : 'open';
+}
+
+function normalizeDisputeList(payload: any): Dispute[] {
+  const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.items) ? payload.items : payload?.disputes || [];
+
+  return rows.map((row: any) => ({
+    id: row.id,
+    jobId: row.jobId || row.transportId || row.job_id || 'job_preview',
+    shipperEmail: row.shipperEmail || row.createdByEmail || row.createdBy?.email || row.createdBy || 'shipper@example.com',
+    transporterEmail: row.transporterEmail || row.against?.email || row.againstEmail || 'transporter@example.com',
+    reason: row.reason || row.subject || 'Streitfall',
+    status: normalizeDisputeStatus(row.status),
+    resolution: row.resolution,
+    refundAmountCents: row.refundAmountCents,
+    supportTicket: row.supportTicket ? {
+      id: row.supportTicket.id,
+      subject: row.supportTicket.subject,
+      priority: row.supportTicket.priority,
+      status: row.supportTicket.status,
+      createdAt: typeof row.supportTicket.createdAt === 'string' ? row.supportTicket.createdAt : new Date(row.supportTicket.createdAt || Date.now()).toISOString(),
+      updatedAt: typeof row.supportTicket.updatedAt === 'string' ? row.supportTicket.updatedAt : new Date(row.supportTicket.updatedAt || Date.now()).toISOString(),
+    } : null,
+    evidenceRequest: row.evidenceRequest ? {
+      requestedAt: typeof row.evidenceRequest.requestedAt === 'string' ? row.evidenceRequest.requestedAt : new Date(row.evidenceRequest.requestedAt || Date.now()).toISOString(),
+      dueAt: typeof row.evidenceRequest.dueAt === 'string' ? row.evidenceRequest.dueAt : new Date(row.evidenceRequest.dueAt || Date.now()).toISOString(),
+      isOverdue: Boolean(row.evidenceRequest.isOverdue),
+      missingEvidence: Array.isArray(row.evidenceRequest.missingEvidence) ? row.evidenceRequest.missingEvidence : [],
+    } : null,
+    createdAt: typeof row.createdAt === 'string' ? row.createdAt : new Date(row.createdAt || Date.now()).toISOString(),
+    updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : new Date(row.updatedAt || row.createdAt || Date.now()).toISOString(),
+  }));
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return '';
+
+  return new Date(value).toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 // ============================================
@@ -51,7 +117,7 @@ export default function DisputesListPage() {
         const res = await fetch(`/api/admin/disputes?${params.toString()}`);
         if (!res.ok) throw new Error('Failed to fetch disputes');
         const data = await res.json();
-        setDisputes(data.disputes || data);
+        setDisputes(normalizeDisputeList(data));
       } catch (err) {
         console.error('Failed to fetch disputes:', err);
         // Mock data for demo
@@ -72,7 +138,18 @@ export default function DisputesListPage() {
             shipperEmail: 'customer@example.com',
             transporterEmail: 'driver@example.com',
             reason: 'Verspätete Lieferung',
-            status: 'in_progress',
+            status: 'awaiting_info',
+            supportTicket: {
+              id: 'ticket_preview',
+              priority: 'HIGH',
+              status: 'OPEN',
+            },
+            evidenceRequest: {
+              requestedAt: new Date(Date.now() - 3600000).toISOString(),
+              dueAt: new Date(Date.now() + 71 * 3600000).toISOString(),
+              isOverdue: false,
+              missingEvidence: ['POD Foto', 'Lieferschein'],
+            },
             createdAt: new Date(Date.now() - 86400000).toISOString(),
             updatedAt: new Date(Date.now() - 3600000).toISOString(),
           },
@@ -140,6 +217,35 @@ export default function DisputesListPage() {
       render: (row) => <StatusBadge status={row.status} />,
     },
     {
+      key: 'evidence',
+      header: 'Nachweise',
+      render: (row) => {
+        if (!row.evidenceRequest && !row.supportTicket) {
+          return <span className="text-xs text-gray-400">Keine Anfrage</span>;
+        }
+
+        return (
+          <div className="space-y-1">
+            {row.evidenceRequest?.dueAt && (
+              <div className={`text-xs font-medium ${row.evidenceRequest.isOverdue ? 'text-red-500' : 'text-yellow-600 dark:text-yellow-300'}`}>
+                Frist: {formatDateTime(row.evidenceRequest.dueAt)}
+              </div>
+            )}
+            {row.supportTicket?.id && (
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Ticket {row.supportTicket.id.slice(0, 10)} · {row.supportTicket.priority || 'NORMAL'}
+              </div>
+            )}
+            {row.evidenceRequest?.missingEvidence?.length ? (
+              <div className="text-xs text-gray-400">
+                {row.evidenceRequest.missingEvidence.length} offene Nachweise
+              </div>
+            ) : null}
+          </div>
+        );
+      },
+    },
+    {
       key: 'createdAt',
       header: 'Erstellt',
       sortable: true,
@@ -169,6 +275,8 @@ export default function DisputesListPage() {
       options: [
         { value: 'open', label: 'Offen' },
         { value: 'in_progress', label: 'In Bearbeitung' },
+        { value: 'awaiting_info', label: 'Nachweise fehlen' },
+        { value: 'in_review', label: 'In Prüfung' },
         { value: 'resolved', label: 'Gelöst' },
         { value: 'closed', label: 'Geschlossen' },
       ],

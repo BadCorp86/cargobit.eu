@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { jobsService, type CreateJobInput, type JobStatus } from '@/services/jobs.service';
+import { createInsuranceReferralQuote } from '@/lib/insurance/referral';
 
 // ============================================
 // GET /api/jobs - List jobs
@@ -110,11 +111,29 @@ export async function POST(request: NextRequest) {
     };
     
     const result = await jobsService.createJob(input);
+    const insuranceReferral = body.insuranceReferral?.requested
+      ? await createInsuranceReferralQuote({
+          transportId: result.jobId,
+          requestedByUserId: userId,
+          requestedByRole: 'SHIPPER',
+          source: 'SHIPPER_CREATE',
+          cargoDescription: body.description,
+          cargoValueEur: body.insuranceReferral.cargoValueEur,
+          weightKg: body.weightKg,
+          pickupCity: body.insuranceReferral.pickupCity,
+          pickupCountry: body.insuranceReferral.pickupCountry,
+          deliveryCity: body.insuranceReferral.deliveryCity,
+          deliveryCountry: body.insuranceReferral.deliveryCountry,
+          consentAccepted: Boolean(body.insuranceReferral.consentAccepted),
+          persistLead: true,
+        })
+      : null;
     
     return NextResponse.json({
       success: true,
       jobId: result.jobId,
       status: result.status,
+      insuranceReferral,
     }, { status: 201 });
     
   } catch (error: any) {

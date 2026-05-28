@@ -81,7 +81,7 @@ export default function TransportStatusChart({
         </CardHeader>
 
         <CardContent>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-col items-center gap-6 sm:flex-row">
             {/* Donut Chart */}
             <motion.div 
               className="relative w-40 h-40 flex-shrink-0"

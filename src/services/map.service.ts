@@ -355,7 +355,8 @@ class MapService {
     };
 
     const searchKey = address.toLowerCase();
-    const coords = cityCoords[searchKey] || cityCoords['berlin'];
+    const matchedCity = Object.keys(cityCoords).find(city => searchKey.includes(city));
+    const coords = cityCoords[matchedCity || searchKey] || cityCoords['berlin'];
 
     return {
       coordinates: coords,

@@ -29,8 +29,8 @@ interface UserDistributionChartProps {
 const DEFAULT_DATA: UserData[] = [
   { label: 'Verlader', value: 4256, color: '#1C7ED6' },
   { label: 'Spediteure', value: 3128, color: '#2ECC71' },
-  { label: 'Fahrer', value: 4532, color: '#F39C12' },
-  { label: 'Dispatcher', value: 542, color: '#9B59B6' },
+  { label: 'Solo-Transporteure', value: 4532, color: '#F39C12' },
+  { label: 'Dispositionen', value: 542, color: '#00D4FF' },
 ];
 
 export default function UserDistributionChart({

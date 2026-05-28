@@ -27,9 +27,16 @@
  */
 
 import { prisma } from '@/lib/db';
-import { AdminRole } from '@prisma/client';
 import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
+
+export const AdminRole = {
+  ADMIN: 'ADMIN',
+  FINANCE: 'FINANCE',
+  SUPPORT: 'SUPPORT',
+} as const;
+
+export type AdminRole = (typeof AdminRole)[keyof typeof AdminRole];
 
 // ============================================
 // TYPES
@@ -874,7 +881,6 @@ export class AdminAuthService {
 // ============================================
 
 export const adminAuthService = new AdminAuthService();
-export { AdminRole };
 
 /**
  * Log an admin action for audit purposes.

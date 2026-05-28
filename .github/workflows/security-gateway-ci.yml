@@ -213,7 +213,7 @@ jobs:
           name: build-artifacts
 
       - name: Setup test database
-        run: pnpm prisma migrate deploy
+        run: pnpm prisma db push --skip-generate
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/cargobit_test
 
@@ -339,7 +339,7 @@ jobs:
         run: pnpm exec playwright install --with-deps
 
       - name: Setup test database
-        run: pnpm prisma migrate deploy
+        run: pnpm prisma db push --skip-generate
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/cargobit_e2e
 
@@ -509,7 +509,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Setup test database
-        run: pnpm prisma migrate deploy
+        run: pnpm prisma db push --skip-generate
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/cargobit_load
 

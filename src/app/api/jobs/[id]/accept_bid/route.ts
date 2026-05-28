@@ -3,7 +3,7 @@
  * PATCH /api/jobs/[id]/accept_bid
  * 
  * Implementation EXACTLY matching Python specification:
- * - 3.5% platform fee
+ * - Plan-based CargoBit commission and wallet fee
  * - Wallet debit/credit in atomic transaction
  * - Status transitions for job and bid
  * - Reject other bids
@@ -15,15 +15,20 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-
-// Platform user ID for receiving fees (Python: PLATFORM_USER_ID)
-const PLATFORM_USER_ID = 'PLATFORM';
-
-// Fee percentage: 3.5% (Python: fee_cents = int(amount_cents * 0.035))
-const PLATFORM_FEE_PERCENT = 0.035;
+import {
+  getOrCreatePlatformWallet,
+  getOrCreateWallet,
+  quoteBookingFees,
+} from '@/services/fee.service';
+import { createInsuranceReferralQuote } from '@/lib/insurance/referral';
 
 interface AcceptBidRequest {
   bid_id: string;
+  insuranceReferral?: {
+    requested?: boolean;
+    cargoValueEur?: number;
+    consentAccepted?: boolean;
+  };
 }
 
 // ============================================
@@ -92,6 +97,9 @@ export async function PATCH(
     // Python: if not bid or str(bid.job_id) != str(job_id): raise HTTPException(400, "Invalid bid")
     const bid = await prisma.offer.findUnique({
       where: { id: bidId },
+      include: {
+        driver: true,
+      },
     });
     
     if (!bid || bid.transportId !== jobId) {
@@ -109,12 +117,13 @@ export async function PATCH(
       );
     }
     
-    // Python: amount_cents = bid.price_cents
-    // Python: fee_cents = int(amount_cents * 0.035)  # 3,5% Plattformgebühr
-    // Python: transporter_amount_cents = amount_cents - fee_cents
-    const amountCents = Math.round(bid.price * 100);
-    const feeCents = Math.round(amountCents * PLATFORM_FEE_PERCENT);
-    const transporterAmountCents = amountCents - feeCents;
+    const feeQuote = await quoteBookingFees({
+      amount: bid.price,
+      currency: bid.currency,
+      shipperUserId: userId,
+      shipperCompanyId: job.shipperCompanyId,
+    });
+    const transporterUserId = bid.driver.userId;
     
     // Python: shipper_wallet = get_wallet_by_user(db, user_id)
     const shipperWallet = await prisma.wallet.findFirst({
@@ -128,47 +137,25 @@ export async function PATCH(
       );
     }
     
-    // Python: if shipper_wallet.balance_cents < amount_cents:
+    // Python: if shipper_wallet.balance_cents < shipper_debit_cents:
     //     raise HTTPException(400, "Insufficient wallet balance")
     const balanceCents = Math.round(shipperWallet.balance * 100);
-    if (balanceCents < amountCents) {
+    if (balanceCents < feeQuote.shipperDebitAmountCents) {
       return NextResponse.json(
-        { error: 'Insufficient wallet balance' },
+        {
+          error: 'Insufficient wallet balance',
+          required_cents: feeQuote.shipperDebitAmountCents,
+          available_cents: balanceCents,
+        },
         { status: 400 }
       );
     }
     
     // Get or create transporter's wallet
-    let transporterWallet = await prisma.wallet.findFirst({
-      where: { ownerUserId: bid.driverId },
-    });
-    
-    if (!transporterWallet) {
-      transporterWallet = await prisma.wallet.create({
-        data: {
-          ownerUserId: bid.driverId,
-          balance: 0,
-          currency: 'EUR',
-          status: 'ACTIVE',
-        },
-      });
-    }
+    const transporterWallet = await getOrCreateWallet(transporterUserId);
     
     // Get or create platform wallet
-    let platformWallet = await prisma.wallet.findFirst({
-      where: { ownerUserId: PLATFORM_USER_ID },
-    });
-    
-    if (!platformWallet) {
-      platformWallet = await prisma.wallet.create({
-        data: {
-          ownerUserId: PLATFORM_USER_ID,
-          balance: 0,
-          currency: 'EUR',
-          status: 'ACTIVE',
-        },
-      });
-    }
+    const platformWallet = await getOrCreatePlatformWallet();
     
     // Python: try:
     //   # Atomare Buchung
@@ -184,60 +171,60 @@ export async function PATCH(
     //   raise
     
     const result = await prisma.$transaction(async (tx) => {
-      // Python: 1) debit_wallet(db, user_id, amount_cents, type="booking", reference=bid.id)
+      // 1) Debit shipper: accepted price plus wallet fee.
       await tx.wallet.update({
         where: { id: shipperWallet.id },
-        data: { balance: { decrement: amountCents / 100 } },
+        data: { balance: { decrement: feeQuote.shipperDebitAmount } },
       });
       
       await tx.walletTransaction.create({
         data: {
           walletId: shipperWallet.id,
           type: 'PAYMENT_OUT',
-          amount: -amountCents / 100,
-          currency: 'EUR',
+          amount: -feeQuote.shipperDebitAmount,
+          currency: feeQuote.currency,
           relatedTransportId: jobId,
           reference: bidId,
-          description: `Booking for job ${jobId}`,
+          description: `Booking for job ${jobId} incl. ${feeQuote.walletFeePercent}% wallet fee`,
           processedAt: new Date(),
         },
       });
       
-      // Python: 2) credit_wallet(db, PLATFORM_USER_ID, fee_cents, reference=bid.id)
+      // 2) Credit CargoBit: commission plus wallet fee.
       await tx.wallet.update({
-        where: { id: platformWallet!.id },
-        data: { balance: { increment: feeCents / 100 } },
+        where: { id: platformWallet.id },
+        data: { balance: { increment: feeQuote.platformCreditAmount } },
       });
       
       await tx.walletTransaction.create({
         data: {
-          walletId: platformWallet!.id,
+          walletId: platformWallet.id,
           type: 'COMMISSION',
-          amount: feeCents / 100,
-          currency: 'EUR',
+          amount: feeQuote.platformCreditAmount,
+          currency: feeQuote.currency,
           relatedTransportId: jobId,
           reference: bidId,
-          description: `Platform fee (3.5%) for job ${jobId}`,
+          description: `CargoBit fees for job ${jobId}: ${feeQuote.commissionPercent}% commission + ${feeQuote.walletFeePercent}% wallet fee`,
           processedAt: new Date(),
         },
       });
       
-      // Python: 3) credit_wallet(db, bid.transporter_id, transporter_amount_cents, reference=bid.id)
+      // 3) Credit transporter: accepted price minus CargoBit commission.
       // Note: Pending until completed as per Python comment
       await tx.wallet.update({
-        where: { id: transporterWallet!.id },
-        data: { balance: { increment: transporterAmountCents / 100 } },
+        where: { id: transporterWallet.id },
+        data: { balance: { increment: feeQuote.transporterCreditAmount } },
       });
       
       await tx.walletTransaction.create({
         data: {
-          walletId: transporterWallet!.id,
+          walletId: transporterWallet.id,
           type: 'PAYMENT_IN',
-          amount: transporterAmountCents / 100,
-          currency: 'EUR',
+          amount: feeQuote.transporterCreditAmount,
+          currency: feeQuote.currency,
           relatedTransportId: jobId,
           reference: bidId,
-          description: `Payment for job ${jobId} (pending until completion)`,
+          description: `Payment for job ${jobId} minus ${feeQuote.commissionPercent}% CargoBit commission`,
           processedAt: new Date(),
         },
       });
@@ -296,11 +283,11 @@ export async function PATCH(
       await tx.commission.create({
         data: {
           transportId: jobId,
-          plan: 'FREE',
-          commissionPercent: PLATFORM_FEE_PERCENT * 100,
-          commissionAmount: feeCents / 100,
-          walletFeePercent: 0,
-          walletFeeAmount: 0,
+          plan: feeQuote.plan,
+          commissionPercent: feeQuote.commissionPercent,
+          commissionAmount: feeQuote.commissionAmount,
+          walletFeePercent: feeQuote.walletFeePercent,
+          walletFeeAmount: feeQuote.walletFeeAmount,
         },
       });
       
@@ -320,13 +307,28 @@ export async function PATCH(
     // Notify transporter (bonus feature)
     await prisma.notification.create({
       data: {
-        userId: bid.driverId,
+        userId: transporterUserId,
         type: 'OFFER_ACCEPTED',
         title: 'Angebot angenommen!',
         message: `Dein Angebot über ${bid.price} EUR wurde angenommen.`,
         data: JSON.stringify({ jobId, bidId }),
       },
     });
+
+    const insuranceReferral = body.insuranceReferral?.requested
+      ? await createInsuranceReferralQuote({
+          transportId: jobId,
+          requestedByUserId: transporterUserId,
+          requestedByRole: 'CARRIER',
+          source: 'CARRIER_ACCEPTANCE',
+          cargoDescription: job.description,
+          cargoValueEur: body.insuranceReferral.cargoValueEur || bid.price,
+          pickupCountry: undefined,
+          deliveryCountry: undefined,
+          consentAccepted: Boolean(body.insuranceReferral.consentAccepted),
+          persistLead: true,
+        })
+      : null;
     
     // Python return format:
     // return {
@@ -341,9 +343,14 @@ export async function PATCH(
       status: 'booked',
       job_id: jobId,
       bid_id: bidId,
-      amount_cents: amountCents,
-      fee_cents: feeCents,
-      transporter_amount_cents: transporterAmountCents,
+      amount_cents: feeQuote.grossAmountCents,
+      fee_cents: feeQuote.platformCreditAmountCents,
+      commission_cents: feeQuote.commissionAmountCents,
+      wallet_fee_cents: feeQuote.walletFeeAmountCents,
+      shipper_debit_cents: feeQuote.shipperDebitAmountCents,
+      transporter_amount_cents: feeQuote.transporterCreditAmountCents,
+      plan: feeQuote.plan,
+      insurance_referral: insuranceReferral,
     });
     
   } catch (error: any) {

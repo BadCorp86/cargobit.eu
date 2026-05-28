@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,8 @@ import {
   Info,
   Check,
   Loader2,
+  Shield,
+  ExternalLink,
 } from 'lucide-react';
 
 interface TransportFormProps {
@@ -58,11 +60,88 @@ const transportTypes: { value: TransportType; label: string; icon: React.ReactNo
   { value: 'container', label: 'Container', icon: <Container className="w-5 h-5" /> },
 ];
 
+interface PricingQuote {
+  recommendedPrice: number;
+  marketPrice: number;
+  minPrice: number;
+  currency: string;
+  confidence: number;
+  modelVersion: string;
+  source: string;
+  route: {
+    distanceKm: number;
+    durationMinutes: number;
+    tollCost: number;
+  };
+}
+
+interface InsuranceReferralQuote {
+  mode: 'partner_lead';
+  leadId: string | null;
+  provider: string;
+  product: string;
+  premiumEstimateEur: number;
+  coverageEstimateEur: number;
+  deductibleEur: number;
+  commission: {
+    type: string;
+    rate: number;
+    estimateEur: number;
+  };
+  referralUrl: string;
+  validUntil: string;
+  complianceNotice: string;
+}
+
+function formatCurrency(value: number, currency = 'EUR') {
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function parseNumber(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function calculateVolumeM3(formData: {
+  length: string;
+  width: string;
+  height: string;
+  bulkVolume: string;
+  liquidAmount: string;
+}) {
+  const lengthCm = parseNumber(formData.length);
+  const widthCm = parseNumber(formData.width);
+  const heightCm = parseNumber(formData.height);
+
+  if (lengthCm && widthCm && heightCm) {
+    return Math.round((lengthCm * widthCm * heightCm / 1_000_000) * 100) / 100;
+  }
+
+  const bulkVolume = parseNumber(formData.bulkVolume);
+  if (bulkVolume) return bulkVolume;
+
+  const liquidAmount = parseNumber(formData.liquidAmount);
+  if (liquidAmount) return Math.round((liquidAmount / 1000) * 100) / 100;
+
+  return undefined;
+}
+
 export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormProps) {
   const [step, setStep] = useState(1);
   const [transportType, setTransportType] = useState<TransportType>('pallet');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAiPrice, setShowAiPrice] = useState(true);
+  const [pricingQuote, setPricingQuote] = useState<PricingQuote | null>(null);
+  const [isPricingLoading, setIsPricingLoading] = useState(false);
+  const [pricingError, setPricingError] = useState<string | null>(null);
+  const [insuranceQuote, setInsuranceQuote] = useState<InsuranceReferralQuote | null>(null);
+  const [isInsuranceLoading, setIsInsuranceLoading] = useState(false);
+  const [insuranceError, setInsuranceError] = useState<string | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -90,6 +169,9 @@ export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormPro
     height: '',
     stackable: false,
     hazmat: false,
+    cargoValue: '',
+    insuranceRequested: false,
+    insuranceConsent: false,
     
     // Type-specific fields
     palletCount: '',
@@ -138,6 +220,22 @@ export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormPro
     aiSuggestedPrice: 450,
   });
 
+  const quoteWeightKg = useMemo(() => {
+    return (
+      parseNumber(formData.weight) ||
+      parseNumber(formData.containerWeight) ||
+      parseNumber(formData.lowloaderCargoWeight) ||
+      500
+    );
+  }, [formData.weight, formData.containerWeight, formData.lowloaderCargoWeight]);
+
+  const quoteVolumeM3 = useMemo(() => calculateVolumeM3(formData), [formData]);
+
+  const recommendedPrice = pricingQuote?.recommendedPrice || formData.aiSuggestedPrice;
+  const pricingCurrency = pricingQuote?.currency || 'EUR';
+  const canRequestPricing = Boolean(formData.pickupCity && formData.deliveryCity && quoteWeightKg);
+  const canRequestInsurance = Boolean(formData.insuranceRequested && parseNumber(formData.cargoValue));
+
   const steps = [
     { number: 1, title: 'Transportart' },
     { number: 2, title: 'Abholung & Lieferung' },
@@ -161,6 +259,187 @@ export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormPro
 
   const updateFormData = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  useEffect(() => {
+    if (!open || step < 4 || !showAiPrice || !canRequestPricing) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setIsPricingLoading(true);
+      setPricingError(null);
+
+      try {
+        const response = await fetch('/api/pricing/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            pickup: {
+              address: formData.pickupAddress,
+              city: formData.pickupCity,
+              postalCode: formData.pickupPostalCode,
+              country: formData.pickupCountry,
+            },
+            delivery: {
+              address: formData.deliveryAddress,
+              city: formData.deliveryCity,
+              postalCode: formData.deliveryPostalCode,
+              country: formData.deliveryCountry,
+            },
+            weightKg: quoteWeightKg,
+            volumeM3: quoteVolumeM3,
+            transportType,
+            isInternational: formData.pickupCountry !== formData.deliveryCountry,
+            isHazmat: formData.hazmat || transportType === 'hazmat',
+            requiresCooling: transportType === 'cooling',
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.message || 'Preisempfehlung nicht verfügbar');
+        }
+
+        setPricingQuote(data);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setPricingError(error instanceof Error ? error.message : 'Preisempfehlung nicht verfügbar');
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsPricingLoading(false);
+        }
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [
+    canRequestPricing,
+    formData.deliveryAddress,
+    formData.deliveryCity,
+    formData.deliveryCountry,
+    formData.deliveryPostalCode,
+    formData.hazmat,
+    formData.pickupAddress,
+    formData.pickupCity,
+    formData.pickupCountry,
+    formData.pickupPostalCode,
+    open,
+    quoteVolumeM3,
+    quoteWeightKg,
+    showAiPrice,
+    step,
+    transportType,
+  ]);
+
+  useEffect(() => {
+    if (!open || step < 4 || !canRequestInsurance) {
+      setInsuranceQuote(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setIsInsuranceLoading(true);
+      setInsuranceError(null);
+
+      try {
+        const response = await fetch('/api/insurance/referral/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            requestedByRole: 'SHIPPER',
+            source: 'SHIPPER_CREATE',
+            cargoDescription: formData.description,
+            cargoValueEur: parseNumber(formData.cargoValue),
+            weightKg: quoteWeightKg,
+            pickupCity: formData.pickupCity,
+            pickupCountry: formData.pickupCountry,
+            deliveryCity: formData.deliveryCity,
+            deliveryCountry: formData.deliveryCountry,
+            consentAccepted: formData.insuranceConsent,
+            persistLead: false,
+          }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.message || 'Versicherungsangebot nicht verfügbar');
+        }
+
+        setInsuranceQuote(data);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setInsuranceError(error instanceof Error ? error.message : 'Versicherungsangebot nicht verfügbar');
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsInsuranceLoading(false);
+        }
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [
+    canRequestInsurance,
+    formData.cargoValue,
+    formData.deliveryCity,
+    formData.deliveryCountry,
+    formData.description,
+    formData.insuranceConsent,
+    formData.pickupCity,
+    formData.pickupCountry,
+    open,
+    quoteWeightKg,
+    step,
+  ]);
+
+  const createInsuranceLead = async () => {
+    if (!canRequestInsurance || !formData.insuranceConsent) {
+      setInsuranceError('Bitte Warenwert eingeben und die externe Weiterleitung bestätigen.');
+      return;
+    }
+
+    setIsInsuranceLoading(true);
+    setInsuranceError(null);
+
+    try {
+      const response = await fetch('/api/insurance/referral/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestedByRole: 'SHIPPER',
+          source: 'SHIPPER_CREATE',
+          cargoDescription: formData.description,
+          cargoValueEur: parseNumber(formData.cargoValue),
+          weightKg: quoteWeightKg,
+          pickupCity: formData.pickupCity,
+          pickupCountry: formData.pickupCountry,
+          deliveryCity: formData.deliveryCity,
+          deliveryCountry: formData.deliveryCountry,
+          consentAccepted: formData.insuranceConsent,
+          persistLead: true,
+          markRedirected: true,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || 'Versicherungs-Lead konnte nicht erstellt werden.');
+      setInsuranceQuote(data);
+      window.open(data.referralUrl, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      setInsuranceError(error instanceof Error ? error.message : 'Versicherungs-Lead konnte nicht erstellt werden.');
+    } finally {
+      setIsInsuranceLoading(false);
+    }
   };
 
   const renderTypeSpecificFields = () => {
@@ -865,18 +1144,65 @@ export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormPro
                     <Bot className="w-5 h-5 text-primary" />
                   </div>
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-semibold">KI-Preisempfehlung</h3>
-                      <Badge variant="secondary">Beta</Badge>
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">KI-Preisempfehlung</h3>
+                        <Badge variant="secondary">
+                          {pricingQuote ? 'Live' : 'Beta'}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isPricingLoading ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : null}
+                        <Switch checked={showAiPrice} onCheckedChange={setShowAiPrice} />
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Basierend auf Strecke ({formData.pickupCity || 'Berlin'} → {formData.deliveryCity || 'München'}), 
-                      Gewicht und aktuellen Marktpreisen.
-                    </p>
-                    <div className="text-3xl font-bold text-primary">€{formData.aiSuggestedPrice}</div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      Marktpreis: €420 - €520
-                    </div>
+                    {!canRequestPricing ? (
+                      <p className="text-sm text-muted-foreground">
+                        Gib Abholstadt, Lieferstadt und Frachtdaten ein, damit CargoBit einen Preis berechnet.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          Basierend auf Strecke ({formData.pickupCity} → {formData.deliveryCity}), Gewicht,
+                          Maut, Diesel, Fahrzeit und Transportart.
+                        </p>
+                        <div className="text-3xl font-bold text-primary">
+                          {formatCurrency(recommendedPrice, pricingCurrency)}
+                        </div>
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                          <div className="rounded-lg bg-background/60 p-2">
+                            <div>Marktpreis</div>
+                            <div className="font-medium text-foreground">
+                              {pricingQuote ? formatCurrency(pricingQuote.marketPrice, pricingCurrency) : 'Wird berechnet'}
+                            </div>
+                          </div>
+                          <div className="rounded-lg bg-background/60 p-2">
+                            <div>Mindestpreis</div>
+                            <div className="font-medium text-foreground">
+                              {pricingQuote ? formatCurrency(pricingQuote.minPrice, pricingCurrency) : 'Anti-Dumping'}
+                            </div>
+                          </div>
+                          <div className="rounded-lg bg-background/60 p-2">
+                            <div>Distanz</div>
+                            <div className="font-medium text-foreground">
+                              {pricingQuote ? `${Math.round(pricingQuote.route.distanceKm)} km` : 'Route'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-sm text-muted-foreground mt-2">
+                          {pricingQuote
+                            ? `${Math.round(pricingQuote.confidence * 100)}% Konfidenz • ${pricingQuote.modelVersion}`
+                            : isPricingLoading
+                              ? 'CargoBit berechnet gerade die Empfehlung.'
+                              : 'Fallback-Wert bis die Live-Berechnung verfügbar ist.'}
+                        </div>
+                        {pricingError ? (
+                          <div className="mt-2 text-sm text-yellow-600">
+                            {pricingError}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -892,12 +1218,86 @@ export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormPro
                     type="number"
                     value={formData.budget}
                     onChange={(e) => updateFormData('budget', e.target.value)}
-                    placeholder={formData.aiSuggestedPrice.toString()}
+                    placeholder={String(Math.round(recommendedPrice))}
                   />
                   <p className="text-sm text-muted-foreground">
                     Preis ist verhandelbar. Transporteure können Angebote abgeben.
                   </p>
                 </div>
+              </div>
+
+              <Separator />
+
+              {/* Insurance referral */}
+              <div className="space-y-4 rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+                      <Shield className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Frachtversicherung optional</h3>
+                      <p className="text-sm text-muted-foreground">
+                        CargoBit fragt einen externen Versicherungs-Partner an. Der Abschluss erfolgt nicht bei CargoBit.
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={formData.insuranceRequested}
+                    onCheckedChange={(value) => updateFormData('insuranceRequested', value)}
+                  />
+                </div>
+
+                {formData.insuranceRequested && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Warenwert (€)</Label>
+                      <Input
+                        type="number"
+                        value={formData.cargoValue}
+                        onChange={(event) => updateFormData('cargoValue', event.target.value)}
+                        placeholder="z.B. 10000"
+                      />
+                    </div>
+
+                    {isInsuranceLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Versicherungs-Lead wird vorbereitet.
+                      </div>
+                    ) : insuranceQuote ? (
+                      <div className="grid gap-2 text-sm sm:grid-cols-3">
+                        <div className="rounded-lg bg-background/70 p-3">
+                          <div className="text-muted-foreground">Partner</div>
+                          <div className="font-medium">{insuranceQuote.provider}</div>
+                        </div>
+                        <div className="rounded-lg bg-background/70 p-3">
+                          <div className="text-muted-foreground">Prämie ca.</div>
+                          <div className="font-medium">{formatCurrency(insuranceQuote.premiumEstimateEur)}</div>
+                        </div>
+                        <div className="rounded-lg bg-background/70 p-3">
+                          <div className="text-muted-foreground">Deckung bis</div>
+                          <div className="font-medium">{formatCurrency(insuranceQuote.coverageEstimateEur)}</div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="flex items-start gap-2 rounded-lg bg-background/70 p-3 text-xs text-muted-foreground">
+                      <Switch
+                        checked={formData.insuranceConsent}
+                        onCheckedChange={(value) => updateFormData('insuranceConsent', value)}
+                      />
+                      <span>
+                        Ich möchte für diese Fracht eine externe Versicherungsanfrage stellen. CargoBit ist technischer Tippgeber;
+                        Beratung, Vertrag, Police und Schadenbearbeitung erfolgen beim lizenzierten Versicherer oder Makler.
+                      </span>
+                    </div>
+
+                    {insuranceError ? (
+                      <div className="text-sm text-yellow-600">{insuranceError}</div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -915,7 +1315,9 @@ export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormPro
                   </div>
                   <div className="p-4 rounded-lg border">
                     <div className="text-sm text-muted-foreground">Preis</div>
-                    <div className="font-medium">€{formData.budget || formData.aiSuggestedPrice}</div>
+                    <div className="font-medium">
+                      {formatCurrency(Number(formData.budget) || recommendedPrice, pricingCurrency)}
+                    </div>
                   </div>
                 </div>
 
@@ -942,6 +1344,33 @@ export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormPro
                     {formData.weight || '500'} kg • {formData.length || '120'} × {formData.width || '80'} × {formData.height || '100'} cm
                   </div>
                 </div>
+
+                {formData.insuranceRequested && (
+                  <div className="p-4 rounded-lg border border-blue-500/30 bg-blue-500/5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Shield className="w-4 h-4 text-blue-500" />
+                      <span className="text-sm text-muted-foreground">Externe Frachtversicherung</span>
+                    </div>
+                    <div className="font-medium">
+                      {insuranceQuote
+                        ? `${insuranceQuote.provider} · ca. ${formatCurrency(insuranceQuote.premiumEstimateEur)}`
+                        : 'Partner-Lead wird vorbereitet'}
+                    </div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      CargoBit leitet nur weiter; Abschluss und Police erfolgen beim Versicherer/Makler.
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-3 gap-2"
+                      onClick={createInsuranceLead}
+                      disabled={isInsuranceLoading || !formData.insuranceConsent}
+                    >
+                      {isInsuranceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                      Externen Abschluss anfragen
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-start gap-2 p-4 rounded-lg bg-muted">

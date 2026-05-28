@@ -12,6 +12,7 @@ export type SystemRole =
   | 'SUPPORT'
   | 'SHIPPER_COMPANY'
   | 'SHIPPER_PRIVATE'
+  | 'CARRIER'
   | 'DISPATCHER'
   | 'DRIVER_SELF_EMPLOYED'
   | 'MARKETER';

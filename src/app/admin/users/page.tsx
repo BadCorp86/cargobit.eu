@@ -148,10 +148,12 @@ export default function UsersListPage() {
     const labels: Record<string, string> = {
       'SHIPPER_COMPANY': 'Shipper (Firma)',
       'SHIPPER_PRIVATE': 'Shipper (Privat)',
-      'DRIVER_SELF_EMPLOYED': 'Fahrer',
-      'DISPATCHER': 'Dispatcher',
+      'CARRIER': 'Spedition / Transporteur',
+      'DRIVER_SELF_EMPLOYED': 'Solo-Transporteur',
+      'DISPATCHER': 'Disposition (Spedition)',
       'ADMIN': 'Admin',
       'SUPPORT': 'Support',
+      'MARKETER': 'Marketing',
     };
     return labels[role] || role;
   };
@@ -259,8 +261,9 @@ export default function UsersListPage() {
       options: [
         { value: 'SHIPPER_COMPANY', label: 'Shipper (Firma)' },
         { value: 'SHIPPER_PRIVATE', label: 'Shipper (Privat)' },
-        { value: 'DRIVER_SELF_EMPLOYED', label: 'Fahrer' },
-        { value: 'DISPATCHER', label: 'Dispatcher' },
+        { value: 'CARRIER', label: 'Spedition / Transporteur' },
+        { value: 'DRIVER_SELF_EMPLOYED', label: 'Solo-Transporteur' },
+        { value: 'DISPATCHER', label: 'Disposition (Spedition)' },
       ],
     },
   ];

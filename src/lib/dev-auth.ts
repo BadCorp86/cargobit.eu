@@ -6,7 +6,7 @@
 export interface DevUser {
   id: string;
   email: string;
-  role: 'ADMIN' | 'SUPPORT' | 'SHIPPER_COMPANY' | 'SHIPPER_PRIVATE' | 'DISPATCHER' | 'DRIVER_SELF_EMPLOYED' | 'MARKETER';
+  role: 'ADMIN' | 'SUPPORT' | 'SHIPPER_COMPANY' | 'SHIPPER_PRIVATE' | 'CARRIER' | 'DISPATCHER' | 'DRIVER_SELF_EMPLOYED' | 'MARKETER';
   companyId?: string;
 }
 
@@ -27,6 +27,12 @@ export const DEV_USERS: Record<string, DevUser> = {
     email: 'shipper@cargobit.dev',
     role: 'SHIPPER_COMPANY',
     companyId: 'dev_company_1',
+  },
+  carrier: {
+    id: 'dev_user_carrier',
+    email: 'carrier@cargobit.dev',
+    role: 'CARRIER',
+    companyId: 'dev_company_2',
   },
   dispatcher: {
     id: 'dev_user_dispatcher',

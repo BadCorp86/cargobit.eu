@@ -6,6 +6,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import {
+  processVerificationSubmission,
+  type SubmittedVerificationDocument,
+} from '@/services/verification-workflow.service';
+import { extractDocumentOcr } from '@/services/verification/ocr.service';
+
+export const runtime = 'nodejs';
 
 // ============================================
 // POST /api/onboarding/shipper
@@ -13,8 +20,18 @@ import { db } from '@/lib/db';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { companyName, contactName, email, phone, isBusiness } = body;
+    const {
+      companyName,
+      contactName,
+      email,
+      phone,
+      isBusiness,
+      country = 'DE',
+      vatNumber,
+      verificationDocuments = [],
+    } = body;
     const userId = request.headers.get('x-user-id');
+    let company: Awaited<ReturnType<typeof db.company.findFirst>> = null;
 
     // Validation
     if (!contactName || !email) {
@@ -56,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     // If business user, create/link company
     if (isBusiness && companyName) {
-      let company = await db.company.findFirst({
+      company = await db.company.findFirst({
         where: { name: companyName },
       });
 
@@ -133,11 +150,22 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    const verification = await processVerificationSubmission({
+      userId: user.id,
+      role: isBusiness ? 'SHIPPER_COMPANY' : 'SHIPPER_PRIVATE',
+      country,
+      companyId: company?.id,
+      companyType: isBusiness ? 'SHIPPER' : undefined,
+      vatNumber,
+      documents: await enrichDocumentsWithOcr(verificationDocuments as SubmittedVerificationDocument[]),
+    });
+
     return NextResponse.json({
       success: true,
       userId: user.id,
       isBusiness: isBusiness || false,
       companyId: isBusiness ? (await db.companyUser.findFirst({ where: { userId: user.id } }))?.companyId : null,
+      verification,
       message: isBusiness 
         ? 'Unternehmenskonto erfolgreich erstellt' 
         : 'Privatkonto erfolgreich erstellt',
@@ -150,4 +178,36 @@ export async function POST(request: NextRequest) {
       message: 'Fehler beim Onboarding',
     }, { status: 500 });
   }
+}
+
+async function enrichDocumentsWithOcr(
+  documents: SubmittedVerificationDocument[],
+): Promise<SubmittedVerificationDocument[]> {
+  const enriched: SubmittedVerificationDocument[] = [];
+
+  for (const document of documents) {
+    if (document.ocr || !document.fileBase64) {
+      enriched.push(stripInlineFile(document));
+      continue;
+    }
+
+    const ocr = await extractDocumentOcr({
+      fileBase64: document.fileBase64,
+      mimeType: document.mimeType,
+      fileName: document.name,
+      documentType: document.type,
+    });
+
+    enriched.push(stripInlineFile({
+      ...document,
+      ocr,
+    }));
+  }
+
+  return enriched;
+}
+
+function stripInlineFile(document: SubmittedVerificationDocument): SubmittedVerificationDocument {
+  const { fileBase64, ...safeDocument } = document;
+  return safeDocument;
 }

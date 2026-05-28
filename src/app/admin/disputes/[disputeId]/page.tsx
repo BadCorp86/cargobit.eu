@@ -6,11 +6,15 @@
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AdminLayout from '@/components/admin/admin-layout';
 import { StatusBadge } from '@/components/admin/status-badge';
 import { ConfirmModal } from '@/components/admin/modal';
+import {
+  createDisputeDecisionRecommendation,
+  type DisputeDecisionRecommendation,
+} from '@/lib/disputes/dispute-decision-engine';
 
 // ============================================
 // TYPES
@@ -23,6 +27,53 @@ interface Message {
   senderRole: 'shipper' | 'transporter' | 'admin';
   message: string;
   attachments?: string[];
+  createdAt: string;
+}
+
+interface Attachment {
+  id?: string;
+  fileName?: string;
+  fileType?: string;
+  createdAt?: string;
+}
+
+interface EvidenceRequest {
+  requestedAt?: string;
+  dueAt?: string;
+  isOverdue?: boolean;
+  missingEvidence?: string[];
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  autoResolution?: {
+    state: 'default' | 'blocked' | 'approved';
+    changedAt?: string | null;
+    note?: string | null;
+  };
+}
+
+interface SupportTicketSummary {
+  id: string;
+  subject?: string;
+  description?: string;
+  priority?: string;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  messages?: Array<{
+    id: string;
+    senderRole?: string;
+    message: string;
+    isInternal?: boolean;
+    createdAt?: string;
+  }>;
+}
+
+interface AuditTrailEvent {
+  id: string;
+  eventType: string;
+  oldStatus?: string | null;
+  newStatus?: string | null;
+  metadata?: any;
   createdAt: string;
 }
 
@@ -41,16 +92,22 @@ interface DisputeDetail {
   };
   reason: string;
   description?: string;
-  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  status: 'open' | 'in_progress' | 'in_review' | 'awaiting_info' | 'resolved' | 'closed' | 'rejected' | 'refunded';
   resolution?: 'refund_full' | 'refund_partial' | 'reject' | 'other';
   resolutionNote?: string;
   refundAmountCents?: number;
   paymentAmountCents: number;
   currency: string;
   messages: Message[];
+  attachments?: Attachment[];
+  evidenceRequest?: EvidenceRequest | null;
+  supportTickets?: SupportTicketSummary[];
+  auditTrail?: AuditTrailEvent[];
   createdAt: string;
   updatedAt: string;
 }
+
+type ResolutionType = 'refund_full' | 'refund_partial' | 'reject' | 'other';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -63,6 +120,25 @@ function formatCurrency(amountCents: number, currency: string): string {
   }).format(amountCents / 100);
 }
 
+function formatEuroAmount(amount?: number | null): string {
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency: 'EUR',
+  }).format(Number(amount || 0));
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return '-';
+
+  return new Date(value).toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function getRoleLabel(role: string): string {
   switch (role) {
     case 'shipper': return 'Shipper';
@@ -70,6 +146,215 @@ function getRoleLabel(role: string): string {
     case 'admin': return 'Admin';
     default: return role;
   }
+}
+
+function getAuditLabel(eventType: string): string {
+  const labels: Record<string, string> = {
+    evidence_requested: 'Nachweise angefordert',
+    evidence_deadline_extended: 'Nachweisfrist verlängert',
+    evidence_reviewed: 'Nachweise geprüft',
+    support_ticket_closed: 'Support Ticket geschlossen',
+    auto_resolution_blocked: 'Auto-Entscheidung gesperrt',
+    auto_resolution_approved: 'Auto-Entscheidung freigegeben',
+    insurance_handoff_created: 'Versicherungs-Lead vorbereitet',
+    recommendation_generated: 'KI Empfehlung erstellt',
+    resolved: 'Streitfall gelöst',
+    message: 'Nachricht hinzugefügt',
+  };
+
+  return labels[eventType] || eventType.replace(/_/g, ' ');
+}
+
+function normalizeDisputeStatus(status?: string): DisputeDetail['status'] {
+  const normalized = (status || 'open').toLowerCase();
+  if (normalized === 'awaiting_info') return 'awaiting_info';
+  if (normalized === 'in_review') return 'in_review';
+  if (normalized === 'in-progress') return 'in_progress';
+  if (normalized === 'refunded') return 'refunded';
+  if (normalized === 'rejected') return 'rejected';
+  if (normalized === 'resolved') return 'resolved';
+  if (normalized === 'closed') return 'closed';
+  return 'open';
+}
+
+function normalizeResolution(resolution?: string | null): ResolutionType | undefined {
+  const normalized = (resolution || '').toLowerCase();
+  if (normalized === 'refund_full') return 'refund_full';
+  if (normalized === 'refund_partial' || normalized === 'compensation') return 'refund_partial';
+  if (normalized === 'reject' || normalized === 'rejected') return 'reject';
+  if (normalized) return 'other';
+  return undefined;
+}
+
+function normalizePerson(person: any, fallbackEmail: string) {
+  return {
+    id: person?.id || 'unknown',
+    email: person?.email || fallbackEmail,
+    name: person?.name || [person?.firstName, person?.lastName].filter(Boolean).join(' ') || undefined,
+  };
+}
+
+function normalizeMessage(message: any): Message {
+  const senderRole = (message.senderRole || message.senderType || '').toLowerCase();
+
+  return {
+    id: message.id || crypto.randomUUID(),
+    senderId: message.senderId || 'unknown',
+    senderEmail: message.senderEmail || message.senderName || 'unknown',
+    senderRole: senderRole === 'admin' ? 'admin' : senderRole === 'transporter' || senderRole === 'driver' ? 'transporter' : 'shipper',
+    message: message.message || '',
+    attachments: message.attachments || [],
+    createdAt: typeof message.createdAt === 'string' ? message.createdAt : new Date(message.createdAt || Date.now()).toISOString(),
+  };
+}
+
+function normalizeEvidenceRequest(request: any): EvidenceRequest | null {
+  if (!request) return null;
+
+  return {
+    requestedAt: typeof request.requestedAt === 'string' ? request.requestedAt : new Date(request.requestedAt || Date.now()).toISOString(),
+    dueAt: typeof request.dueAt === 'string' ? request.dueAt : new Date(request.dueAt || Date.now()).toISOString(),
+    isOverdue: Boolean(request.isOverdue),
+    missingEvidence: Array.isArray(request.missingEvidence) ? request.missingEvidence : [],
+    reviewedAt: request.reviewedAt ? typeof request.reviewedAt === 'string' ? request.reviewedAt : new Date(request.reviewedAt).toISOString() : null,
+    reviewedBy: request.reviewedBy || null,
+    autoResolution: {
+      state: request.autoResolution?.state || 'default',
+      changedAt: request.autoResolution?.changedAt
+        ? typeof request.autoResolution.changedAt === 'string'
+          ? request.autoResolution.changedAt
+          : new Date(request.autoResolution.changedAt).toISOString()
+        : null,
+      note: request.autoResolution?.note || null,
+    },
+  };
+}
+
+function normalizeSupportTickets(tickets: any): SupportTicketSummary[] {
+  if (!Array.isArray(tickets)) return [];
+
+  return tickets.map((ticket) => ({
+    id: ticket.id,
+    subject: ticket.subject,
+    description: ticket.description,
+    priority: ticket.priority,
+    status: ticket.status,
+    createdAt: typeof ticket.createdAt === 'string' ? ticket.createdAt : new Date(ticket.createdAt || Date.now()).toISOString(),
+    updatedAt: typeof ticket.updatedAt === 'string' ? ticket.updatedAt : new Date(ticket.updatedAt || Date.now()).toISOString(),
+    messages: Array.isArray(ticket.messages) ? ticket.messages.map((message: any) => ({
+      id: message.id,
+      senderRole: message.senderRole,
+      message: message.message || '',
+      isInternal: Boolean(message.isInternal),
+      createdAt: typeof message.createdAt === 'string' ? message.createdAt : new Date(message.createdAt || Date.now()).toISOString(),
+    })) : [],
+  }));
+}
+
+function normalizeAuditTrail(events: any): AuditTrailEvent[] {
+  if (!Array.isArray(events)) return [];
+
+  return events.map((event) => ({
+    id: event.id || crypto.randomUUID(),
+    eventType: event.eventType || 'event',
+    oldStatus: event.oldStatus,
+    newStatus: event.newStatus,
+    metadata: event.metadata,
+    createdAt: typeof event.createdAt === 'string' ? event.createdAt : new Date(event.createdAt || Date.now()).toISOString(),
+  }));
+}
+
+function normalizeDisputePayload(payload: any, disputeId: string): DisputeDetail {
+  const paymentAmountCents =
+    payload.paymentAmountCents ||
+    payload.disputedAmountCents ||
+    payload.refundAmountCents ||
+    Math.round((payload.disputedAmountEur || payload.refundAmountEur || 250) * 100);
+
+  return {
+    id: payload.id || disputeId,
+    jobId: payload.jobId || payload.transportId || payload.job_id || 'job_preview',
+    shipper: normalizePerson(payload.shipper || payload.createdBy, 'shipper@example.com'),
+    transporter: normalizePerson(payload.transporter || payload.against, 'transporter@example.com'),
+    reason: payload.reason || payload.subject || 'Streitfall',
+    description: payload.description || '',
+    status: normalizeDisputeStatus(payload.status),
+    resolution: normalizeResolution(payload.resolution),
+    resolutionNote: payload.resolutionNote || payload.resolutionText || undefined,
+    refundAmountCents: payload.refundAmountCents || null,
+    paymentAmountCents,
+    currency: payload.currency || 'EUR',
+    messages: Array.isArray(payload.messages) ? payload.messages.map(normalizeMessage) : [],
+    attachments: Array.isArray(payload.attachments) ? payload.attachments : [],
+    evidenceRequest: normalizeEvidenceRequest(payload.evidenceRequest),
+    supportTickets: normalizeSupportTickets(payload.supportTickets),
+    auditTrail: normalizeAuditTrail(payload.auditTrail),
+    createdAt: typeof payload.createdAt === 'string' ? payload.createdAt : new Date(payload.createdAt || Date.now()).toISOString(),
+    updatedAt: typeof payload.updatedAt === 'string' ? payload.updatedAt : new Date(payload.updatedAt || Date.now()).toISOString(),
+  };
+}
+
+function buildLocalRecommendation(dispute: DisputeDetail): DisputeDecisionRecommendation {
+  return createDisputeDecisionRecommendation({
+    id: dispute.id,
+    jobId: dispute.jobId,
+    status: dispute.status,
+    reason: dispute.reason,
+    description: dispute.description,
+    paymentAmountCents: dispute.paymentAmountCents,
+    disputedAmountCents: dispute.paymentAmountCents,
+    refundableAmountCents: dispute.paymentAmountCents,
+    currency: dispute.currency,
+    createdAt: dispute.createdAt,
+    messages: dispute.messages.map((message) => ({
+      message: message.message,
+      senderType: message.senderRole,
+      createdAt: message.createdAt,
+    })),
+    attachments: dispute.attachments?.map((attachment) => ({
+      fileName: attachment.fileName,
+      fileType: attachment.fileType,
+      createdAt: attachment.createdAt,
+    })),
+  });
+}
+
+function recommendationRiskClass(riskLevel: DisputeDecisionRecommendation['riskLevel']) {
+  switch (riskLevel) {
+    case 'critical':
+      return 'border-red-500/40 bg-red-500/10 text-red-200';
+    case 'high':
+      return 'border-orange-500/40 bg-orange-500/10 text-orange-200';
+    case 'medium':
+      return 'border-yellow-500/40 bg-yellow-500/10 text-yellow-200';
+    default:
+      return 'border-green-500/40 bg-green-500/10 text-green-200';
+  }
+}
+
+function recommendationActionToResolution(action: DisputeDecisionRecommendation['action']): ResolutionType {
+  if (action === 'REFUND_FULL') return 'refund_full';
+  if (action === 'REFUND_PARTIAL' || action === 'COMPENSATION') return 'refund_partial';
+  if (action === 'REJECT') return 'reject';
+  return 'other';
+}
+
+function getAutoResolutionLabel(state?: string) {
+  if (state === 'blocked') return 'Gesperrt';
+  if (state === 'approved') return 'Freigegeben';
+  return 'Nur Empfehlung';
+}
+
+function getDisputeActionMessage(action: string) {
+  const messages: Record<string, string> = {
+    MARK_EVIDENCE_REVIEWED: 'Nachweise wurden als geprüft markiert.',
+    EXTEND_EVIDENCE_DEADLINE: 'Nachweisfrist wurde verlängert.',
+    CLOSE_SUPPORT_TICKET: 'Support Ticket wurde geschlossen.',
+    BLOCK_AUTO_RESOLUTION: 'Automatische Entscheidung wurde gesperrt.',
+    APPROVE_AUTO_RESOLUTION: 'Automatische Entscheidung wurde freigegeben.',
+  };
+
+  return messages[action] || 'Admin-Aktion wurde ausgeführt.';
 }
 
 // ============================================
@@ -84,11 +369,46 @@ export default function DisputeDetailPage() {
   const [dispute, setDispute] = useState<DisputeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [resolutionType, setResolutionType] = useState<'refund_full' | 'refund_partial' | 'reject' | 'other'>('reject');
+  const [recommendation, setRecommendation] = useState<DisputeDecisionRecommendation | null>(null);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendationSource, setRecommendationSource] = useState<'live' | 'fallback' | 'local' | null>(null);
+  const [resolutionType, setResolutionType] = useState<ResolutionType>('reject');
   const [partialAmount, setPartialAmount] = useState('');
   const [resolutionNote, setResolutionNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [requestingEvidence, setRequestingEvidence] = useState(false);
+  const [workflowMessage, setWorkflowMessage] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionNote, setActionNote] = useState('');
+  const [insuranceLoading, setInsuranceLoading] = useState(false);
+
+  const loadRecommendation = useCallback(async (currentDispute: DisputeDetail) => {
+    setRecommendationLoading(true);
+    try {
+      const res = await fetch(`/api/admin/disputes/${disputeId}/recommendation`);
+      if (!res.ok) throw new Error('Recommendation API unavailable');
+      const data = await res.json();
+      setRecommendation(data.recommendation);
+      setRecommendationSource(data.source === 'fallback' ? 'fallback' : 'live');
+    } catch (err) {
+      console.error('Failed to fetch dispute recommendation:', err);
+      setRecommendation(buildLocalRecommendation(currentDispute));
+      setRecommendationSource('local');
+    } finally {
+      setRecommendationLoading(false);
+    }
+  }, [disputeId]);
+
+  const refreshDisputeDetail = useCallback(async () => {
+    const res = await fetch(`/api/admin/disputes/${disputeId}`);
+    if (!res.ok) throw new Error('Dispute not found');
+    const data = await res.json();
+    const normalized = normalizeDisputePayload(data, disputeId);
+    setDispute(normalized);
+    await loadRecommendation(normalized);
+    return normalized;
+  }, [disputeId, loadRecommendation]);
 
   useEffect(() => {
     const fetchDispute = async () => {
@@ -96,12 +416,14 @@ export default function DisputeDetailPage() {
         const res = await fetch(`/api/admin/disputes/${disputeId}`);
         if (!res.ok) throw new Error('Dispute not found');
         const data = await res.json();
-        setDispute(data);
+        const normalized = normalizeDisputePayload(data, disputeId);
+        setDispute(normalized);
+        await loadRecommendation(normalized);
       } catch (err) {
         console.error('Failed to fetch dispute:', err);
         setError('Dispute konnte nicht geladen werden');
         // Mock data for demo
-        setDispute({
+        const fallbackDispute: DisputeDetail = {
           id: disputeId,
           jobId: 'job_abc123',
           shipper: {
@@ -137,19 +459,84 @@ export default function DisputeDetailPage() {
               createdAt: new Date(Date.now() - 3600000).toISOString(),
             },
           ],
+          attachments: [
+            {
+              id: 'attachment_1',
+              fileName: 'damage-photo.jpg',
+              fileType: 'image/jpeg',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          evidenceRequest: null,
+          supportTickets: [],
+          auditTrail: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-        });
+        };
+        setDispute(fallbackDispute);
+        await loadRecommendation(fallbackDispute);
       } finally {
         setLoading(false);
       }
     };
 
     fetchDispute();
-  }, [disputeId]);
+  }, [disputeId, loadRecommendation]);
+
+  const runDisputeAction = async (
+    action: 'MARK_EVIDENCE_REVIEWED' | 'EXTEND_EVIDENCE_DEADLINE' | 'CLOSE_SUPPORT_TICKET' | 'BLOCK_AUTO_RESOLUTION' | 'APPROVE_AUTO_RESOLUTION',
+    options: { dueAt?: string; ticketId?: string } = {}
+  ) => {
+    setActionLoading(action);
+    setWorkflowMessage(null);
+
+    try {
+      const res = await fetch(`/api/admin/disputes/${disputeId}/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          note: actionNote,
+          ...options,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Action failed');
+
+      await refreshDisputeDetail();
+      setActionNote('');
+      setWorkflowMessage(getDisputeActionMessage(action));
+    } catch (err: any) {
+      console.error('Failed to run dispute action:', err);
+      setWorkflowMessage(err.message || 'Admin-Aktion konnte nicht ausgeführt werden.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const handleResolve = async () => {
     if (!dispute) return;
+
+    const actionMap: Record<ResolutionType, 'REFUND_FULL' | 'REFUND_PARTIAL' | 'REJECT' | 'COMPENSATION'> = {
+      refund_full: 'REFUND_FULL',
+      refund_partial: 'REFUND_PARTIAL',
+      reject: 'REJECT',
+      other: 'COMPENSATION',
+    };
+    const refundAmountCents = resolutionType === 'refund_partial'
+      ? Math.round(parseFloat(partialAmount || '0') * 100)
+      : resolutionType === 'refund_full'
+        ? dispute.paymentAmountCents
+        : null;
+    const finalResolutionText =
+      resolutionNote.trim() ||
+      recommendation?.resolutionDraft ||
+      'Admin-Entscheidung nach manueller Pruefung.';
+
+    if (resolutionType === 'refund_partial' && (!refundAmountCents || refundAmountCents <= 0)) {
+      alert('Bitte einen gueltigen Erstattungsbetrag eingeben.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -157,13 +544,9 @@ export default function DisputeDetailPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          resolution: resolutionType,
-          refundAmountCents: resolutionType === 'refund_partial' 
-            ? Math.round(parseFloat(partialAmount) * 100) 
-            : resolutionType === 'refund_full' 
-              ? dispute.paymentAmountCents 
-              : 0,
-          note: resolutionNote,
+          action: actionMap[resolutionType],
+          resolutionText: finalResolutionText,
+          refundAmountCents,
         }),
       });
 
@@ -179,6 +562,131 @@ export default function DisputeDetailPage() {
     } finally {
       setSubmitting(false);
       setShowConfirmModal(false);
+    }
+  };
+
+  const applyRecommendation = () => {
+    if (!recommendation) return;
+
+    const nextResolution = recommendationActionToResolution(recommendation.action);
+    setResolutionType(nextResolution);
+
+    if (nextResolution === 'refund_partial' && recommendation.suggestedRefundAmountCents) {
+      setPartialAmount((recommendation.suggestedRefundAmountCents / 100).toFixed(2));
+    }
+
+    if (nextResolution === 'refund_full') {
+      setPartialAmount('');
+    }
+
+    setResolutionNote(recommendation.resolutionDraft);
+  };
+
+  const requestEvidenceWorkflow = async () => {
+    if (!recommendation) return;
+
+    setRequestingEvidence(true);
+    setWorkflowMessage(null);
+
+    try {
+      const res = await fetch(`/api/admin/disputes/${disputeId}/evidence-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          missingEvidence: recommendation.missingEvidence,
+          createTicket: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Evidence request failed');
+
+      const ticketText = data.supportTicket?.id ? ` Ticket: ${data.supportTicket.id}.` : '';
+      setWorkflowMessage(
+        data.mode === 'live'
+          ? `Nachweise wurden angefordert.${ticketText}`
+          : `Preview: Nachweis-Workflow simuliert.${ticketText}`
+      );
+
+      const requestedAt = new Date().toISOString();
+      const dueAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+      setDispute((current) => {
+        if (!current) return current;
+
+        const nextTicket = data.supportTicket?.id
+          ? {
+              id: data.supportTicket.id,
+              subject: `Nachweise fuer Streitfall ${current.id}`,
+              priority: data.supportTicket.priority,
+              status: data.supportTicket.status,
+              createdAt: requestedAt,
+              updatedAt: requestedAt,
+              messages: [],
+            }
+          : null;
+        const supportTickets = nextTicket && !current.supportTickets?.some((ticket) => ticket.id === nextTicket.id)
+          ? [nextTicket, ...(current.supportTickets || [])]
+          : current.supportTickets || [];
+
+        return {
+          ...current,
+          status: normalizeDisputeStatus(data.status || 'AWAITING_INFO'),
+          evidenceRequest: {
+            requestedAt,
+            dueAt,
+            isOverdue: false,
+            missingEvidence: data.requestedEvidence || recommendation.missingEvidence,
+          },
+          supportTickets,
+          auditTrail: [
+            {
+              id: `local_evidence_${Date.now()}`,
+              eventType: 'evidence_requested',
+              oldStatus: current.status,
+              newStatus: 'AWAITING_INFO',
+              metadata: { missingEvidence: data.requestedEvidence || recommendation.missingEvidence },
+              createdAt: requestedAt,
+            },
+            ...(current.auditTrail || []),
+          ],
+        };
+      });
+    } catch (err: any) {
+      console.error('Failed to request dispute evidence:', err);
+      setWorkflowMessage(err.message || 'Nachweis-Workflow konnte nicht gestartet werden.');
+    } finally {
+      setRequestingEvidence(false);
+    }
+  };
+
+  const createInsuranceHandoff = async () => {
+    setInsuranceLoading(true);
+    setWorkflowMessage(null);
+
+    try {
+      const res = await fetch(`/api/admin/disputes/${disputeId}/insurance-handoff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          note: actionNote,
+          consentAccepted: false,
+          markRedirected: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Insurance handoff failed');
+
+      await refreshDisputeDetail();
+      setWorkflowMessage(
+        data.alreadyExists
+          ? 'Versicherungs-Lead existiert bereits und wurde erneut angezeigt.'
+          : `Versicherungs-Lead wurde vorbereitet. Lead: ${data.referral?.leadId || data.lead?.id || 'neu'}.`
+      );
+    } catch (err: any) {
+      console.error('Failed to create insurance handoff:', err);
+      setWorkflowMessage(err.message || 'Versicherungs-Lead konnte nicht vorbereitet werden.');
+    } finally {
+      setInsuranceLoading(false);
     }
   };
 
@@ -204,7 +712,12 @@ export default function DisputeDetailPage() {
 
   if (!dispute) return null;
 
-  const canResolve = dispute.status === 'open' || dispute.status === 'in_progress';
+  const canResolve = ['open', 'in_progress', 'in_review', 'awaiting_info'].includes(dispute.status);
+  const latestSupportTicket = dispute.supportTickets?.[0] || null;
+  const isLatestSupportTicketClosed = ['closed', 'resolved'].includes((latestSupportTicket?.status || '').toLowerCase());
+  const autoResolutionState = dispute.evidenceRequest?.autoResolution?.state || 'default';
+  const insuranceHandoff = dispute.auditTrail?.find((event) => event.eventType === 'insurance_handoff_created') || null;
+  const insuranceHandoffData = insuranceHandoff?.metadata || null;
 
   return (
     <AdminLayout>
@@ -324,6 +837,349 @@ export default function DisputeDetailPage() {
               </div>
             </div>
 
+            {/* Insurance Handoff */}
+            <div className="rounded-lg border border-cyan-500/20 bg-white p-6 shadow dark:bg-gray-800">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-300">
+                    Versicherung
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                    Schaden-Partner
+                  </h3>
+                </div>
+                <StatusBadge
+                  status={insuranceHandoff ? 'redirected' : 'pending'}
+                  size="sm"
+                />
+              </div>
+
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                CargoBit bereitet hier nur den technischen Partner-Lead vor. Abschluss,
+                Police und Schadenbearbeitung bleiben beim lizenzierten Versicherer oder Makler.
+              </p>
+
+              {insuranceHandoffData && (
+                <div className="mt-4 space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">
+                        {insuranceHandoffData.provider || 'Versicherungspartner'}
+                      </p>
+                      <p className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                        Lead: {insuranceHandoffData.leadId || '-'}
+                      </p>
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {formatDateTime(insuranceHandoff?.createdAt)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                    <span>Prämie: {formatEuroAmount(insuranceHandoffData.premiumEstimateEur)}</span>
+                    <span>Deckung: {formatEuroAmount(insuranceHandoffData.coverageEstimateEur)}</span>
+                    <span>Warenwert: {formatEuroAmount(insuranceHandoffData.cargoValueEur)}</span>
+                    <span>Provision: {formatEuroAmount(insuranceHandoffData.commissionEstimateEur)}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={createInsuranceHandoff}
+                  disabled={insuranceLoading}
+                  className="flex-1 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:opacity-50"
+                >
+                  {insuranceLoading ? 'Bereite vor...' : insuranceHandoff ? 'Lead erneut prüfen' : 'Versicherungs-Lead vorbereiten'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (insuranceHandoffData?.referralUrl) {
+                      window.open(insuranceHandoffData.referralUrl, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                  disabled={!insuranceHandoffData?.referralUrl}
+                  className="rounded-lg border border-cyan-500/30 px-3 py-2 text-sm font-semibold text-cyan-700 transition hover:bg-cyan-50 disabled:opacity-50 dark:text-cyan-200 dark:hover:bg-cyan-950/30"
+                >
+                  Partner-Link öffnen
+                </button>
+              </div>
+            </div>
+
+            {/* Evidence Workflow */}
+            <div className="rounded-lg border border-yellow-500/20 bg-white p-6 shadow dark:bg-gray-800">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Nachweise
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Ticket, Frist und offene Unterlagen
+                  </p>
+                </div>
+                {dispute.evidenceRequest?.isOverdue ? (
+                  <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-200">
+                    Überfällig
+                  </span>
+                ) : dispute.evidenceRequest ? (
+                  <span className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-200">
+                    Angefordert
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    Kein Vorgang
+                  </span>
+                )}
+              </div>
+
+              {dispute.evidenceRequest ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Angefordert</p>
+                      <p className="mt-1 text-sm font-semibold">{formatDateTime(dispute.evidenceRequest.requestedAt)}</p>
+                    </div>
+                    <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Frist</p>
+                      <p className={`mt-1 text-sm font-semibold ${dispute.evidenceRequest.isOverdue ? 'text-red-600 dark:text-red-300' : 'text-yellow-700 dark:text-yellow-300'}`}>
+                        {formatDateTime(dispute.evidenceRequest.dueAt)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {dispute.evidenceRequest.missingEvidence?.length ? (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Offen
+                      </p>
+                      <ul className="mt-2 space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                        {dispute.evidenceRequest.missingEvidence.slice(0, 4).map((item) => (
+                          <li key={item} className="flex gap-2">
+                            <span className="mt-2 h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Prüfung</p>
+                      <p className="mt-1 text-sm font-semibold">
+                        {dispute.evidenceRequest.reviewedAt ? formatDateTime(dispute.evidenceRequest.reviewedAt) : 'Offen'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Auto-Entscheidung</p>
+                      <p className={`mt-1 text-sm font-semibold ${
+                        autoResolutionState === 'blocked'
+                          ? 'text-red-600 dark:text-red-300'
+                          : autoResolutionState === 'approved'
+                            ? 'text-green-600 dark:text-green-300'
+                            : ''
+                      }`}>
+                        {getAutoResolutionLabel(autoResolutionState)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Für diesen Streitfall wurden noch keine zusätzlichen Nachweise angefordert.
+                </p>
+              )}
+
+              {latestSupportTicket && (
+                <div className="mt-4 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Support Ticket</p>
+                      <p className="font-mono text-sm font-semibold">{latestSupportTicket.id}</p>
+                    </div>
+                    <StatusBadge status={latestSupportTicket.status || 'open'} size="sm" />
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    Priorität: {latestSupportTicket.priority || 'NORMAL'} · Aktualisiert: {formatDateTime(latestSupportTicket.updatedAt)}
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-4 space-y-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+                <textarea
+                  value={actionNote}
+                  onChange={(event) => setActionNote(event.target.value)}
+                  rows={2}
+                  placeholder="Interne Notiz für Audit Trail..."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900"
+                />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => runDisputeAction('MARK_EVIDENCE_REVIEWED')}
+                    disabled={Boolean(actionLoading)}
+                    className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {actionLoading === 'MARK_EVIDENCE_REVIEWED' ? 'Prüfe...' : 'Nachweise geprüft'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runDisputeAction('EXTEND_EVIDENCE_DEADLINE', {
+                      dueAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+                    })}
+                    disabled={Boolean(actionLoading) || !dispute.evidenceRequest}
+                    className="rounded-lg bg-yellow-500 px-3 py-2 text-sm font-semibold text-gray-950 transition hover:bg-yellow-400 disabled:opacity-50"
+                  >
+                    {actionLoading === 'EXTEND_EVIDENCE_DEADLINE' ? 'Verlängere...' : 'Frist +48h'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runDisputeAction('CLOSE_SUPPORT_TICKET', { ticketId: latestSupportTicket?.id })}
+                    disabled={Boolean(actionLoading) || !latestSupportTicket || isLatestSupportTicketClosed}
+                    className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-700 disabled:opacity-50 dark:bg-gray-700 dark:hover:bg-gray-600"
+                  >
+                    {actionLoading === 'CLOSE_SUPPORT_TICKET' ? 'Schließe...' : 'Ticket schließen'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runDisputeAction(
+                      autoResolutionState === 'blocked' ? 'APPROVE_AUTO_RESOLUTION' : 'BLOCK_AUTO_RESOLUTION'
+                    )}
+                    disabled={Boolean(actionLoading)}
+                    className="rounded-lg border border-blue-500/30 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-50 dark:text-blue-200 dark:hover:bg-blue-900/30"
+                  >
+                    {actionLoading === 'BLOCK_AUTO_RESOLUTION' || actionLoading === 'APPROVE_AUTO_RESOLUTION'
+                      ? 'Speichere...'
+                      : autoResolutionState === 'blocked'
+                        ? 'Auto freigeben'
+                        : 'Auto sperren'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Decision Recommendation */}
+            <div className="rounded-lg border border-blue-500/20 bg-[#06121C] p-6 shadow-xl shadow-blue-950/20">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">
+                    KI Streitfall-Analyse
+                  </p>
+                  <h3 className="mt-1 text-lg font-semibold text-white">
+                    Entscheidungsempfehlung
+                  </h3>
+                </div>
+                <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${recommendation ? recommendationRiskClass(recommendation.riskLevel) : 'border-blue-500/30 bg-blue-500/10 text-blue-200'}`}>
+                  {recommendationLoading ? 'Analyse...' : recommendation ? recommendation.riskLevel.toUpperCase() : 'WARTET'}
+                </span>
+              </div>
+
+              {recommendationLoading && (
+                <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-300 border-t-transparent" />
+                  Analyse wird mit Fall-, Zahlungs- und Nachweisdaten erstellt.
+                </div>
+              )}
+
+              {!recommendationLoading && recommendation && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs text-slate-400">Empfehlung</p>
+                      <p className="mt-1 text-sm font-semibold text-white">{recommendation.actionLabel}</p>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs text-slate-400">Vertrauen</p>
+                      <p className="mt-1 text-sm font-semibold text-white">{recommendation.confidence}%</p>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs text-slate-400">Betrag</p>
+                      <p className="mt-1 text-sm font-semibold text-white">
+                        {recommendation.suggestedRefundAmountCents
+                          ? formatCurrency(recommendation.suggestedRefundAmountCents, recommendation.currency)
+                          : 'Keine Erstattung'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs text-slate-400">Modus</p>
+                      <p className="mt-1 text-sm font-semibold text-white">
+                        {recommendation.requiresAdminApproval ? 'Admin-Freigabe' : 'Auto-Close möglich'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Begründung</p>
+                    <ul className="mt-2 space-y-2 text-sm text-slate-200">
+                      {recommendation.reasons.slice(0, 3).map((reason) => (
+                        <li key={reason} className="flex gap-2">
+                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-cyan-300" />
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {recommendation.missingEvidence.length > 0 && (
+                    <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-yellow-200">
+                        Fehlende Nachweise
+                      </p>
+                      <ul className="mt-2 space-y-1 text-sm text-yellow-50">
+                        {recommendation.missingEvidence.slice(0, 2).map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {recommendation.signals.slice(0, 4).map((signal) => (
+                      <span key={`${signal.label}-${signal.value}`} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-200">
+                        {signal.label}: {signal.value}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={applyRecommendation}
+                      className="flex-1 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-[#06121C] transition hover:bg-cyan-300"
+                    >
+                      Empfehlung übernehmen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={requestEvidenceWorkflow}
+                      disabled={requestingEvidence}
+                      className="flex-1 rounded-lg border border-yellow-300/30 bg-yellow-300/10 px-4 py-2 text-sm font-semibold text-yellow-100 transition hover:bg-yellow-300/20 disabled:opacity-50"
+                    >
+                      {requestingEvidence ? 'Wird angefordert...' : 'Nachweise anfordern'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => loadRecommendation(dispute)}
+                      className="rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+                    >
+                      Aktualisieren
+                    </button>
+                  </div>
+
+                  {workflowMessage && (
+                    <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3 text-sm text-cyan-100">
+                      {workflowMessage}
+                    </div>
+                  )}
+
+                  <p className="text-xs text-slate-500">
+                    Quelle: {recommendationSource === 'live' ? 'Live Backend' : recommendationSource === 'fallback' ? 'Backend-Fallback' : 'Lokale Analyse'} - keine automatische Auszahlung ohne Freigabe.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Resolution Form */}
             {canResolve && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -344,7 +1200,7 @@ export default function DisputeDetailPage() {
                       <option value="reject">Ablehnen (Keine Erstattung)</option>
                       <option value="refund_full">Volle Erstattung</option>
                       <option value="refund_partial">Teilerstattung</option>
-                      <option value="other">Sonstige Lösung</option>
+                      <option value="other">Kulanz / Sonstige Lösung</option>
                     </select>
                   </div>
 
@@ -411,6 +1267,48 @@ export default function DisputeDetailPage() {
                 )}
               </div>
             )}
+
+            {/* Audit Trail */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Audit Trail
+              </h3>
+              {dispute.auditTrail?.length ? (
+                <div className="space-y-3">
+                  {dispute.auditTrail.slice(0, 6).map((event) => (
+                    <div key={event.id} className="border-l-2 border-blue-500/50 pl-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          {getAuditLabel(event.eventType)}
+                        </p>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          {formatDateTime(event.createdAt)}
+                        </span>
+                      </div>
+                      {(event.oldStatus || event.newStatus) && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          {event.oldStatus || '-'} → {event.newStatus || '-'}
+                        </p>
+                      )}
+                      {Array.isArray(event.metadata?.missingEvidence) && (
+                        <p className="mt-1 text-xs text-yellow-700 dark:text-yellow-300">
+                          {event.metadata.missingEvidence.length} Nachweise angefordert
+                        </p>
+                      )}
+                      {event.metadata?.leadId && (
+                        <p className="mt-1 text-xs text-cyan-700 dark:text-cyan-300">
+                          Lead {event.metadata.leadId} · {event.metadata.provider || 'Versicherungspartner'}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Noch keine Audit-Ereignisse vorhanden.
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -52,6 +52,7 @@ const roleNavItems: Record<string, { icon: any; label: string; href: string }[]>
   carrier: [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/carrier' },
     { icon: Truck, label: 'Verfügbare Loads', href: '/carrier/loads' },
+    { icon: BarChart3, label: 'Disposition', href: '/carrier/dispatch' },
     { icon: Users, label: 'Fahrer', href: '/carrier/drivers' },
     { icon: BarChart3, label: 'Flotte', href: '/carrier/fleet' },
     { icon: Wallet, label: 'Wallet', href: '/carrier/wallet' },

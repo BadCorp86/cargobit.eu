@@ -7,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -20,6 +20,7 @@ enum UserRole {
   SUPPORT
   SHIPPER_COMPANY
   SHIPPER_PRIVATE
+  CARRIER
   DISPATCHER
   DRIVER_SELF_EMPLOYED
   MARKETER
@@ -192,6 +193,61 @@ enum AuditAction {
   FRAUD_ALERT
 }
 
+enum AdminRole {
+  ADMIN
+  FINANCE
+  SUPPORT
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  PARTIAL_REFUNDED
+  PARTIALLY_REFUNDED
+  REFUNDED
+  FAILED
+  CANCELLED
+}
+
+enum PaymentType {
+  CARD
+  BANK_TRANSFER
+  WALLET
+  STRIPE
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  PROCESSED
+  FAILED
+}
+
+enum RefundType {
+  FULL
+  PARTIAL
+  PLATFORM_FEE_ONLY
+}
+
+enum DisputeStatus {
+  OPEN
+  IN_PROGRESS
+  IN_REVIEW
+  AWAITING_INFO
+  RESOLVED
+  CLOSED
+  REJECTED
+  REFUNDED
+}
+
+enum DisputeResolution {
+  REFUND_FULL
+  REFUND_PARTIAL
+  REJECT
+  COMPENSATION
+  RESEND
+}
+
 // ============================================
 // 1. KERNOBJEKTE: USERS, ROLES, COMPANIES
 // ============================================
@@ -243,6 +299,10 @@ model User {
   securityFlags   SecurityFlag[]
   addresses       Address[]
   wallet          Wallet?
+  paymentsAsShipper      Payment[] @relation("ShipperPayments")
+  paymentsAsTransporter  Payment[] @relation("TransporterPayments")
+  disputesCreated        Dispute[] @relation("DisputesCreated")
+  disputesAgainst        Dispute[] @relation("DisputesAgainst")
 
   // Shipper relations
   transportsAsShipper   Transport[]         @relation("ShipperTransports")
@@ -268,6 +328,7 @@ model Company {
   type                CompanyType   @default(SHIPPER)
   vatNumber           String?       @unique
   registrationNumber  String?
+  stripeCustomerId    String?       @unique
   country             String
   status              CompanyStatus @default(PENDING)
   
@@ -280,11 +341,13 @@ model Company {
   drivers             Driver[]
   addresses           Address[]
   plans               CompanyPlan[]
+  subscriptionInvoices SubscriptionInvoice[]
   campaigns           Campaign[]
   wallets             Wallet[]
   
   @@index([name])
   @@index([country])
+  @@index([stripeCustomerId])
 }
 
 model CompanyUser {
@@ -313,6 +376,7 @@ model Verification {
   documentUrl     String?
   documentType    String?
   rejectionReason String?
+  reviewData      String?
   
   reviewedAt      DateTime?
   reviewedBy      String?
@@ -583,6 +647,7 @@ model Transport {
   trackingPoints        TrackingPoint[]
   documents             Document[]
   commissions           Commission[]
+  payments              Payment[]
   
   @@index([shipperUserId])
   @@index([status])
@@ -825,6 +890,7 @@ model WalletTransaction {
   currency            String          @default("EUR")
 
   relatedTransportId  String?
+  paymentId           String?
   payoutId            String?         // Reference to Payout
   description         String?
   reference           String?         // External reference (Stripe ID, etc.)
@@ -836,11 +902,13 @@ model WalletTransaction {
   createdAt           DateTime        @default(now())
 
   wallet              Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  payment             Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   payout              Payout?         @relation(fields: [payoutId], references: [id], onDelete: SetNull)
 
   @@index([walletId])
   @@index([type])
   @@index([relatedTransportId])
+  @@index([paymentId])
   @@index([payoutId])
 }
 
@@ -907,20 +975,77 @@ model Plan {
 }
 
 model CompanyPlan {
-  id          String    @id @default(cuid())
-  companyId   String
-  planId      String
+  id                       String    @id @default(cuid())
+  companyId                String
+  planId                   String
   
-  validFrom   DateTime  @default(now())
-  validTo     DateTime?
+  validFrom                DateTime  @default(now())
+  validTo                  DateTime?
+
+  stripeCustomerId         String?
+  stripeSubscriptionId     String?   @unique
+  stripeCheckoutSessionId  String?
+  stripeStatus             String?
+  billingCycle             String?
+  latestInvoiceId          String?
+  cancelAtPeriodEnd        Boolean   @default(false)
   
-  createdAt   DateTime  @default(now())
+  createdAt                DateTime  @default(now())
   
-  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  plan        Plan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  company                  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan                     Plan      @relation(fields: [planId], references: [id], onDelete: Cascade)
   
   @@index([companyId])
   @@index([planId])
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+  @@index([stripeStatus])
+}
+
+model SubscriptionInvoice {
+  id                    String    @id @default(cuid())
+  companyId             String
+
+  stripeInvoiceId       String    @unique
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  invoiceNumber         String?
+  status                String?
+
+  currency              String    @default("EUR")
+  subtotal              Float     @default(0)
+  tax                   Float     @default(0)
+  total                 Float     @default(0)
+  amountPaid            Float     @default(0)
+  amountDue             Float     @default(0)
+
+  hostedInvoiceUrl      String?
+  invoicePdfUrl         String?
+
+  periodStart           DateTime?
+  periodEnd             DateTime?
+  issuedAt              DateTime?
+  dueAt                 DateTime?
+  paidAt                DateTime?
+
+  emailRecipient        String?
+  emailSent             Boolean   @default(false)
+  emailSentAt           DateTime?
+  emailProvider         String?
+  emailError            String?
+
+  rawPayload            String?
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  company               Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+  @@index([status])
+  @@index([issuedAt])
 }
 
 model Campaign {
@@ -1039,6 +1164,223 @@ model AuditLog {
   @@index([userId])
   @@index([action])
   @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model AdminUser {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  passwordHash        String
+  role                AdminRole @default(SUPPORT)
+  isActive            Boolean   @default(true)
+  is2faEnabled        Boolean   @default(false)
+  twoFactorSecret     String?
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+}
+
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  adminId     String
+  action      String
+  entityType  String
+  entityId    String?
+  dataBefore  String?
+  dataAfter   String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model Payment {
+  id                       String        @id @default(cuid())
+  jobId                    String?
+  bidId                    String?
+  shipperId                String
+  transporterId            String?
+
+  paymentIntentId          String        @unique
+  chargeId                 String?       @unique
+  stripeCustomerId         String?
+
+  amountCents              Int
+  currency                 String        @default("EUR")
+  platformFeeCents         Int           @default(0)
+  stripeFeeCents           Int           @default(0)
+  transporterAmountCents   Int?
+  refundedCents            Int           @default(0)
+  refundedAmountCents      Int           @default(0)
+
+  status                   PaymentStatus @default(PENDING)
+  paymentType              PaymentType   @default(CARD)
+  description              String?
+  metadata                 String?
+  failedReason             String?
+
+  paidAt                   DateTime?
+  succeededAt              DateTime?
+  failedAt                 DateTime?
+  cancelledAt              DateTime?
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+
+  transport                Transport?    @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  shipper                  User          @relation("ShipperPayments", fields: [shipperId], references: [id], onDelete: Cascade)
+  transporter              User?         @relation("TransporterPayments", fields: [transporterId], references: [id], onDelete: SetNull)
+  refunds                  Refund[]
+  auditEvents              PaymentAuditEvent[]
+  walletTransactions       WalletTransaction[]
+
+  @@index([jobId])
+  @@index([shipperId])
+  @@index([transporterId])
+  @@index([paymentIntentId])
+  @@index([chargeId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Refund {
+  id                       String       @id @default(cuid())
+  paymentId                String
+  refundId                 String?      @unique
+  stripeRefundId           String?      @unique
+
+  amountCents              Int
+  currency                 String       @default("EUR")
+  shipperRefundCents       Int          @default(0)
+  platformFeeRefundCents   Int          @default(0)
+  transporterDebitCents    Int          @default(0)
+  refundType               RefundType   @default(PARTIAL)
+
+  reason                   String?
+  status                   RefundStatus @default(PENDING)
+  initiatedBy              String?
+  processedAt              DateTime?
+  stripeCreatedAt          DateTime?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  payment                  Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PaymentAuditEvent {
+  id          String         @id @default(cuid())
+  paymentId   String
+  eventType   String
+  oldStatus   PaymentStatus?
+  newStatus   PaymentStatus?
+  adminId     String?
+  metadata    String?
+  createdAt   DateTime       @default(now())
+
+  payment     Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+model Dispute {
+  id                   String             @id @default(cuid())
+  jobId                String
+  createdById          String
+  againstId            String?
+  assignedToId         String?
+  resolvedById         String?
+
+  reason               String
+  subject              String?
+  description          String
+  disputedAmountCents  Int?
+  currency             String             @default("EUR")
+
+  status               DisputeStatus      @default(OPEN)
+  resolution           DisputeResolution?
+  resolutionText       String?
+  refundAmountCents    Int?
+
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  resolvedAt           DateTime?
+
+  createdBy            User               @relation("DisputesCreated", fields: [createdById], references: [id], onDelete: Cascade)
+  against              User?              @relation("DisputesAgainst", fields: [againstId], references: [id], onDelete: SetNull)
+  messages             DisputeMessage[]
+  attachments          DisputeAttachment[]
+  auditEvents          DisputeAuditEvent[]
+
+  @@index([jobId])
+  @@index([createdById])
+  @@index([againstId])
+  @@index([assignedToId])
+  @@index([resolvedById])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DisputeMessage {
+  id          String   @id @default(cuid())
+  disputeId   String
+  senderId    String
+  senderType  String
+  message     String
+  attachments String?
+  isInternal  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  dispute     Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model DisputeAttachment {
+  id          String   @id @default(cuid())
+  disputeId   String
+  fileName    String
+  fileUrl     String
+  fileType    String?
+  fileSize    Int?
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+
+  dispute     Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId])
+}
+
+model DisputeAuditEvent {
+  id          String         @id @default(cuid())
+  disputeId   String
+  eventType   String
+  oldStatus   DisputeStatus?
+  newStatus   DisputeStatus?
+  adminId     String?
+  metadata    String?
+  createdAt   DateTime       @default(now())
+
+  dispute     Dispute        @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId])
+  @@index([eventType])
   @@index([createdAt])
 }
 
@@ -1436,9 +1778,11 @@ model Partner {
   // Relations
   apiKeys         PartnerApiKey[]
   insuranceProducts InsuranceProduct[]
+  insuranceReferralLeads InsuranceReferralLead[]
   adCampaigns     PartnerAdCampaign[]
   billings        PartnerBilling[]
   policies         InsurancePolicy[]
+  insuranceReferralEvents InsuranceReferralEvent[]
   adStats          PartnerAdStat[]
 
   @@index([type])
@@ -1521,9 +1865,100 @@ model InsuranceProduct {
   // Relations
   partner         Partner       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   policies         InsurancePolicy[]
+  referralLeads    InsuranceReferralLead[]
 
   @@index([partnerId])
   @@index([isActive])
+}
+
+model InsuranceReferralLead {
+  id                    String        @id @default(cuid())
+  partnerId             String?
+  productId             String?
+  transportId           String?
+
+  // Lead context
+  requestedByUserId     String?
+  requestedByRole       String        @default("SHIPPER") // SHIPPER, CARRIER, ADMIN
+  source                String        @default("SHIPPER_CREATE") // SHIPPER_CREATE, CARRIER_ACCEPTANCE, ADMIN
+  status                String        @default("LEAD_CREATED") // LEAD_CREATED, REDIRECTED, CONVERTED, DECLINED, EXPIRED
+
+  // Provider snapshot for audit even if partner config changes later
+  providerName          String
+  productName           String
+  referralUrl           String?
+  externalReference     String?
+
+  // Cargo and route snapshot
+  cargoDescription      String?
+  cargoValueEur         Float?
+  weightKg              Float?
+  pickupCity            String?
+  pickupCountry         String?
+  deliveryCity          String?
+  deliveryCountry       String?
+
+  // Quote snapshot
+  premiumEstimateEur    Float
+  coverageEstimateEur   Float
+  deductibleEur         Float          @default(0)
+  currency              String         @default("EUR")
+
+  // CargoBit monetization as technical lead/referral
+  commissionType        String         @default("PERCENT") // PERCENT, FIXED
+  commissionRate        Float          @default(12.0)
+  commissionEstimateEur Float
+  commissionStatus      String         @default("PENDING") // PENDING, EARNED, INVOICED, PAID, VOID
+  commissionInvoiceReference String?
+  commissionSettledAt   DateTime?
+
+  // Compliance
+  consentAccepted       Boolean        @default(false)
+  complianceNotice      String
+
+  // Timestamps
+  validUntil            DateTime
+  redirectedAt          DateTime?
+  convertedAt           DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  partner               Partner?       @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  product               InsuranceProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  events                InsuranceReferralEvent[]
+
+  @@index([partnerId])
+  @@index([productId])
+  @@index([transportId])
+  @@index([requestedByUserId])
+  @@index([status])
+  @@index([commissionStatus])
+  @@index([createdAt])
+}
+
+model InsuranceReferralEvent {
+  id                    String        @id @default(cuid())
+  leadId                String
+  partnerId             String?
+
+  actorType             String        @default("SYSTEM") // SYSTEM, ADMIN, PARTNER, WEBHOOK
+  actorId               String?
+  eventType             String        // lead_created, lead_redirected, lead_converted, commission_paid
+  oldStatus             String?
+  newStatus             String?
+  externalReference     String?
+  premiumEur            Float?
+  commissionEur         Float?
+  metadata              String?
+  createdAt             DateTime      @default(now())
+
+  lead                  InsuranceReferralLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  partner               Partner?      @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([partnerId])
+  @@index([eventType])
+  @@index([createdAt])
 }
 
 model InsurancePolicy {

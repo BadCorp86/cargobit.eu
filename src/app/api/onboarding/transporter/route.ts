@@ -6,6 +6,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import {
+  processVerificationSubmission,
+  type SubmittedVerificationDocument,
+} from '@/services/verification-workflow.service';
+import { extractDocumentOcrFromFile } from '@/services/verification/ocr.service';
+
+export const runtime = 'nodejs';
 
 // ============================================
 // INTERFACES
@@ -29,11 +36,12 @@ interface TransporterOnboardingData {
 // ============================================
 async function saveFile(file: File, path: string): Promise<string> {
   // Mock implementation - in production use cloud storage
-  const mockPath = `/uploads/${path}`;
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const mockPath = `/uploads${normalizedPath}`;
   console.log(`[STORAGE] Saving file to: ${mockPath}`);
   
   // For now, return a mock URL
-  return `https://storage.cargobit.de${path}`;
+  return `https://storage.cargobit.de${normalizedPath}`;
 }
 
 // ============================================
@@ -53,6 +61,7 @@ export async function POST(request: NextRequest) {
     const capacityKg = parseInt(formData.get('capacityKg') as string) || 0;
     const regionFrom = formData.get('regionFrom') as string;
     const regionTo = formData.get('regionTo') as string;
+    const vatNumber = formData.get('vatNumber') as string | null;
     
     // File uploads
     const businessDoc = formData.get('businessDoc') as File | null;
@@ -141,32 +150,35 @@ export async function POST(request: NextRequest) {
     // Handle file uploads
     let businessDocPath: string | undefined;
     let insuranceDocPath: string | undefined;
+    const verificationDocuments: SubmittedVerificationDocument[] = [];
 
     if (businessDoc && businessDoc.size > 0) {
       businessDocPath = await saveFile(businessDoc, `transporter/${user.id}/business.pdf`);
-      
-      // Create verification record
-      await db.verification.create({
-        data: {
-          userId: user.id,
-          type: 'KYB',
-          documentUrl: businessDocPath,
-          documentType: 'business_license',
-        },
+
+      verificationDocuments.push({
+        type: 'COMMERCIAL_REGISTER_EXTRACT',
+        documentUrl: businessDocPath,
+        name: businessDoc.name || 'business.pdf',
+        mimeType: businessDoc.type,
+        fileSize: businessDoc.size,
+        ocr: await extractDocumentOcrFromFile(businessDoc, {
+          documentType: 'COMMERCIAL_REGISTER_EXTRACT',
+        }),
       });
     }
 
     if (insuranceDoc && insuranceDoc.size > 0) {
       insuranceDocPath = await saveFile(insuranceDoc, `transporter/${user.id}/insurance.pdf`);
-      
-      // Create verification record
-      await db.verification.create({
-        data: {
-          userId: user.id,
-          type: 'VEHICLE',
-          documentUrl: insuranceDocPath,
-          documentType: 'insurance',
-        },
+
+      verificationDocuments.push({
+        type: 'FLEET_INSURANCE',
+        documentUrl: insuranceDocPath,
+        name: insuranceDoc.name || 'insurance.pdf',
+        mimeType: insuranceDoc.type,
+        fileSize: insuranceDoc.size,
+        ocr: await extractDocumentOcrFromFile(insuranceDoc, {
+          documentType: 'FLEET_INSURANCE',
+        }),
       });
     }
 
@@ -180,6 +192,20 @@ export async function POST(request: NextRequest) {
         status: 'ACTIVE',
       },
       update: {},
+    });
+
+    const verification = await processVerificationSubmission({
+      userId: user.id,
+      role: 'CARRIER',
+      country: regionFrom.split('-')[0] || 'DE',
+      companyId: company.id,
+      companyType: 'CARRIER',
+      vatNumber: vatNumber || undefined,
+      documents: verificationDocuments,
+      capabilities: {
+        ownerDrives: true,
+        international: regionTo.includes(',') || regionTo !== regionFrom,
+      },
     });
 
     // Create notification
@@ -214,6 +240,7 @@ export async function POST(request: NextRequest) {
       status: 'pending_review',
       transporterId: company.id,
       userId: user.id,
+      verification,
       message: 'Onboarding erfolgreich eingereicht. Sie werden nach Prüfung freigeschaltet.',
       documents: {
         businessDoc: businessDocPath ? 'uploaded' : 'missing',

@@ -15,6 +15,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { LogOut } from 'lucide-react';
 
 interface NavItem {
   id: string;
@@ -36,6 +37,7 @@ interface SidebarProps {
     role: string;
     avatar?: string;
   };
+  onLogout?: () => void;
 }
 
 const DEFAULT_MENU: NavItem[] = [
@@ -132,6 +134,28 @@ const DEFAULT_MENU: NavItem[] = [
     href: '/admin/payments',
   },
   {
+    id: 'stripe',
+    label: 'Stripe Setup',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8a3 3 0 013-3h12a3 3 0 013 3v8a3 3 0 01-3 3H6a3 3 0 01-3-3V8z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h.01M11 15h2" />
+      </svg>
+    ),
+    href: '/admin/system/stripe',
+  },
+  {
+    id: 'operations',
+    label: 'Operations',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v6h6M20 20v-6h-6" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.5 17.5A8 8 0 0117.6 6.4L20 8.8M4 15.2l2.4 2.4A8 8 0 0017.5 6.5" />
+      </svg>
+    ),
+    href: '/admin/system/operations',
+  },
+  {
     id: 'reports',
     label: 'Berichte',
     icon: (
@@ -196,6 +220,7 @@ export default function Sidebar({
   onToggle,
   onMobileClose,
   user = { name: 'Admin', email: 'admin@cargobit.eu', role: 'Administrator' },
+  onLogout,
 }: SidebarProps) {
   const pathname = usePathname();
 
@@ -346,48 +371,68 @@ export default function Sidebar({
             transition={{ delay: 0.5 }}
           >
             {!collapsed ? (
-              <motion.div 
-                className="flex items-center gap-3 p-3 rounded-[14px] bg-white/[0.03] hover:bg-white/[0.05] transition-colors cursor-pointer group"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                {/* Avatar */}
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C7ED6] to-[#00D4FF] flex items-center justify-center text-white font-semibold">
-                    {user.name.charAt(0).toUpperCase()}
+              <>
+                <motion.div
+                  className="flex items-center gap-3 p-3 rounded-[14px] bg-white/[0.03] hover:bg-white/[0.05] transition-colors cursor-pointer group"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {/* Avatar */}
+                  <div className="relative">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C7ED6] to-[#00D4FF] flex items-center justify-center text-white font-semibold">
+                      {user.name.charAt(0).toUpperCase()}
+                    </div>
+                    <motion.div
+                      className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#2ECC71] rounded-full border-2 border-[#06121C] shadow-lg shadow-[#2ECC71]/30"
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    />
                   </div>
-                  <motion.div 
-                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#2ECC71] rounded-full border-2 border-[#06121C] shadow-lg shadow-[#2ECC71]/30"
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-medium text-sm truncate">{user.name}</p>
+                    <p className="text-white/40 text-xs">{user.role}</p>
+                  </div>
+                </motion.div>
+              {onLogout && (
+                <motion.button
+                  type="button"
+                  onClick={onLogout}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-[14px] border border-[#E74C3C]/20 bg-[#E74C3C]/10 px-3 py-2.5 text-sm font-medium text-[#E74C3C] transition-colors hover:bg-[#E74C3C]/20"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Abmelden
+                </motion.button>
+              )}
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <motion.div
+                  className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C7ED6] to-[#00D4FF] flex items-center justify-center text-white font-semibold cursor-pointer"
+                  whileHover={{ scale: 1.1 }}
+                >
+                  {user.name.charAt(0).toUpperCase()}
+                  <motion.div
+                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#2ECC71] rounded-full border-2 border-[#06121C]"
                     animate={{ scale: [1, 1.2, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-medium text-sm truncate">{user.name}</p>
-                  <p className="text-white/40 text-xs">{user.role}</p>
-                </div>
-                <motion.svg 
-                  className="w-4 h-4 text-white/40 group-hover:text-white/60 transition-colors" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                  whileHover={{ y: -2 }}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-                </motion.svg>
-              </motion.div>
-            ) : (
-              <motion.div 
-                className="relative w-10 h-10 mx-auto rounded-xl bg-gradient-to-br from-[#1C7ED6] to-[#00D4FF] flex items-center justify-center text-white font-semibold cursor-pointer"
-                whileHover={{ scale: 1.1 }}
-              >
-                {user.name.charAt(0).toUpperCase()}
-                <motion.div 
-                  className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#2ECC71] rounded-full border-2 border-[#06121C]"
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                />
-              </motion.div>
+                </motion.div>
+                {onLogout && (
+                  <motion.button
+                    type="button"
+                    onClick={onLogout}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#E74C3C]/20 bg-[#E74C3C]/10 text-[#E74C3C] transition-colors hover:bg-[#E74C3C]/20"
+                    aria-label="Abmelden"
+                    title="Abmelden"
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </motion.button>
+                )}
+              </div>
             )}
           </motion.div>
         </div>

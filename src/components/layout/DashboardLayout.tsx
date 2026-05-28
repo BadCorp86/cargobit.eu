@@ -61,6 +61,13 @@ export default function DashboardLayout({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
+  const adminRoleLabel = user?.role === 'ADMIN' || user?.role === 'admin' ? 'Administrator' : user?.role;
+
+  const handleLogout = async () => {
+    await fetch('/api/admin/auth/logout', { method: 'POST' }).catch(() => undefined);
+    document.cookie = 'admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    router.push('/admin/login');
+  };
 
   // Fetch current admin user
   useEffect(() => {
@@ -157,35 +164,16 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-[#06121C]">
-      {/* Animated Background Effects */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <motion.div 
-          className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-[#1C7ED6]/5 rounded-full blur-[120px]"
-          animate={{ 
-            x: [0, 50, 0],
-            y: [0, 30, 0],
-            opacity: [0.05, 0.08, 0.05],
-          }}
-          transition={{ duration: 10, repeat: Infinity }}
+    <div className="dark min-h-screen bg-[#06121C] text-white" style={{ colorScheme: 'dark' }}>
+      {/* Premium depth background */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden bg-[linear-gradient(180deg,#06121C_0%,#071927_46%,#06121C_100%)]">
+        <motion.div
+          className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(28,126,214,0.22),transparent_48%),linear-gradient(135deg,rgba(0,212,255,0.08),transparent_38%)]"
+          animate={{ opacity: [0.72, 0.95, 0.72] }}
+          transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
         />
-        <motion.div 
-          className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-[#00D4FF]/5 rounded-full blur-[100px]"
-          animate={{ 
-            x: [0, -30, 0],
-            y: [0, -50, 0],
-            opacity: [0.05, 0.1, 0.05],
-          }}
-          transition={{ duration: 8, repeat: Infinity }}
-        />
-        <motion.div 
-          className="absolute top-1/2 left-1/2 w-[300px] h-[300px] bg-[#9B59B6]/3 rounded-full blur-[80px]"
-          animate={{ 
-            scale: [1, 1.2, 1],
-            opacity: [0.03, 0.06, 0.03],
-          }}
-          transition={{ duration: 12, repeat: Infinity }}
-        />
+        <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,0.9)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.9)_1px,transparent_1px)] [background-size:48px_48px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(6,18,28,0.98)_0%,rgba(6,18,28,0.22)_45%,rgba(6,18,28,0.92)_100%)]" />
       </div>
 
       {/* Sidebar */}
@@ -197,19 +185,18 @@ export default function DashboardLayout({
         user={user ? {
           name: user.name || user.email.split('@')[0],
           email: user.email,
-          role: user.role,
+          role: adminRoleLabel || 'Administrator',
         } : undefined}
+        onLogout={handleLogout}
       />
 
       {/* Main Content */}
       <motion.div
         className={`
-          relative min-h-screen transition-all duration-300 ease-out
+          relative min-h-screen transition-[margin] duration-300 ease-out
           ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-[260px]'}
           ml-0
         `}
-        animate={{ marginLeft: sidebarCollapsed ? 80 : 260 }}
-        transition={{ duration: 0.3 }}
       >
         <Topbar
           title={title}
@@ -223,7 +210,7 @@ export default function DashboardLayout({
             initial="initial"
             animate="enter"
             exit="exit"
-            className="p-4 md:p-6 relative"
+            className="relative p-4 sm:p-5 lg:p-6 xl:p-7"
           >
             {children}
           </motion.main>

@@ -6,6 +6,7 @@
 
 import { prisma } from '@/lib/db';
 import { PaymentStatus } from '@prisma/client';
+import { quoteBookingFees } from './fee.service';
 
 // ============================================
 // TYPES
@@ -66,7 +67,16 @@ export async function createPayment(data: {
   description?: string;
 }): Promise<PaymentResult> {
   try {
-    const platformFeeCents = Math.round(data.amountCents * 0.035); // 3.5%
+    const transport = await prisma.transport.findUnique({
+      where: { id: data.jobId },
+      select: { shipperCompanyId: true },
+    });
+    const feeQuote = await quoteBookingFees({
+      amount: centsToEuros(data.amountCents),
+      currency: data.currency || 'EUR',
+      shipperUserId: data.shipperId,
+      shipperCompanyId: transport?.shipperCompanyId,
+    });
     
     const payment = await prisma.payment.create({
       data: {
@@ -75,8 +85,8 @@ export async function createPayment(data: {
         transporterId: data.transporterId,
         amountCents: data.amountCents,
         currency: data.currency || 'EUR',
-        platformFeeCents,
-        transporterAmountCents: data.amountCents - platformFeeCents,
+        platformFeeCents: feeQuote.platformCreditAmountCents,
+        transporterAmountCents: feeQuote.transporterCreditAmountCents,
         status: PaymentStatus.PENDING,
         description: data.description,
       },

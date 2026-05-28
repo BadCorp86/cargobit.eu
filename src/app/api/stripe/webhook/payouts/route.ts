@@ -1,140 +1,112 @@
-// ============================================
-// CARGOBIT STRIPE WEBHOOK HANDLER
-// Payout Event Processing
-// ============================================
-
 import { NextRequest, NextResponse } from 'next/server';
+import Stripe from 'stripe';
 import { db } from '@/lib/db';
 import { PayoutStatus } from '@prisma/client';
+import { getPayoutWebhookSecret } from '@/lib/stripe-readiness';
 
-// ============================================
-// INTERFACES
-// ============================================
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-interface StripeEvent {
+interface StripeWebhookEvent {
   id: string;
   type: string;
   data: {
-    object: any;
+    object: StripeObject;
   };
-  created: number;
+  created?: number;
 }
 
-// ============================================
-// HELPER: Verify Stripe Signature
-// ============================================
-
-function verifyStripeSignature(
-  payload: string,
-  signature: string,
-  secret: string
-): { valid: boolean; event?: StripeEvent; error?: string } {
-  // In production, use stripe.webhooks.constructEvent
-  // For now, parse JSON and validate structure
-  try {
-    const event = JSON.parse(payload) as StripeEvent;
-    
-    if (!event.id || !event.type || !event.data) {
-      return { valid: false, error: 'Invalid event structure' };
-    }
-
-    // Basic signature check (production: use proper HMAC verification)
-    if (signature && signature.startsWith('whsec_')) {
-      return { valid: true, event };
-    }
-
-    // For development/testing, allow without signature
-    if (process.env.NODE_ENV === 'development') {
-      return { valid: true, event };
-    }
-
-    return { valid: false, error: 'Missing or invalid signature' };
-  } catch (error) {
-    return { valid: false, error: 'Invalid JSON payload' };
-  }
+interface StripeObject {
+  id: string;
+  object?: string;
+  amount?: number;
+  currency?: string;
+  destination?: string;
+  transfer?: string;
+  status?: string;
+  failure_message?: string;
+  failure_code?: string;
+  metadata?: Record<string, string>;
 }
 
-// ============================================
-// POST /api/stripe/webhook/payouts
-// ============================================
+interface HandlerResult {
+  success: boolean;
+  message: string;
+  action: string;
+  payoutId?: string;
+  status?: PayoutStatus;
+}
+
+const ACCEPTED_EVENTS = [
+  'transfer.created',
+  'transfer.paid',
+  'transfer.failed',
+  'transfer.reversed',
+  'payout.created',
+  'payout.paid',
+  'payout.failed',
+  'payout.canceled',
+];
+
+export async function GET() {
+  return NextResponse.json({
+    endpoint: '/api/stripe/webhook/payouts',
+    purpose: 'Stripe payout and transfer webhook receiver',
+    stripeSecretConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
+    webhookSecretConfigured: Boolean(getPayoutWebhookSecret()),
+    webhookSecretEnv: process.env.STRIPE_PAYOUT_WEBHOOK_SECRET
+      ? 'STRIPE_PAYOUT_WEBHOOK_SECRET'
+      : 'STRIPE_WEBHOOK_SECRET',
+    acceptedEvents: ACCEPTED_EVENTS,
+    localFallback: process.env.NODE_ENV !== 'production',
+  });
+}
 
 export async function POST(request: NextRequest) {
-  try {
-    const payload = await request.text();
-    const signature = request.headers.get('stripe-signature') || '';
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+  const payload = await request.text();
+  const signature = request.headers.get('stripe-signature') || '';
+  const verification = verifyStripeEvent(payload, signature);
 
-    // Verify signature
-    const { valid, event, error } = verifyStripeSignature(
-      payload,
-      signature,
-      webhookSecret
-    );
-
-    if (!valid || !event) {
-      console.error('Webhook signature verification failed:', error);
-      return NextResponse.json({
+  if (!verification.valid || !verification.event) {
+    return NextResponse.json(
+      {
         error: 'SignatureVerificationError',
-        message: error || 'Invalid signature',
-      }, { status: 400 });
-    }
+        message: verification.error || 'Invalid Stripe webhook signature',
+      },
+      { status: 400 },
+    );
+  }
 
-    // Log event receipt
-    console.log(`[Stripe Webhook] Received event: ${event.type} (${event.id})`);
+  const event = verification.event;
 
-    // Store event for idempotency
+  try {
     const existingEvent = await db.payoutEvent.findUnique({
       where: { id: event.id },
     });
 
     if (existingEvent) {
-      console.log(`[Stripe Webhook] Event already processed: ${event.id}`);
-      return NextResponse.json({ received: true, duplicate: true });
+      return NextResponse.json({
+        received: true,
+        duplicate: true,
+        processed: existingEvent.processed,
+        payoutId: existingEvent.payoutId,
+      });
     }
 
-    // Process event based on type
-    let result: { success: boolean; message: string } = { success: true, message: 'Event processed' };
+    const result = await handleStripeEvent(event);
 
-    switch (event.type) {
-      case 'transfer.created':
-        result = await handleTransferCreated(event);
-        break;
-
-      case 'transfer.paid':
-        result = await handleTransferPaid(event);
-        break;
-
-      case 'transfer.failed':
-        result = await handleTransferFailed(event);
-        break;
-
-      case 'payout.created':
-        result = await handlePayoutCreated(event);
-        break;
-
-      case 'payout.paid':
-        result = await handlePayoutPaid(event);
-        break;
-
-      case 'payout.failed':
-        result = await handlePayoutFailed(event);
-        break;
-
-      case 'payout.canceled':
-        result = await handlePayoutCanceled(event);
-        break;
-
-      default:
-        console.log(`[Stripe Webhook] Unhandled event type: ${event.type}`);
-        result = { success: true, message: 'Event type not handled' };
-    }
-
-    // Store event
     await db.payoutEvent.create({
       data: {
         id: event.id,
+        payoutId: result.payoutId,
         type: event.type,
-        payload: JSON.stringify(event.data.object),
+        payload: JSON.stringify({
+          id: event.id,
+          type: event.type,
+          created: event.created,
+          object: event.data.object,
+          result,
+        }),
         processed: result.success,
         processedAt: result.success ? new Date() : null,
       },
@@ -143,223 +115,464 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       received: true,
       processed: result.success,
+      action: result.action,
       message: result.message,
+      payoutId: result.payoutId,
+      status: result.status,
+      source: 'database',
     });
-
   } catch (error) {
-    console.error('Webhook processing error:', error);
-    return NextResponse.json({
-      error: 'InternalServerError',
-      message: 'Webhook processing failed',
-    }, { status: 500 });
+    console.error('[StripePayoutWebhook] Processing failed:', error);
+
+    if (process.env.NODE_ENV !== 'production') {
+      return NextResponse.json(createDevelopmentFallback(event, error));
+    }
+
+    return NextResponse.json(
+      {
+        error: 'InternalServerError',
+        message: 'Webhook processing failed. Stripe should retry this event.',
+      },
+      { status: 500 },
+    );
   }
 }
 
-// ============================================
-// EVENT HANDLERS
-// ============================================
+function verifyStripeEvent(payload: string, signature: string): {
+  valid: boolean;
+  event?: StripeWebhookEvent;
+  error?: string;
+} {
+  const webhookSecret = getPayoutWebhookSecret();
 
-async function handleTransferCreated(event: StripeEvent): Promise<{ success: boolean; message: string }> {
-  const transfer = event.data.object;
-  const payoutId = transfer.metadata?.payout_id;
+  if (webhookSecret) {
+    if (!signature) {
+      return { valid: false, error: 'Missing stripe-signature header' };
+    }
 
-  if (!payoutId) {
-    return { success: true, message: 'Transfer without payout_id metadata' };
+    try {
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_signature_verification_only');
+      const event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+      return { valid: true, event: normalizeStripeEvent(event) };
+    } catch (error) {
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : 'Stripe signature verification failed',
+      };
+    }
   }
 
-  const payout = await db.payout.findUnique({ where: { id: payoutId } });
-  if (!payout) {
-    console.warn(`[Webhook] Payout not found for transfer: ${transfer.id}`);
-    return { success: true, message: 'Payout not found (orphaned transfer)' };
+  if (process.env.NODE_ENV === 'production') {
+    return { valid: false, error: 'STRIPE_PAYOUT_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET is required in production' };
   }
 
-  // Update payout with Stripe transfer ID
-  await db.payout.update({
-    where: { id: payoutId },
-    data: {
-      stripeTransferId: transfer.id,
-      status: PayoutStatus.PROCESSING,
-    },
-  });
-
-  // Log attempt
-  await db.payoutAttempt.create({
-    data: {
-      payoutId,
-      status: 'transfer_created',
-      stripeResponse: JSON.stringify(transfer),
-    },
-  });
-
-  return { success: true, message: 'Transfer created logged' };
+  try {
+    const event = JSON.parse(payload) as StripeWebhookEvent;
+    if (!event.id || !event.type || !event.data?.object?.id) {
+      return { valid: false, error: 'Invalid Stripe event shape' };
+    }
+    return { valid: true, event };
+  } catch {
+    return { valid: false, error: 'Invalid JSON payload' };
+  }
 }
 
-async function handleTransferPaid(event: StripeEvent): Promise<{ success: boolean; message: string }> {
-  const transfer = event.data.object;
-  const payoutId = transfer.metadata?.payout_id;
-
-  // Try to find payout by metadata or transfer ID
-  let payout = null;
-  if (payoutId) {
-    payout = await db.payout.findUnique({ where: { id: payoutId } });
-  }
-  if (!payout) {
-    payout = await db.payout.findFirst({
-      where: { stripeTransferId: transfer.id },
-    });
-  }
-
-  if (!payout) {
-    console.warn(`[Webhook] Payout not found for transfer.paid: ${transfer.id}`);
-    return { success: true, message: 'Payout not found (orphaned transfer)' };
-  }
-
-  // Check if already paid
-  if (payout.status === PayoutStatus.PAID) {
-    return { success: true, message: 'Payout already marked as paid' };
-  }
-
-  // Update payout status
-  await db.payout.update({
-    where: { id: payout.id },
+function normalizeStripeEvent(event: Stripe.Event): StripeWebhookEvent {
+  return {
+    id: event.id,
+    type: event.type,
+    created: event.created,
     data: {
-      status: PayoutStatus.PAID,
-      stripeTransferId: transfer.id,
-      processedAt: new Date(),
+      object: event.data.object as StripeObject,
     },
-  });
-
-  // Create audit log
-  await db.auditLog.create({
-    data: {
-      userId: payout.userId,
-      action: 'PAYOUT',
-      entityType: 'payout',
-      entityId: payout.id,
-      dataAfter: JSON.stringify({
-        status: 'PAID',
-        transferId: transfer.id,
-        eventId: event.id,
-      }),
-    },
-  });
-
-  // Create notification
-  await db.notification.create({
-    data: {
-      userId: payout.userId,
-      type: 'PAYOUT_COMPLETED',
-      title: 'Auszahlung abgeschlossen',
-      message: `Ihre Auszahlung über ${(payout.amountCents / 100).toLocaleString('de-DE')} ${payout.currency} wurde erfolgreich verarbeitet.`,
-      data: JSON.stringify({
-        payoutId: payout.id,
-        transferId: transfer.id,
-        eventId: event.id,
-      }),
-    },
-  });
-
-  return { success: true, message: 'Payout marked as paid' };
+  };
 }
 
-async function handleTransferFailed(event: StripeEvent): Promise<{ success: boolean; message: string }> {
-  const transfer = event.data.object;
-  const payoutId = transfer.metadata?.payout_id;
+async function handleStripeEvent(event: StripeWebhookEvent): Promise<HandlerResult> {
+  switch (event.type) {
+    case 'transfer.created':
+    case 'payout.created':
+      return markPayoutProcessing(event);
 
-  let payout = null;
-  if (payoutId) {
-    payout = await db.payout.findUnique({ where: { id: payoutId } });
+    case 'transfer.paid':
+    case 'payout.paid':
+      return markPayoutPaid(event);
+
+    case 'transfer.failed':
+    case 'payout.failed':
+      return markPayoutFailed(event);
+
+    case 'transfer.reversed':
+    case 'payout.canceled':
+      return markPayoutCancelled(event);
+
+    default:
+      return {
+        success: true,
+        action: 'ignored',
+        message: `Unhandled Stripe event type: ${event.type}`,
+      };
   }
+}
+
+async function markPayoutProcessing(event: StripeWebhookEvent): Promise<HandlerResult> {
+  const stripeObject = event.data.object;
+  const payout = await findPayoutForStripeObject(stripeObject);
+
   if (!payout) {
-    payout = await db.payout.findFirst({
-      where: { stripeTransferId: transfer.id },
-    });
+    return {
+      success: true,
+      action: 'orphan_recorded',
+      message: `No local payout found for ${event.type} ${stripeObject.id}`,
+    };
   }
 
-  if (!payout) {
-    return { success: true, message: 'Payout not found (orphaned transfer)' };
-  }
-
-  const errorMessage = transfer.failure_message || 'Transfer failed';
-
-  // Update payout status
-  await db.payout.update({
-    where: { id: payout.id },
-    data: {
-      status: PayoutStatus.FAILED,
-      failureReason: errorMessage,
-      retryCount: { increment: 1 },
-      lastRetryAt: new Date(),
-    },
-  });
-
-  // Log attempt
-  await db.payoutAttempt.create({
-    data: {
-      payoutId: payout.id,
-      status: 'transfer_failed',
-      error: errorMessage,
-      stripeResponse: JSON.stringify(transfer),
-    },
-  });
-
-  // Reverse wallet debit
-  const walletTx = await db.walletTransaction.findFirst({
-    where: { payoutId: payout.id, type: 'PAYOUT' },
-  });
-
-  if (walletTx) {
-    await db.walletTransaction.create({
+  await db.$transaction(async (tx) => {
+    await tx.payout.update({
+      where: { id: payout.id },
       data: {
-        walletId: walletTx.walletId,
-        type: 'REFUND',
-        amount: Math.abs(walletTx.amount),
-        currency: walletTx.currency,
+        status: payout.status === PayoutStatus.PAID ? PayoutStatus.PAID : PayoutStatus.PROCESSING,
+        stripeTransferId: stripeObject.object === 'transfer' ? stripeObject.id : payout.stripeTransferId,
+        processedAt: payout.processedAt || new Date(),
+      },
+    });
+
+    await tx.payoutAttempt.create({
+      data: {
         payoutId: payout.id,
-        description: `Rückbuchung fehlgeschlagene Auszahlung ${payout.id}`,
+        status: `${event.type}_received`,
+        stripeResponse: JSON.stringify(stripeObject),
+      },
+    });
+  });
+
+  return {
+    success: true,
+    action: 'processing',
+    message: 'Payout marked as processing',
+    payoutId: payout.id,
+    status: PayoutStatus.PROCESSING,
+  };
+}
+
+async function markPayoutPaid(event: StripeWebhookEvent): Promise<HandlerResult> {
+  const stripeObject = event.data.object;
+  const payout = await findPayoutForStripeObject(stripeObject);
+
+  if (!payout) {
+    return {
+      success: true,
+      action: 'orphan_recorded',
+      message: `No local payout found for ${event.type} ${stripeObject.id}`,
+    };
+  }
+
+  if (payout.status === PayoutStatus.PAID) {
+    return {
+      success: true,
+      action: 'duplicate_paid',
+      message: 'Payout already marked as paid',
+      payoutId: payout.id,
+      status: PayoutStatus.PAID,
+    };
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.payout.update({
+      where: { id: payout.id },
+      data: {
+        status: PayoutStatus.PAID,
+        stripeTransferId: stripeObject.object === 'transfer' ? stripeObject.id : payout.stripeTransferId,
         processedAt: new Date(),
       },
     });
 
-    await db.wallet.update({
-      where: { id: walletTx.walletId },
-      data: { balance: { increment: Math.abs(walletTx.amount) } },
+    await tx.payoutAttempt.create({
+      data: {
+        payoutId: payout.id,
+        status: `${event.type}_confirmed`,
+        stripeResponse: JSON.stringify(stripeObject),
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: payout.userId,
+        action: 'PAYOUT',
+        entityType: 'payout',
+        entityId: payout.id,
+        dataBefore: JSON.stringify({ status: payout.status }),
+        dataAfter: JSON.stringify({
+          status: PayoutStatus.PAID,
+          stripeObjectId: stripeObject.id,
+          eventId: event.id,
+        }),
+      },
+    });
+
+    await tx.notification.create({
+      data: {
+        userId: payout.userId,
+        type: 'PAYOUT_COMPLETED',
+        title: 'Auszahlung abgeschlossen',
+        message: `Ihre Auszahlung ueber ${formatMoney(payout.amountCents / 100, payout.currency)} wurde erfolgreich verarbeitet.`,
+        data: JSON.stringify({
+          payoutId: payout.id,
+          stripeObjectId: stripeObject.id,
+          eventId: event.id,
+        }),
+      },
+    });
+  });
+
+  return {
+    success: true,
+    action: 'paid',
+    message: 'Payout marked as paid',
+    payoutId: payout.id,
+    status: PayoutStatus.PAID,
+  };
+}
+
+async function markPayoutFailed(event: StripeWebhookEvent): Promise<HandlerResult> {
+  const stripeObject = event.data.object;
+  const payout = await findPayoutForStripeObject(stripeObject);
+
+  if (!payout) {
+    return {
+      success: true,
+      action: 'orphan_recorded',
+      message: `No local payout found for ${event.type} ${stripeObject.id}`,
+    };
+  }
+
+  if (payout.status === PayoutStatus.FAILED) {
+    return {
+      success: true,
+      action: 'duplicate_failed',
+      message: 'Payout already marked as failed',
+      payoutId: payout.id,
+      status: PayoutStatus.FAILED,
+    };
+  }
+
+  const failureReason = stripeObject.failure_message || stripeObject.failure_code || 'Stripe payout failed';
+  const payoutWalletTransaction = await db.walletTransaction.findFirst({
+    where: {
+      payoutId: payout.id,
+      type: 'PAYOUT',
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  const refundReference = `payout_failed_${payout.id}`;
+  const existingRefund = payoutWalletTransaction
+    ? await db.walletTransaction.findFirst({
+        where: {
+          walletId: payoutWalletTransaction.walletId,
+          reference: refundReference,
+        },
+      })
+    : null;
+
+  await db.$transaction(async (tx) => {
+    await tx.payout.update({
+      where: { id: payout.id },
+      data: {
+        status: PayoutStatus.FAILED,
+        failureReason,
+        retryCount: { increment: 1 },
+        lastRetryAt: new Date(),
+      },
+    });
+
+    if (payoutWalletTransaction && !existingRefund) {
+      const refundAmount = Math.abs(payoutWalletTransaction.amount);
+
+      await tx.walletTransaction.create({
+        data: {
+          walletId: payoutWalletTransaction.walletId,
+          type: 'REFUND',
+          amount: refundAmount,
+          currency: payoutWalletTransaction.currency,
+          payoutId: payout.id,
+          reference: refundReference,
+          description: `Rueckbuchung fehlgeschlagene Auszahlung ${payout.id}`,
+          processedAt: new Date(),
+        },
+      });
+
+      await tx.wallet.update({
+        where: { id: payoutWalletTransaction.walletId },
+        data: {
+          balance: { increment: refundAmount },
+          totalWithdrawn: { decrement: refundAmount },
+        },
+      });
+    }
+
+    await tx.payoutAttempt.create({
+      data: {
+        payoutId: payout.id,
+        status: `${event.type}_failed`,
+        error: failureReason,
+        stripeResponse: JSON.stringify(stripeObject),
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: payout.userId,
+        action: 'PAYOUT',
+        entityType: 'payout',
+        entityId: payout.id,
+        dataBefore: JSON.stringify({ status: payout.status }),
+        dataAfter: JSON.stringify({
+          status: PayoutStatus.FAILED,
+          failureReason,
+          walletRefunded: Boolean(payoutWalletTransaction && !existingRefund),
+          eventId: event.id,
+        }),
+      },
+    });
+
+    await tx.notification.create({
+      data: {
+        userId: payout.userId,
+        type: 'PAYOUT_FAILED',
+        title: 'Auszahlung fehlgeschlagen',
+        message: `Ihre Auszahlung konnte nicht verarbeitet werden. ${payoutWalletTransaction && !existingRefund ? 'Der Betrag wurde Ihrem Wallet gutgeschrieben.' : 'Bitte pruefen Sie die Auszahlungsmethode.'}`,
+        data: JSON.stringify({
+          payoutId: payout.id,
+          failureReason,
+          eventId: event.id,
+        }),
+      },
+    });
+  });
+
+  return {
+    success: true,
+    action: 'failed_reversed',
+    message: payoutWalletTransaction && !existingRefund
+      ? 'Payout marked as failed and wallet debit reversed'
+      : 'Payout marked as failed',
+    payoutId: payout.id,
+    status: PayoutStatus.FAILED,
+  };
+}
+
+async function markPayoutCancelled(event: StripeWebhookEvent): Promise<HandlerResult> {
+  const stripeObject = event.data.object;
+  const payout = await findPayoutForStripeObject(stripeObject);
+
+  if (!payout) {
+    return {
+      success: true,
+      action: 'orphan_recorded',
+      message: `No local payout found for ${event.type} ${stripeObject.id}`,
+    };
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.payout.update({
+      where: { id: payout.id },
+      data: {
+        status: PayoutStatus.CANCELLED,
+        failureReason: stripeObject.failure_message || 'Stripe payout cancelled',
+        lastRetryAt: new Date(),
+      },
+    });
+
+    await tx.payoutAttempt.create({
+      data: {
+        payoutId: payout.id,
+        status: `${event.type}_cancelled`,
+        stripeResponse: JSON.stringify(stripeObject),
+      },
+    });
+
+    await tx.notification.create({
+      data: {
+        userId: payout.userId,
+        type: 'PAYOUT_CANCELLED',
+        title: 'Auszahlung storniert',
+        message: 'Ihre Auszahlung wurde storniert und muss neu geprueft werden.',
+        data: JSON.stringify({
+          payoutId: payout.id,
+          eventId: event.id,
+        }),
+      },
+    });
+  });
+
+  return {
+    success: true,
+    action: 'cancelled',
+    message: 'Payout marked as cancelled',
+    payoutId: payout.id,
+    status: PayoutStatus.CANCELLED,
+  };
+}
+
+async function findPayoutForStripeObject(stripeObject: StripeObject) {
+  const metadata = stripeObject.metadata || {};
+  const payoutId = metadata.payout_id || metadata.payoutId || metadata.payout;
+  const idempotencyKey = metadata.idempotency_key || metadata.idempotencyKey;
+
+  if (payoutId) {
+    const payout = await db.payout.findUnique({
+      where: { id: payoutId },
+    });
+    if (payout) return payout;
+  }
+
+  if (idempotencyKey) {
+    const payout = await db.payout.findUnique({
+      where: { idempotencyKey },
+    });
+    if (payout) return payout;
+  }
+
+  if (stripeObject.id) {
+    const payout = await db.payout.findFirst({
+      where: {
+        OR: [
+          { stripeTransferId: stripeObject.id },
+          { idempotencyKey: stripeObject.id },
+        ],
+      },
+    });
+    if (payout) return payout;
+  }
+
+  if (stripeObject.transfer) {
+    return db.payout.findFirst({
+      where: { stripeTransferId: stripeObject.transfer },
     });
   }
 
-  // Create notification
-  await db.notification.create({
-    data: {
-      userId: payout.userId,
-      type: 'PAYOUT_FAILED',
-      title: 'Auszahlung fehlgeschlagen',
-      message: `Ihre Auszahlung konnte nicht verarbeitet werden: ${errorMessage}`,
-      data: JSON.stringify({
-        payoutId: payout.id,
-        error: errorMessage,
-      }),
+  return null;
+}
+
+function createDevelopmentFallback(event: StripeWebhookEvent, error: unknown) {
+  return {
+    received: true,
+    processed: true,
+    action: 'development_fallback',
+    message: 'Database unavailable in local development; webhook shape accepted.',
+    event: {
+      id: event.id,
+      type: event.type,
+      objectId: event.data.object.id,
     },
-  });
-
-  return { success: true, message: 'Payout marked as failed, wallet credited' };
+    source: 'fallback',
+    warning: error instanceof Error ? error.message : 'Database unavailable',
+  };
 }
 
-async function handlePayoutCreated(event: StripeEvent): Promise<{ success: boolean; message: string }> {
-  // Stripe Connect payout to connected account
-  return { success: true, message: 'Payout created event logged' };
-}
-
-async function handlePayoutPaid(event: StripeEvent): Promise<{ success: boolean; message: string }> {
-  // Payout to bank account completed
-  return { success: true, message: 'Payout paid event logged' };
-}
-
-async function handlePayoutFailed(event: StripeEvent): Promise<{ success: boolean; message: string }> {
-  // Payout to bank account failed
-  return { success: true, message: 'Payout failed event logged' };
-}
-
-async function handlePayoutCanceled(event: StripeEvent): Promise<{ success: boolean; message: string }> {
-  // Payout was canceled
-  return { success: true, message: 'Payout canceled event logged' };
+function formatMoney(value: number, currency = 'EUR') {
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency,
+  }).format(value);
 }

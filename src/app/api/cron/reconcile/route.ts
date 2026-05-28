@@ -17,13 +17,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { verifyCronRequest } from '@/lib/cron-auth';
 import { reconcileAllRecent, getReconciliationStats } from '@/services/refund-reconciliation.service';
 
 // ============================================
 // CONFIGURATION
 // ============================================
 
-const CRON_SECRET = process.env.CRON_SECRET || 'cron-secret-dev';
 const LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 // ============================================
@@ -127,17 +127,8 @@ async function recordMetrics(result: {
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
-
-  // Verify cron secret
-  const authHeader = request.headers.get('authorization');
-  const providedSecret = authHeader?.replace('Bearer ', '');
-
-  if (providedSecret !== CRON_SECRET) {
-    return NextResponse.json(
-      { error: 'Unauthorized', message: 'Invalid cron secret' },
-      { status: 401 }
-    );
-  }
+  const authError = verifyCronRequest(request);
+  if (authError) return authError;
 
   console.log('[CRON] Reconciliation job started');
 

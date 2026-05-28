@@ -140,6 +140,41 @@ const NAV_ITEMS: NavItem[] = [
     roles: ['ADMIN', 'FINANCE'],
   },
   {
+    id: 'insurance',
+    label: 'Versicherungen',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75l2 2 4-4m5.25-3.5A11.25 11.25 0 0112 21.75 11.25 11.25 0 013.75 7.25 11.25 11.25 0 0012 2.25a11.25 11.25 0 008.25 5z" />
+      </svg>
+    ),
+    href: '/admin/insurance',
+    roles: ['ADMIN', 'FINANCE'],
+  },
+  {
+    id: 'stripe',
+    label: 'Stripe Setup',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8a3 3 0 013-3h12a3 3 0 013 3v8a3 3 0 01-3 3H6a3 3 0 01-3-3V8z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h.01M11 15h2" />
+      </svg>
+    ),
+    href: '/admin/system/stripe',
+    roles: ['ADMIN', 'FINANCE'],
+  },
+  {
+    id: 'operations',
+    label: 'Operations',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v6h6M20 20v-6h-6" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.5 17.5A8 8 0 0117.6 6.4L20 8.8M4 15.2l2.4 2.4A8 8 0 0017.5 6.5" />
+      </svg>
+    ),
+    href: '/admin/system/operations',
+    roles: ['ADMIN'],
+  },
+  {
     id: 'reports',
     label: 'Berichte',
     icon: (

@@ -26,10 +26,10 @@ interface ResolveDisputeRequest {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { disputeId: string } }
+  { params }: { params: Promise<{ disputeId: string }> | { disputeId: string } }
 ) {
   return withAdminAuth(request, async (admin) => {
-    const disputeId = params.disputeId;
+    const { disputeId } = await params;
     
     // Parse request
     let body: ResolveDisputeRequest;

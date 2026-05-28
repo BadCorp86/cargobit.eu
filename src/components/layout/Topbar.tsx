@@ -12,6 +12,8 @@
  */
 
 import React, { useState } from 'react';
+import { Bell, ChevronDown, Download, LogOut, Menu, Plus, Search, Sparkles } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface TopbarProps {
@@ -34,10 +36,16 @@ export default function Topbar({
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
+  const router = useRouter();
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     onSearch?.(searchQuery);
+  };
+
+  const handleLogout = async () => {
+    await fetch('/api/admin/auth/logout', { method: 'POST' }).catch(() => undefined);
+    router.push('/admin/login');
   };
 
   const notifications = [
@@ -51,7 +59,7 @@ export default function Topbar({
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      className="sticky top-0 z-40 h-20 bg-[#06121C]/80 backdrop-blur-xl border-b border-white/[0.08]"
+      className="sticky top-0 z-40 h-20 border-b border-white/[0.08] bg-[#06121C]/85 backdrop-blur-xl"
     >
       <div className="h-full px-6 flex items-center justify-between">
         {/* Left: Mobile Menu + Title */}
@@ -63,10 +71,10 @@ export default function Topbar({
               className="lg:hidden p-2 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] transition-all"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              aria-label="Menü öffnen"
+              type="button"
             >
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
+              <Menu className="h-5 w-5 text-white" />
             </motion.button>
           )}
           <div>
@@ -79,7 +87,7 @@ export default function Topbar({
               {title}
             </motion.h1>
             <motion.p 
-              className="text-white/40 text-sm hidden sm:block"
+              className="hidden text-sm text-white/40 xl:block"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
@@ -95,8 +103,8 @@ export default function Topbar({
           {showSearch && (
             <motion.form 
               onSubmit={handleSearch} 
-              className="relative hidden md:flex items-center"
-              animate={{ width: searchFocused ? 288 : 224 }}
+              className="relative hidden lg:flex items-center"
+              animate={{ width: searchFocused ? 300 : 232 }}
               transition={{ duration: 0.3 }}
             >
               <motion.div
@@ -106,9 +114,7 @@ export default function Topbar({
                   boxShadow: searchFocused ? '0 0 20px rgba(28, 126, 214, 0.2)' : '0 0 0px transparent',
                 }}
               />
-              <svg className="absolute left-3 w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <Search className="absolute left-3 h-4 w-4 text-white/40" />
               <input
                 type="text"
                 placeholder="Suchen..."
@@ -128,10 +134,10 @@ export default function Topbar({
               className="relative p-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] transition-all"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              aria-label="Benachrichtigungen öffnen"
+              type="button"
             >
-              <svg className="w-5 h-5 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
+              <Bell className="h-5 w-5 text-white/70" />
               {/* Notification Badge */}
               <motion.span
                 className="absolute -top-1 -right-1 w-5 h-5 bg-[#E74C3C] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-lg shadow-[#E74C3C]/30"
@@ -188,25 +194,23 @@ export default function Topbar({
 
           {/* Language */}
           <motion.button 
-            className="hidden sm:flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.15] transition-all group"
+            className="hidden xl:flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.15] transition-all group"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
+            type="button"
           >
             <span className="text-sm text-white/60 group-hover:text-white transition-colors">DE</span>
-            <svg className="w-3 h-3 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+            <ChevronDown className="h-3 w-3 text-white/40" />
           </motion.button>
 
           {/* Export Button */}
           <motion.button 
-            className="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.15] transition-all group"
+            className="hidden xl:flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] hover:bg-white/[0.08] hover:border-white/[0.15] transition-all group"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
+            type="button"
           >
-            <svg className="w-4 h-4 text-white/60 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-            </svg>
+            <Download className="h-4 w-4 text-white/60 transition-colors group-hover:text-white" />
             <span className="text-sm text-white/60 group-hover:text-white transition-colors">Export</span>
           </motion.button>
 
@@ -218,6 +222,7 @@ export default function Topbar({
               boxShadow: '0 0 25px rgba(28, 126, 214, 0.4)',
             }}
             whileTap={{ scale: 0.98 }}
+            type="button"
           >
             {/* Animated glow */}
             <motion.div
@@ -225,24 +230,33 @@ export default function Topbar({
               animate={{ x: ['-100%', '100%'] }}
               transition={{ duration: 2, repeat: Infinity, repeatDelay: 1 }}
             />
-            <svg className="w-4 h-4 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
+            <Plus className="relative z-10 h-4 w-4" />
             <span className="hidden sm:inline relative z-10">Neuer Eintrag</span>
           </motion.button>
+
+          <motion.div
+            className="hidden xl:flex items-center gap-2 rounded-xl border border-[#00D4FF]/20 bg-[#00D4FF]/10 px-3 py-2.5 text-[#00D4FF]"
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.25 }}
+          >
+            <Sparkles className="h-4 w-4" />
+            <span className="text-xs font-medium">AI Routing aktiv</span>
+          </motion.div>
 
           {/* Custom Actions */}
           {actions}
 
           {/* Logout */}
           <motion.button
+            onClick={handleLogout}
             className="p-2.5 rounded-xl bg-[#E74C3C]/10 border border-[#E74C3C]/20 hover:bg-[#E74C3C]/20 transition-all"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
+            aria-label="Abmelden"
+            type="button"
           >
-            <svg className="w-5 h-5 text-[#E74C3C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
+            <LogOut className="h-5 w-5 text-[#E74C3C]" />
           </motion.button>
         </div>
       </div>

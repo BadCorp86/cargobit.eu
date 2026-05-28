@@ -1,17 +1,30 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
+  const pathname = usePathname();
   const [mounted, setMounted] = React.useState(false);
+  const isAdminRoute = pathname?.startsWith("/admin");
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  React.useEffect(() => {
+    if (isAdminRoute) {
+      setTheme("dark");
+    }
+  }, [isAdminRoute, setTheme]);
+
+  if (isAdminRoute) {
+    return null;
+  }
 
   if (!mounted) {
     return (

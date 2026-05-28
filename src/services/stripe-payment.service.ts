@@ -12,6 +12,7 @@
 
 import { prisma } from '@/lib/db';
 import { PaymentStatus } from '@prisma/client';
+import { quoteBookingFees } from './fee.service';
 
 // ============================================
 // TYPES
@@ -52,8 +53,6 @@ export interface PaymentIntentWebhookData {
 // ============================================
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
-const PLATFORM_FEE_PERCENT = 3.5; // 3.5% platform fee
-
 // Stripe API base URL for direct API calls
 const STRIPE_API_BASE = 'https://api.stripe.com/v1';
 
@@ -173,9 +172,18 @@ export async function createPaymentIntent(
       };
     }
 
-    // Calculate platform fee
-    const platformFeeCents = Math.round(amountCents * (PLATFORM_FEE_PERCENT / 100));
-    const transporterAmountCents = amountCents - platformFeeCents;
+    const transport = await prisma.transport.findUnique({
+      where: { id: jobId },
+      select: { shipperCompanyId: true },
+    });
+    const feeQuote = await quoteBookingFees({
+      amount: amountCents / 100,
+      currency,
+      shipperUserId: shipperId,
+      shipperCompanyId: transport?.shipperCompanyId,
+    });
+    const platformFeeCents = feeQuote.platformCreditAmountCents;
+    const transporterAmountCents = feeQuote.transporterCreditAmountCents;
 
     // Create Stripe PaymentIntent
     const piResult = await stripeApi<{
@@ -197,6 +205,8 @@ export async function createPaymentIntent(
           shipper_id: shipperId,
           transporter_id: transporterId || '',
           platform_fee_cents: String(platformFeeCents),
+          commission_cents: String(feeQuote.commissionAmountCents),
+          wallet_fee_cents: String(feeQuote.walletFeeAmountCents),
           type: 'job_payment',
           ...metadata,
         },
@@ -247,6 +257,8 @@ export async function createPaymentIntent(
           payment_intent_id: paymentIntent.id,
           amount_cents: amountCents,
           platform_fee_cents: platformFeeCents,
+          commission_cents: feeQuote.commissionAmountCents,
+          wallet_fee_cents: feeQuote.walletFeeAmountCents,
         }),
       },
     });
