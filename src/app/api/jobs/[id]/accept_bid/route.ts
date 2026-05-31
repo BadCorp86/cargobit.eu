@@ -209,23 +209,17 @@ export async function PATCH(
         },
       });
       
-      // 3) Credit transporter: accepted price minus CargoBit commission.
-      // Note: Pending until completed as per Python comment
-      await tx.wallet.update({
-        where: { id: transporterWallet.id },
-        data: { balance: { increment: feeQuote.transporterCreditAmount } },
-      });
-      
+      // 3) Mark transporter settlement as pending. The real wallet credit is released
+      // after POD/eCMR and invoice gates have passed.
       await tx.walletTransaction.create({
         data: {
           walletId: transporterWallet.id,
           type: 'PAYMENT_IN',
-          amount: feeQuote.transporterCreditAmount,
+          amount: 0,
           currency: feeQuote.currency,
           relatedTransportId: jobId,
-          reference: bidId,
-          description: `Payment for job ${jobId} minus ${feeQuote.commissionPercent}% CargoBit commission`,
-          processedAt: new Date(),
+          reference: `pending_${bidId}`,
+          description: `Settlement pending for job ${jobId}: ${feeQuote.transporterCreditAmount} ${feeQuote.currency} after POD and invoice`,
         },
       });
       
@@ -349,6 +343,7 @@ export async function PATCH(
       wallet_fee_cents: feeQuote.walletFeeAmountCents,
       shipper_debit_cents: feeQuote.shipperDebitAmountCents,
       transporter_amount_cents: feeQuote.transporterCreditAmountCents,
+      settlement_status: 'held_until_pod_invoice',
       plan: feeQuote.plan,
       insurance_referral: insuranceReferral,
     });

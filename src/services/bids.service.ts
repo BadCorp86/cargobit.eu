@@ -462,20 +462,17 @@ async function processBooking(offer: any): Promise<{ success: boolean; error?: s
         },
       }),
       
-      // 3. Credit transporter (pending until completion)
-      prisma.wallet.update({
-        where: { id: transporterWallet.id },
-        data: { balance: { increment: feeQuote.transporterCreditAmount } },
-      }),
+      // 3. Mark transporter settlement as pending. The actual wallet credit is released
+      // after POD/eCMR and invoice gates have passed.
       prisma.walletTransaction.create({
         data: {
           walletId: transporterWallet.id,
           type: 'PAYMENT_IN',
-          amount: feeQuote.transporterCreditAmount,
+          amount: 0,
           currency: feeQuote.currency,
           relatedTransportId: transport.id,
-          description: `Payment for job ${transport.id} minus ${feeQuote.commissionPercent}% CargoBit commission`,
-          processedAt: new Date(),
+          reference: `pending_${offer.id}`,
+          description: `Settlement pending for job ${transport.id}: ${feeQuote.transporterCreditAmount} ${feeQuote.currency} after POD and invoice`,
         },
       }),
       

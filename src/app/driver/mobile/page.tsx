@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { getFallbackDriverMission } from '@/lib/product-operating-model';
 import { useAuthStore } from '@/lib/auth-store';
+import { cn } from '@/lib/utils';
 import type { DriverMobileActionId } from '@/lib/driver-mobile';
 
 type DriverMission = ReturnType<typeof getFallbackDriverMission> & {
@@ -43,6 +44,7 @@ export default function DriverMobilePage() {
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<DriverMobileActionId | null>(null);
   const [invoiceHref, setInvoiceHref] = useState<string | null>(null);
+  const [settlementNotice, setSettlementNotice] = useState<{ type: 'success' | 'warning'; text: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +86,7 @@ export default function DriverMobilePage() {
 
     setActionPending(action);
     setLastAction(null);
+    setSettlementNotice(null);
 
     try {
       const response = await fetch('/api/driver/mobile/action', {
@@ -109,6 +112,14 @@ export default function DriverMobilePage() {
 
       if (payload?.mission) setMission(payload.mission);
       if (payload?.message) setLastAction(payload.message);
+      if (payload?.settlementWarning) {
+        setSettlementNotice({ type: 'warning', text: payload.settlementWarning });
+      } else if (payload?.issuedInvoice?.document) {
+        setSettlementNotice({
+          type: 'success',
+          text: 'POD gespeichert. Rechnung wurde automatisch erstellt und das Payout Gate ist bereit.',
+        });
+      }
       setInvoiceHref(payload?.next === 'invoice_and_payout_ready'
         ? payload.orderDetailHref || payload.invoicePreviewHref
         : null);
@@ -204,6 +215,18 @@ export default function DriverMobilePage() {
             >
               Rechnungsvorschau / Payout Gate ansehen
             </Link>
+          )}
+          {settlementNotice && (
+            <p
+              className={cn(
+                'mt-3 rounded-xl border px-3 py-2 text-sm',
+                settlementNotice.type === 'success'
+                  ? 'border-[#2ECC71]/20 bg-[#2ECC71]/10 text-[#2ECC71]'
+                  : 'border-[#F39C12]/25 bg-[#F39C12]/10 text-[#F39C12]',
+              )}
+            >
+              {settlementNotice.text}
+            </p>
           )}
         </section>
 

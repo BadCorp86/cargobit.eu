@@ -7,6 +7,7 @@ import {
   getStatusForDriverAction,
   type DriverMobileActionId,
 } from '@/lib/driver-mobile';
+import { issueOrderInvoice } from '@/lib/order-settlement';
 
 const validActions: DriverMobileActionId[] = [
   'confirm_pickup',
@@ -165,6 +166,28 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    let issuedInvoice = null;
+    let settlementWarning: string | undefined;
+
+    if (action === 'submit_pod') {
+      try {
+        issuedInvoice = await issueOrderInvoice({
+          orderId: transport.id,
+          amount: transport.agreedPrice || transport.shipperBudget || 850,
+          actorId: userId,
+          sendEmail: true,
+          allowFallback: false,
+        });
+
+        if (!issuedInvoice) {
+          settlementWarning = 'POD gespeichert, Rechnung konnte aber noch nicht automatisch erstellt werden.';
+        }
+      } catch (settlementError) {
+        console.error('[DriverMobileActionAPI] Invoice auto-issue failed:', settlementError);
+        settlementWarning = 'POD gespeichert, Rechnung wird manuell im Auftrag vorbereitet.';
+      }
+    }
+
     return NextResponse.json({
       mission: updatedAssignment
         ? buildDriverMissionFromAssignment(updatedAssignment, transport.assignment.driver)
@@ -174,6 +197,8 @@ export async function POST(request: NextRequest) {
       next: action === 'submit_pod' ? 'invoice_and_payout_ready' : 'driver_timeline_updated',
       invoicePreviewHref: `/api/orders/${transport.id}/invoice`,
       orderDetailHref: `/orders/${transport.id}?focus=invoice`,
+      issuedInvoice,
+      settlementWarning,
     });
   } catch (error) {
     console.error('[DriverMobileActionAPI] Failed:', error);

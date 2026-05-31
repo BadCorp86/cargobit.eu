@@ -117,6 +117,9 @@ function isDemoOrderId(orderId: string) {
 }
 
 function enrichLifecycle(lifecycle: LifecycleStage[], transport: any): LifecycleStage[] {
+  const pod = transport.documents?.find((document: any) => ['pod', 'foto_delivery'].includes(document.type));
+  const invoiceDocument = transport.documents?.find((document: any) => document.type === 'rechnung');
+
   return lifecycle.map((stage) => {
     if (stage.id === 'offer' && transport.offers?.length) {
       const accepted = transport.offers.find((offer: any) => offer.status === 'ACCEPTED');
@@ -129,7 +132,6 @@ function enrichLifecycle(lifecycle: LifecycleStage[], transport: any): Lifecycle
     }
 
     if (stage.id === 'pod') {
-      const pod = transport.documents?.find((document: any) => ['pod', 'foto_delivery'].includes(document.type));
       return {
         ...stage,
         status: pod ? 'done' : stage.status,
@@ -137,10 +139,31 @@ function enrichLifecycle(lifecycle: LifecycleStage[], transport: any): Lifecycle
       };
     }
 
-    if (stage.id === 'invoice' && transport.commissions?.length) {
+    if (stage.id === 'invoice') {
+      if (invoiceDocument) {
+        return {
+          ...stage,
+          status: 'done',
+          description: `Rechnung erstellt: ${invoiceDocument.name}`,
+        };
+      }
+
       return {
         ...stage,
-        description: 'Gebuehren und Wallet-Abrechnung wurden fuer die Rechnung vorbereitet.',
+        status: pod && stage.status !== 'done' ? 'active' : stage.status,
+        description: transport.commissions?.length
+          ? 'Gebuehren und Wallet-Abrechnung wurden fuer die Rechnung vorbereitet.'
+          : stage.description,
+      };
+    }
+
+    if (stage.id === 'payout' && !invoiceDocument) {
+      return {
+        ...stage,
+        status: pod ? 'blocked' : stage.status,
+        description: pod
+          ? 'Auszahlung wartet auf automatisch erzeugte Rechnung und Risk Gate.'
+          : stage.description,
       };
     }
 

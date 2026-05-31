@@ -110,6 +110,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         };
       }
 
+      const legacyImmediateCredit = await tx.walletTransaction.findFirst({
+        where: {
+          walletId: wallet.id,
+          relatedTransportId: id,
+          type: 'PAYMENT_IN',
+          amount: { gt: 0 },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (legacyImmediateCredit) {
+        return {
+          wallet,
+          walletTransaction: legacyImmediateCredit,
+          notification: null,
+          duplicate: true,
+        };
+      }
+
       const walletTransaction = await tx.walletTransaction.create({
         data: {
           walletId: wallet.id,
