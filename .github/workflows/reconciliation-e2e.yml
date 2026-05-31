@@ -35,6 +35,11 @@ env:
   Newman_VERSION: '6'
   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
+permissions:
+  contents: read
+  checks: write
+  actions: read
+
 jobs:
   e2e-tests:
     name: Run Newman E2E Tests
@@ -106,11 +111,12 @@ jobs:
       - name: Publish Test Results
         uses: dorny/test-reporter@v1
         if: always()
+        continue-on-error: true
         with:
           name: Newman E2E Results
           path: reports/newman-reconciliation.xml
           reporter: java-junit
-          fail-on-error: true
+          fail-on-error: false
 
       - name: Check Test Results
         run: |

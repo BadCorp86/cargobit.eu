@@ -1,39 +1,27 @@
 /**
  * Seed Script for Demo Data
- * 
+ *
  * Creates sample payments and disputes for admin UI testing.
- * 
+ *
  * Run with: npx ts-node scripts/seed-demo-data.ts
  */
 
-import { PrismaClient, PaymentStatus, DisputeStatus, DisputeReason } from '@prisma/client';
+import { PrismaClient, PaymentStatus, RefundStatus, DisputeStatus, DisputeResolution } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// ============================================
-// CREATE DEMO USERS
-// ============================================
+const disputeReasons = {
+  DAMAGE: 'DAMAGE',
+  DELAY: 'DELAY',
+  LOST_CARGO: 'LOST_CARGO',
+  WRONG_DELIVERY: 'WRONG_DELIVERY',
+  QUALITY_ISSUE: 'QUALITY_ISSUE',
+  PRICE_DISPUTE: 'PRICE_DISPUTE',
+  DRIVER_BEHAVIOR: 'DRIVER_BEHAVIOR',
+  OTHER: 'OTHER',
+} as const;
 
-async function createDemoUsers() {
-  console.log('👥 Creating demo users...');
-
-  // Check if users already exist
-  const existingUsers = await prisma.user.findMany();
-  if (existingUsers.length > 0) {
-    console.log(`⏭️  Users already exist (${existingUsers.length} found)`);
-    return existingUsers;
-  }
-
-  const users = await Promise.all([
-    prisma.$
- * Creates demo payments and disputes for testing.
- * 
- * Run with: npx ts-node scripts/seed-demo-data.ts
- */
-
-import { PrismaClient, PaymentStatus, RefundStatus, DisputeStatus, DisputeReason, DisputeResolution, TransactionType } from '@prisma/client';
-
-const prisma = new PrismaClient();
+type DisputeReason = (typeof disputeReasons)[keyof typeof disputeReasons];
 
 // ============================================
 // HELPER FUNCTIONS
@@ -163,13 +151,13 @@ async function seedDisputes() {
   ];
   
   const reasons: DisputeReason[] = [
-    DisputeReason.DAMAGE,
-    DisputeReason.DELAY,
-    DisputeReason.LOST_CARGO,
-    DisputeReason.WRONG_DELIVERY,
-    DisputeReason.QUALITY_ISSUE,
-    DisputeReason.PRICE_DISPUTE,
-    DisputeReason.DRIVER_BEHAVIOR,
+    disputeReasons.DAMAGE,
+    disputeReasons.DELAY,
+    disputeReasons.LOST_CARGO,
+    disputeReasons.WRONG_DELIVERY,
+    disputeReasons.QUALITY_ISSUE,
+    disputeReasons.PRICE_DISPUTE,
+    disputeReasons.DRIVER_BEHAVIOR,
   ];
   
   const resolutions: DisputeResolution[] = [
@@ -226,28 +214,28 @@ async function seedDisputes() {
 
 function getSubjectForReason(reason: DisputeReason): string {
   const subjects: Record<DisputeReason, string> = {
-    [DisputeReason.DAMAGE]: 'Ware bei Lieferung beschädigt',
-    [DisputeReason.DELAY]: 'Verspätete Lieferung',
-    [DisputeReason.LOST_CARGO]: 'Fracht nicht angekommen',
-    [DisputeReason.WRONG_DELIVERY]: 'Falsche Lieferadresse',
-    [DisputeReason.QUALITY_ISSUE]: 'Qualitätsprobleme',
-    [DisputeReason.PRICE_DISPUTE]: 'Preisuneinigkeit',
-    [DisputeReason.DRIVER_BEHAVIOR]: 'Fahrerverhalten',
-    [DisputeReason.OTHER]: 'Sonstiges Problem',
+    [disputeReasons.DAMAGE]: 'Ware bei Lieferung beschädigt',
+    [disputeReasons.DELAY]: 'Verspätete Lieferung',
+    [disputeReasons.LOST_CARGO]: 'Fracht nicht angekommen',
+    [disputeReasons.WRONG_DELIVERY]: 'Falsche Lieferadresse',
+    [disputeReasons.QUALITY_ISSUE]: 'Qualitätsprobleme',
+    [disputeReasons.PRICE_DISPUTE]: 'Preisuneinigkeit',
+    [disputeReasons.DRIVER_BEHAVIOR]: 'Fahrerverhalten',
+    [disputeReasons.OTHER]: 'Sonstiges Problem',
   };
   return subjects[reason];
 }
 
 function getDescriptionForReason(reason: DisputeReason): string {
   const descriptions: Record<DisputeReason, string> = {
-    [DisputeReason.DAMAGE]: 'Die Ware wurde beschädigt geliefert. Verpackung war beschädigt und der Inhalt hat sichtbare Schäden.',
-    [DisputeReason.DELAY]: 'Die Lieferung kam 3 Tage später als vereinbart. Dies hat zu Problemen bei der Weiterverarbeitung geführt.',
-    [DisputeReason.LOST_CARGO]: 'Die Fracht wurde nie geliefert. Der Transporteur kann den Verbleib nicht erklären.',
-    [DisputeReason.WRONG_DELIVERY]: 'Die Ware wurde an eine falsche Adresse geliefert. Der Empfänger hat die Annahme verweigert.',
-    [DisputeReason.QUALITY_ISSUE]: 'Die Qualität der Transportleistung entsprach nicht den vereinbarten Standards.',
-    [DisputeReason.PRICE_DISPUTE]: 'Es gibt Unstimmigkeiten über den endgültigen Preis der Transportleistung.',
-    [DisputeReason.DRIVER_BEHAVIOR]: 'Der Fahrer verhielt sich unprofessionell und unhöflich.',
-    [DisputeReason.OTHER]: 'Es gibt ein sonstiges Problem mit diesem Transport.',
+    [disputeReasons.DAMAGE]: 'Die Ware wurde beschädigt geliefert. Verpackung war beschädigt und der Inhalt hat sichtbare Schäden.',
+    [disputeReasons.DELAY]: 'Die Lieferung kam 3 Tage später als vereinbart. Dies hat zu Problemen bei der Weiterverarbeitung geführt.',
+    [disputeReasons.LOST_CARGO]: 'Die Fracht wurde nie geliefert. Der Transporteur kann den Verbleib nicht erklären.',
+    [disputeReasons.WRONG_DELIVERY]: 'Die Ware wurde an eine falsche Adresse geliefert. Der Empfänger hat die Annahme verweigert.',
+    [disputeReasons.QUALITY_ISSUE]: 'Die Qualität der Transportleistung entsprach nicht den vereinbarten Standards.',
+    [disputeReasons.PRICE_DISPUTE]: 'Es gibt Unstimmigkeiten über den endgültigen Preis der Transportleistung.',
+    [disputeReasons.DRIVER_BEHAVIOR]: 'Der Fahrer verhielt sich unprofessionell und unhöflich.',
+    [disputeReasons.OTHER]: 'Es gibt ein sonstiges Problem mit diesem Transport.',
   };
   return descriptions[reason];
 }
