@@ -39,6 +39,25 @@ import { TransportForm } from '@/components/transport/transport-form';
 import { PartnerPortal } from '@/components/partner/partner-portal';
 import { TransporteurOnboarding } from '@/components/onboarding/transporteur-onboarding';
 import { ShipperOnboarding } from '@/components/onboarding/shipper-onboarding';
+import { getSubscriptionPlanConfig } from '@/lib/billing/plans';
+
+const PUBLIC_PRICING_PLANS = getSubscriptionPlanConfig();
+const PUBLIC_PRICING_ORDER = ['free', 'starter', 'professional', 'enterprise'] as const;
+const PUBLIC_PLAN_DESCRIPTIONS: Record<(typeof PUBLIC_PRICING_ORDER)[number], string> = {
+  free: 'Kostenlos testen mit begrenzter Fahrtenanzahl und höheren Nutzungsgebühren.',
+  starter: 'Für kleine Gewerbe, selbstständige Transporteure und regelmäßige Einzelaufträge.',
+  professional: 'Für aktive Speditionen, Dispatcher und Teams mit höherem Transportvolumen.',
+  enterprise: 'Für größere Unternehmen, Partner-Integrationen und individuelle Prozessanforderungen.',
+};
+
+function formatCurrency(value: number, fractionDigits = 0) {
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(value || 0);
+}
 
 export default function Home() {
   const { isAuthenticated, logout } = useAuthStore();
@@ -608,6 +627,121 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Public Pricing Section */}
+        <section id="preise" className="py-24 bg-[#06121C]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between mb-12">
+              <div>
+                <Badge className="mb-4 bg-[#1C7ED6]/20 text-[#00D4FF] border border-[#00D4FF]/30">
+                  PREISE & LEISTUNGEN
+                </Badge>
+                <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                  Klare Pakete für Verlader, Transporteure und Speditionen.
+                </h2>
+                <p className="text-lg text-gray-400 max-w-3xl">
+                  Die Abo-Preise stehen bewusst im Vordergrund. Mehrwertsteuer wird beim Abschluss und in der Rechnung separat ausgewiesen.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[#00D4FF]/20 bg-[#00D4FF]/10 px-5 py-4 text-sm text-cyan-100">
+                Netto-Preise zzgl. gesetzlicher MwSt.
+              </div>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
+              {PUBLIC_PRICING_ORDER.map((planKey) => {
+                const plan = PUBLIC_PRICING_PLANS[planKey];
+                const isRecommended = planKey === 'professional';
+                const isFree = planKey === 'free';
+
+                return (
+                  <Card
+                    key={planKey}
+                    className={`relative overflow-hidden border transition-all hover:-translate-y-1 ${
+                      isRecommended
+                        ? 'border-[#00D4FF]/50 bg-[#0B3C5D] shadow-2xl shadow-[#00D4FF]/10'
+                        : 'border-[#1C7ED6]/20 bg-[#0B3C5D]/50'
+                    }`}
+                  >
+                    {isRecommended && (
+                      <div className="absolute right-5 top-5 rounded-full bg-gradient-to-r from-[#1C7ED6] to-[#00D4FF] px-3 py-1 text-xs font-semibold text-white">
+                        Empfohlen
+                      </div>
+                    )}
+                    <CardContent className="p-6">
+                      <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1C7ED6]/20 text-[#00D4FF]">
+                        {isFree ? <Package className="h-6 w-6" /> : planKey === 'enterprise' ? <Shield className="h-6 w-6" /> : <Wallet className="h-6 w-6" />}
+                      </div>
+                      <h3 className="text-2xl font-bold text-white">{plan.name}</h3>
+                      <p className="mt-3 min-h-16 text-sm leading-6 text-gray-400">
+                        {PUBLIC_PLAN_DESCRIPTIONS[planKey]}
+                      </p>
+
+                      <div className="mt-6 rounded-2xl border border-white/10 bg-[#06121C]/60 p-4">
+                        <div className="flex items-end gap-2">
+                          <span className="text-4xl font-bold text-white">
+                            {formatCurrency(plan.monthlyFee)}
+                          </span>
+                          <span className="pb-1 text-sm text-gray-400">/ Monat</span>
+                        </div>
+                        {isFree ? (
+                          <p className="mt-2 text-sm text-gray-400">
+                            10 Transporte/Monat zum Kennenlernen
+                          </p>
+                        ) : (
+                          <p className="mt-2 text-sm text-gray-400">
+                            oder {formatCurrency(plan.yearlyFee)} jährlich
+                          </p>
+                        )}
+                        <p className="mt-3 text-xs text-cyan-200">
+                          {isFree
+                            ? 'Keine Grundgebühr. Gebühren fallen nur bei Nutzung an.'
+                            : `zzgl. ${plan.vatPercent}% MwSt. · Brutto monatlich ${formatCurrency(plan.monthlyGrossFee, 2)}`}
+                        </p>
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-2 gap-3">
+                        <div className="rounded-xl border border-[#1C7ED6]/20 bg-[#06121C]/40 p-3">
+                          <p className="text-xs text-gray-500">Provision</p>
+                          <p className="mt-1 text-lg font-semibold text-white">{plan.commissionPercent}%</p>
+                        </div>
+                        <div className="rounded-xl border border-[#1C7ED6]/20 bg-[#06121C]/40 p-3">
+                          <p className="text-xs text-gray-500">Wallet-Gebühr</p>
+                          <p className="mt-1 text-lg font-semibold text-white">{plan.walletFeePercent}%</p>
+                        </div>
+                      </div>
+
+                      <ul className="mt-6 space-y-3">
+                        {plan.features.map((feature) => (
+                          <li key={feature} className="flex gap-3 text-sm text-gray-300">
+                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#2ECC71]" />
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      <Button
+                        className={`mt-7 w-full gap-2 ${
+                          isRecommended
+                            ? 'bg-gradient-to-r from-[#1C7ED6] to-[#00D4FF] hover:opacity-90'
+                            : 'bg-[#1C7ED6] hover:bg-[#1C7ED6]/80'
+                        }`}
+                        onClick={() => { setAuthTab('register'); setShowAuthModal(true); }}
+                      >
+                        {isFree ? 'Kostenlos starten' : 'Paket auswählen'}
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+
+            <div className="mt-8 rounded-2xl border border-[#1C7ED6]/20 bg-[#0B3C5D]/40 p-5 text-sm text-gray-300">
+              Der kostenlose Testzugang ist auf 10 Transporte pro Monat begrenzt und nutzt 14% Provision sowie 3,5% Wallet-Gebühr. Beim produktiven Abo-Abschluss werden Netto, MwSt. und Brutto auf der Rechnung einzeln ausgewiesen.
+            </div>
+          </div>
+        </section>
+
         {/* Call to Action Section */}
         <section className="py-24 bg-[#06121C] relative overflow-hidden">
           {/* Background Image */}
@@ -688,7 +822,7 @@ export default function Home() {
                 <h4 className="font-semibold text-white mb-4">Plattform</h4>
                 <ul className="space-y-2">
                   <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Matching</a></li>
-                  <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Preise</a></li>
+                  <li><a href="#preise" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Preise</a></li>
                   <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Wallet</a></li>
                   <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Live Tracking</a></li>
                   <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Dokumente</a></li>
