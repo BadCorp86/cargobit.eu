@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
         data: {
           ownerUserId: userId,
           balance: 0,
+          reservedBalance: 0,
           currency: 'EUR',
           status: 'ACTIVE',
           totalDeposited: 0,
@@ -64,6 +65,10 @@ export async function GET(request: NextRequest) {
         id: wallet.id,
         balance: wallet.balance,
         balanceCents: Math.round(wallet.balance * 100),
+        reservedBalance: wallet.reservedBalance || 0,
+        reservedBalanceCents: Math.round((wallet.reservedBalance || 0) * 100),
+        availableBalance: wallet.balance - (wallet.reservedBalance || 0),
+        availableBalanceCents: Math.round((wallet.balance - (wallet.reservedBalance || 0)) * 100),
         currency: wallet.currency,
         status: wallet.status,
         totalDeposited: wallet.totalDeposited,
@@ -119,6 +124,7 @@ export async function POST(request: NextRequest) {
         data: {
           ownerUserId: userId,
           balance: 0,
+          reservedBalance: 0,
           currency: 'EUR',
           status: 'ACTIVE',
         },

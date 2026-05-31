@@ -14,6 +14,7 @@ export async function runPayoutCronJob() {
       successful: result.processedPayouts,
       failed: result.failedPayouts,
       reconciled: result.reconciledPayouts,
+      autoReleased: result.autoReleasedPayouts,
     },
     warnings: hasIssues ? result.diffs : undefined,
   }, {

@@ -157,6 +157,8 @@ enum TransactionType {
   COMMISSION
   PAYMENT_IN
   PAYMENT_OUT
+  RESERVE
+  RESERVE_RELEASE
   REFUND
 }
 
@@ -861,6 +863,7 @@ model Wallet {
   ownerCompanyId  String?       @unique
   
   balance         Float         @default(0)
+  reservedBalance Float         @default(0)
   currency        String        @default("EUR")
   status          WalletStatus  @default(ACTIVE)
   

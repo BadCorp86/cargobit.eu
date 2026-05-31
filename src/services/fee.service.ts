@@ -138,6 +138,7 @@ export async function getOrCreateWallet(ownerUserId: string, client: any = prism
       data: {
         ownerUserId,
         balance: 0,
+        reservedBalance: 0,
         currency: 'EUR',
         status: 'ACTIVE',
       },

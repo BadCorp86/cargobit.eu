@@ -106,13 +106,15 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
-    // Check wallet balance
-    if (user.wallet.balance < body.amount) {
+    // Check wallet balance. Reserved funds still belong to open orders and cannot
+    // be withdrawn until the reservation is released or finalized.
+    const availableBalance = user.wallet.balance - (user.wallet.reservedBalance || 0);
+    if (availableBalance < body.amount) {
       return NextResponse.json({
         error: 'ValidationError',
-        message: 'Unzureichendes Guthaben',
+        message: 'Unzureichendes frei verfuegbares Guthaben',
         code: 'INSUFFICIENT_BALANCE',
-        available: user.wallet.balance,
+        available: availableBalance,
       }, { status: 400 });
     }
 
@@ -124,6 +126,14 @@ export async function POST(request: NextRequest) {
         message: 'Auszahlungsmethode nicht gefunden',
         code: 'PAYOUT_METHOD_NOT_FOUND',
       }, { status: 404 });
+    }
+
+    if (!payoutMethod.verified) {
+      return NextResponse.json({
+        error: 'ValidationError',
+        message: 'Auszahlungsmethode ist noch nicht verifiziert',
+        code: 'PAYOUT_METHOD_NOT_VERIFIED',
+      }, { status: 403 });
     }
 
     // ============================================
@@ -188,6 +198,7 @@ export async function POST(request: NextRequest) {
       userId: securityContext.userId,
       amount: body.amount,
       isNewIban,
+      hasRecentDeposit,
       kybMissing,
       riskScore: securityResult.riskCheck?.score,
       riskLevel: securityResult.riskCheck?.level,

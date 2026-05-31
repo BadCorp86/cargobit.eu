@@ -59,6 +59,9 @@ async function getTransporterByUser(userId: string) {
 async function getWalletByUser(userId: string) {
   const wallet = await db.wallet.findFirst({
     where: { ownerUserId: userId },
+    include: {
+      payoutMethods: true,
+    },
   });
 
   if (!wallet) {
@@ -86,6 +89,11 @@ async function debitWallet(
 
     if (!wallet || wallet.balance * 100 < amountCents) {
       throw new Error('Insufficient funds');
+    }
+
+    const availableBalanceCents = Math.round((wallet.balance - (wallet.reservedBalance || 0)) * 100);
+    if (availableBalanceCents < amountCents) {
+      throw new Error('Insufficient available funds');
     }
 
     // Create transaction record
@@ -124,9 +132,15 @@ async function createPayoutForTransporter(
 ) {
   // Get wallet
   const wallet = await getWalletByUser(userId);
-  
-  if (wallet.balance * 100 < amountCents) {
+
+  const availableBalanceCents = Math.round((wallet.balance - (wallet.reservedBalance || 0)) * 100);
+  if (availableBalanceCents < amountCents) {
     throw new Error('Insufficient funds');
+  }
+
+  const hasVerifiedPayoutMethod = wallet.payoutMethods.some((method) => method.verified);
+  if (!hasVerifiedPayoutMethod) {
+    throw new Error('Verified payout method required');
   }
 
   // Create Stripe Transfer (Connect)
@@ -169,7 +183,14 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { amountCents, stripeAccountId } = body;
-    const userId = request.headers.get('x-user-id') || 'demo-user';
+    const userId = request.headers.get('x-user-id');
+
+    if (!userId) {
+      return NextResponse.json({
+        error: 'Unauthorized',
+        message: 'Anmeldung erforderlich',
+      }, { status: 401 });
+    }
 
     // Validation
     if (!amountCents || amountCents < 100) {
@@ -221,10 +242,10 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('[PAYOUT] Error:', error);
     
-    if (error.message === 'Insufficient funds') {
+    if (error.message === 'Insufficient funds' || error.message === 'Insufficient available funds') {
       return NextResponse.json({
         error: 'InsufficientFunds',
-        message: 'Unzureichendes Guthaben',
+        message: 'Unzureichendes frei verfuegbares Guthaben',
       }, { status: 400 });
     }
 
@@ -233,6 +254,13 @@ export async function POST(request: NextRequest) {
         error: 'NotFound',
         message: 'Kein Transporteur-Profil gefunden',
       }, { status: 404 });
+    }
+
+    if (error.message === 'Verified payout method required') {
+      return NextResponse.json({
+        error: 'PayoutMethodRequired',
+        message: 'Bitte zuerst eine verifizierte Auszahlungsmethode hinterlegen.',
+      }, { status: 403 });
     }
 
     return NextResponse.json({

@@ -8,8 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { disputeService } from '@/services/dispute.service';
-import type { DisputeAction } from '@prisma/client';
+import { disputeService, type DisputeAction } from '@/services/dispute.service';
 
 // ============================================
 // POST /api/disputes/[id]/resolve

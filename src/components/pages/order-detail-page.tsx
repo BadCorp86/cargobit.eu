@@ -1,16 +1,15 @@
 'use client';
 
 import * as React from 'react';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RiskBadge, RiskBar } from '@/components/cargobit/risk-badge';
-import { InsuranceWidget, InsuranceTier } from '@/components/cargobit/insurance-widget';
+import { InsuranceTier } from '@/components/cargobit/insurance-widget';
 import { TransportCard } from '@/components/cargobit/transport-card';
 import { BannerAd } from '@/components/ads/banner-ad';
+import { useAuthStore, type UserRole } from '@/lib/auth-store';
 import {
   ArrowLeft,
   MapPin,
@@ -19,15 +18,11 @@ import {
   Truck,
   Clock,
   User,
-  Building2,
-  FileText,
   Shield,
-  AlertTriangle,
   CheckCircle2,
   Circle,
   Info,
   Phone,
-  Mail,
   ArrowRight,
   CreditCard,
   ExternalLink,
@@ -36,7 +31,6 @@ import {
   Send,
   Star,
   Wallet,
-  ChevronRight,
 } from 'lucide-react';
 
 interface LifecycleStageView {
@@ -147,43 +141,35 @@ interface PayoutReleaseView {
   source?: string;
 }
 
-interface BankPayoutView {
-  success?: boolean;
-  message?: string;
-  payout?: {
-    id: string;
-    status: string;
-    amount: number;
-    amountCents: number;
-    currency: string;
-    ibanLast4?: string | null;
-    riskLevel?: string | null;
-  };
-  transfer?: {
-    provider: string;
-    transferId: string;
-    stripeAccountId?: string;
-    amountCents: number;
-    currency: string;
-    status: string;
-    estimatedArrival: string;
-  };
-  wallet?: {
-    id: string;
-    balance: number;
-    currency: string;
-  };
-  walletTransaction?: {
-    id: string;
-    reference: string;
-    amount: number;
-  };
-  notification?: {
-    id: string;
-    title: string;
-  };
-  duplicate?: boolean;
-  source?: string;
+type OrderViewerRole = 'shipper' | 'carrier' | 'driver' | 'dispatcher' | 'admin' | 'support' | 'marketer';
+
+function getOrderViewerRole(role?: UserRole): OrderViewerRole {
+  switch (role) {
+    case 'ADMIN':
+      return 'admin';
+    case 'SUPPORT':
+      return 'support';
+    case 'MARKETER':
+      return 'marketer';
+    case 'CARRIER':
+      return 'carrier';
+    case 'DISPATCHER':
+      return 'dispatcher';
+    case 'DRIVER_SELF_EMPLOYED':
+      return 'driver';
+    case 'SHIPPER_COMPANY':
+    case 'SHIPPER_PRIVATE':
+    default:
+      return 'shipper';
+  }
+}
+
+function isInternalViewer(viewer: OrderViewerRole) {
+  return viewer === 'admin' || viewer === 'support';
+}
+
+function getWalletHref(viewer: OrderViewerRole) {
+  return viewer === 'driver' ? '/driver/earnings' : '/carrier/wallet';
 }
 
 // ========================================
@@ -487,17 +473,29 @@ function InsuranceBox() {
 // ========================================
 // Order-to-Cash Flow
 // ========================================
-function OrderCashFlow({ orderId }: { orderId: string }) {
+function OrderCashFlow({
+  orderId,
+  viewer,
+  userId,
+  userRole,
+}: {
+  orderId: string;
+  viewer: OrderViewerRole;
+  userId?: string;
+  userRole?: UserRole;
+}) {
   const [lifecycle, setLifecycle] = React.useState<LifecycleStageView[]>([]);
   const [invoice, setInvoice] = React.useState<InvoiceDraftView | null>(null);
   const [issuedInvoice, setIssuedInvoice] = React.useState<IssuedInvoiceView | null>(null);
   const [payoutRelease, setPayoutRelease] = React.useState<PayoutReleaseView | null>(null);
-  const [bankPayout, setBankPayout] = React.useState<BankPayoutView | null>(null);
   const [source, setSource] = React.useState<'database' | 'fallback' | 'blueprint'>('fallback');
   const [loading, setLoading] = React.useState(true);
   const [issuing, setIssuing] = React.useState(false);
   const [releasing, setReleasing] = React.useState(false);
-  const [startingBankPayout, setStartingBankPayout] = React.useState(false);
+  const canIssueInvoice = isInternalViewer(viewer);
+  const canManualRelease = viewer === 'admin';
+  const canOpenOwnWallet = viewer === 'carrier' || viewer === 'dispatcher';
+  const showInternalData = isInternalViewer(viewer);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -506,17 +504,31 @@ function OrderCashFlow({ orderId }: { orderId: string }) {
       setLoading(true);
 
       try {
-        const [lifecycleResponse, invoiceResponse] = await Promise.all([
+        const [lifecycleResponse, invoiceResponse, releaseResponse] = await Promise.all([
           fetch(`/api/orders/lifecycle?orderId=${encodeURIComponent(orderId)}`),
           fetch(`/api/orders/${encodeURIComponent(orderId)}/invoice?amount=850`),
+          fetch(`/api/orders/${encodeURIComponent(orderId)}/payout/release?amount=850`),
         ]);
         const lifecyclePayload = await lifecycleResponse.json();
         const invoicePayload = await invoiceResponse.json();
+        const releasePayload = releaseResponse.ok ? await releaseResponse.json() : null;
 
         if (cancelled) return;
 
         setLifecycle(lifecyclePayload.lifecycle || []);
         setInvoice(invoicePayload.invoice || null);
+        if (releasePayload?.release) {
+          setPayoutRelease({
+            success: releasePayload.release.status !== 'blocked',
+            message: releasePayload.message,
+            release: releasePayload.release,
+            wallet: releasePayload.wallet,
+            walletTransaction: releasePayload.walletTransaction,
+            notification: releasePayload.notification,
+            duplicate: releasePayload.duplicate,
+            source: releasePayload.source,
+          });
+        }
         setSource(lifecyclePayload.source || invoicePayload.source || 'fallback');
       } catch {
         if (!cancelled) {
@@ -567,13 +579,23 @@ function OrderCashFlow({ orderId }: { orderId: string }) {
   };
 
   const releasePayout = async () => {
+    const reason = window.prompt('Audit-Grund fuer manuelle Admin-/Finance-Freigabe', 'Manuelle Admin-Freigabe nach Pruefung');
+    if (!reason || reason.trim().length < 8) return;
+
     setReleasing(true);
 
     try {
       const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/payout/release`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: invoice?.lineItems[0]?.totalNet || 850 }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(userId ? { 'x-user-id': userId } : {}),
+          ...(userRole ? { 'x-user-role': userRole } : {}),
+        },
+        body: JSON.stringify({
+          amount: invoice?.lineItems[0]?.totalNet || 850,
+          reason,
+        }),
       });
       const payload = await response.json();
 
@@ -597,38 +619,6 @@ function OrderCashFlow({ orderId }: { orderId: string }) {
     }
   };
 
-  const startBankPayout = async () => {
-    setStartingBankPayout(true);
-
-    try {
-      const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/payout/bank-transfer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: invoice?.lineItems[0]?.totalNet || 850 }),
-      });
-      const payload = await response.json();
-
-      setBankPayout({
-        success: response.ok && payload?.success !== false,
-        message: payload?.message,
-        payout: payload?.payout,
-        transfer: payload?.transfer,
-        wallet: payload?.wallet,
-        walletTransaction: payload?.walletTransaction,
-        notification: payload?.notification,
-        duplicate: payload?.duplicate,
-        source: payload?.source,
-      });
-    } catch {
-      setBankPayout({
-        success: false,
-        message: 'Bankauszahlung konnte lokal nicht gestartet werden.',
-      });
-    } finally {
-      setStartingBankPayout(false);
-    }
-  };
-
   return (
     <Card className="overflow-hidden border-white/10 bg-[#071927] text-white shadow-2xl shadow-black/25">
       <CardHeader className="border-b border-white/10 bg-white/[0.03]">
@@ -642,8 +632,8 @@ function OrderCashFlow({ orderId }: { orderId: string }) {
               Matching, Annahme, Transportstatus, POD, Rechnung und Auszahlung in einem Ablauf.
             </CardDescription>
           </div>
-          <Badge className={source === 'database' ? 'bg-[#2ECC71] text-[#06121C]' : 'bg-[#F39C12]/15 text-[#F39C12]'}>
-            {source === 'database' ? 'Live Daten' : 'Demo/Fallback'}
+          <Badge className={source === 'database' ? 'bg-[#2ECC71] text-[#06121C]' : 'bg-[#00D4FF]/15 text-[#00D4FF]'}>
+            {showInternalData ? (source === 'database' ? 'Live Daten' : 'Demo/Fallback') : 'Wallet geschützt'}
           </Badge>
         </div>
       </CardHeader>
@@ -675,39 +665,51 @@ function OrderCashFlow({ orderId }: { orderId: string }) {
                 </div>
                 <p className="text-sm leading-6 text-white/60">{activeStage?.description || 'Der Auftrag ist bereit für die nächste Prüfung.'}</p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button asChild className="bg-[#1C7ED6] text-white hover:bg-[#166BBB]">
-                    <a href="/driver/mobile">Fahreransicht öffnen</a>
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={issuing}
-                    onClick={issueInvoice}
-                    className="bg-[#2ECC71] text-[#06121C] hover:bg-[#27B765]"
-                  >
-                    {issuing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    Rechnung ausstellen & E-Mail vorbereiten
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={releasing || !invoice}
-                    onClick={releasePayout}
-                    className="bg-[#00D4FF] text-[#06121C] hover:bg-[#35DFFF]"
-                  >
-                    {releasing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-                    Wallet-Auszahlung freigeben
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={startingBankPayout || !invoice || payoutRelease?.success === false}
-                    onClick={startBankPayout}
-                    className="bg-white text-[#06121C] hover:bg-white/85"
-                  >
-                    {startingBankPayout ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                    Bankauszahlung starten
-                  </Button>
-                  <Button asChild variant="outline" className="border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white">
-                    <a href={`/api/orders/${orderId}/invoice?amount=850`}>Rechnung JSON</a>
-                  </Button>
+                  {isInternalViewer(viewer) ? (
+                    <Button asChild className="bg-[#1C7ED6] text-white hover:bg-[#166BBB]">
+                      <a href="/driver/mobile">Fahreransicht öffnen</a>
+                    </Button>
+                  ) : null}
+                  {canIssueInvoice ? (
+                    <Button
+                      type="button"
+                      disabled={issuing}
+                      onClick={issueInvoice}
+                      className="bg-[#2ECC71] text-[#06121C] hover:bg-[#27B765]"
+                    >
+                      {issuing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      Rechnung ausstellen & E-Mail vorbereiten
+                    </Button>
+                  ) : null}
+                  {canManualRelease ? (
+                    <Button
+                      type="button"
+                      disabled={releasing || !invoice}
+                      onClick={releasePayout}
+                      className="bg-[#00D4FF] text-[#06121C] hover:bg-[#35DFFF]"
+                    >
+                      {releasing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+                      Manuell freigeben
+                    </Button>
+                  ) : null}
+                  {canOpenOwnWallet ? (
+                    <Button asChild className="bg-white text-[#06121C] hover:bg-white/85">
+                      <a href={getWalletHref(viewer)}>
+                        <Wallet className="h-4 w-4" />
+                        Eigenes Wallet öffnen
+                      </a>
+                    </Button>
+                  ) : null}
+                  {viewer === 'shipper' ? (
+                    <Button asChild variant="outline" className="border-[#F39C12]/30 bg-[#F39C12]/10 text-[#F39C12] hover:bg-[#F39C12]/15 hover:text-[#F39C12]">
+                      <a href={`/support/tickets?orderId=${encodeURIComponent(orderId)}`}>Schaden oder Streitfall melden</a>
+                    </Button>
+                  ) : null}
+                  {showInternalData ? (
+                    <Button asChild variant="outline" className="border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white">
+                      <a href={`/api/orders/${orderId}/invoice?amount=850`}>Rechnung JSON</a>
+                    </Button>
+                  ) : null}
                 </div>
                 {issuedInvoice && (
                   <div className="mt-4 rounded-2xl border border-[#2ECC71]/20 bg-[#2ECC71]/10 p-4 text-sm">
@@ -733,10 +735,7 @@ function OrderCashFlow({ orderId }: { orderId: string }) {
                   </div>
                 )}
                 {payoutRelease && (
-                  <PayoutReleasePanel payoutRelease={payoutRelease} />
-                )}
-                {bankPayout && (
-                  <BankPayoutPanel bankPayout={bankPayout} />
+                  <PayoutReleasePanel payoutRelease={payoutRelease} viewer={viewer} />
                 )}
               </div>
 
@@ -749,73 +748,40 @@ function OrderCashFlow({ orderId }: { orderId: string }) {
   );
 }
 
-function BankPayoutPanel({ bankPayout }: { bankPayout: BankPayoutView }) {
-  const isSuccess = bankPayout.success !== false && Boolean(bankPayout.payout);
-  const currency = bankPayout.payout?.currency || bankPayout.wallet?.currency || 'EUR';
-  const amount = bankPayout.payout?.amount || Math.abs(bankPayout.walletTransaction?.amount || 0);
-
-  return (
-    <div className={`mt-4 rounded-2xl border p-4 text-sm ${
-      isSuccess
-        ? 'border-white/15 bg-white/[0.06]'
-        : 'border-[#E74C3C]/25 bg-[#E74C3C]/10'
-    }`}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className={`font-semibold ${isSuccess ? 'text-white' : 'text-[#E74C3C]'}`}>
-            {isSuccess ? 'Bankauszahlung gestartet' : 'Bankauszahlung blockiert'}
-          </p>
-          <p className="mt-1 text-white/55">
-            {isSuccess
-              ? `${formatMoney(amount, currency)} werden per ${bankPayout.transfer?.provider || 'Payout Provider'} ausgezahlt.`
-              : bankPayout.message}
-          </p>
-        </div>
-        {bankPayout.transfer ? (
-          <Badge className="w-fit border border-[#00D4FF]/20 bg-[#00D4FF]/10 text-[#00D4FF]">
-            {bankPayout.transfer.status}
-          </Badge>
-        ) : null}
-      </div>
-
-      {bankPayout.transfer ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <PayoutMetric label="Transfer-ID" value={bankPayout.transfer.transferId} />
-          <PayoutMetric label="Ankunft" value={formatDate(bankPayout.transfer.estimatedArrival)} />
-          <PayoutMetric
-            label="Wallet danach"
-            value={bankPayout.wallet ? formatMoney(bankPayout.wallet.balance, bankPayout.wallet.currency) : '-'}
-          />
-        </div>
-      ) : null}
-
-      {bankPayout.payout ? (
-        <p className="mt-3 text-xs leading-5 text-white/45">
-          Payout {bankPayout.payout.id}. IBAN endet auf {bankPayout.payout.ibanLast4 || 'Demo'}. Risiko: {bankPayout.payout.riskLevel || 'green'}.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function PayoutReleasePanel({ payoutRelease }: { payoutRelease: PayoutReleaseView }) {
-  const isSuccess = payoutRelease.success !== false && payoutRelease.release?.status === 'released';
+function PayoutReleasePanel({
+  payoutRelease,
+  viewer,
+}: {
+  payoutRelease: PayoutReleaseView;
+  viewer: OrderViewerRole;
+}) {
+  const releaseStatus = payoutRelease.release?.status;
+  const isReleased = payoutRelease.success !== false && releaseStatus === 'released';
+  const isBlocked = payoutRelease.success === false || releaseStatus === 'blocked';
   const currency = payoutRelease.release?.currency || payoutRelease.wallet?.currency || 'EUR';
+  const showInternalData = isInternalViewer(viewer);
+  const title = isReleased
+    ? 'Wallet-Guthaben freigegeben'
+    : releaseStatus === 'ready'
+      ? 'Automatische Freigabe vorbereitet'
+      : 'Wallet-Freigabe blockiert';
 
   return (
     <div className={`mt-4 rounded-2xl border p-4 text-sm ${
-      isSuccess
+      isReleased || releaseStatus === 'ready'
         ? 'border-[#00D4FF]/20 bg-[#00D4FF]/10'
         : 'border-[#E74C3C]/25 bg-[#E74C3C]/10'
     }`}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className={`font-semibold ${isSuccess ? 'text-[#00D4FF]' : 'text-[#E74C3C]'}`}>
-            {isSuccess ? 'Wallet-Auszahlung freigegeben' : 'Wallet-Auszahlung blockiert'}
+          <p className={`font-semibold ${isBlocked ? 'text-[#E74C3C]' : 'text-[#00D4FF]'}`}>
+            {title}
           </p>
           <p className="mt-1 text-white/55">
-            {isSuccess
+            {isReleased
               ? `${formatMoney(payoutRelease.release?.settlement.carrierWalletCredit || 0, currency)} wurden dem Transporteur-Wallet gutgeschrieben.`
+              : releaseStatus === 'ready'
+                ? 'Die automatische Freigabe erfolgt nach POD, Rechnung und abgelaufener 24-Werktagsstunden-Frist.'
               : payoutRelease.message || payoutRelease.release?.blockedReasons.join(' ')}
           </p>
         </div>
@@ -842,23 +808,35 @@ function PayoutReleasePanel({ payoutRelease }: { payoutRelease: PayoutReleaseVie
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <PayoutMetric
-              label="Transporteur Wallet"
-              value={formatMoney(payoutRelease.release.settlement.carrierWalletCredit, currency)}
-            />
-            <PayoutMetric
-              label="CargoBit Netto-Ertrag"
-              value={formatMoney(payoutRelease.release.settlement.platformRevenueNet, currency)}
-            />
-            <PayoutMetric
-              label="Kundenbetrag brutto"
-              value={formatMoney(payoutRelease.release.settlement.shipperChargeGross, currency)}
-            />
+            {viewer === 'carrier' || viewer === 'dispatcher' || showInternalData ? (
+              <PayoutMetric
+                label="Transporteur Wallet"
+                value={formatMoney(payoutRelease.release.settlement.carrierWalletCredit, currency)}
+              />
+            ) : null}
+            {showInternalData ? (
+              <PayoutMetric
+                label="CargoBit Netto-Ertrag"
+                value={formatMoney(payoutRelease.release.settlement.platformRevenueNet, currency)}
+              />
+            ) : null}
+            {viewer === 'shipper' || showInternalData ? (
+              <PayoutMetric
+                label="Kundenbetrag brutto"
+                value={formatMoney(payoutRelease.release.settlement.shipperChargeGross, currency)}
+              />
+            ) : null}
           </div>
 
-          <p className="mt-3 text-xs leading-5 text-white/45">
-            Referenz {payoutRelease.release.walletTransaction.reference}. {payoutRelease.release.nextStep.description}
-          </p>
+          {showInternalData ? (
+            <p className="mt-3 text-xs leading-5 text-white/45">
+              Referenz {payoutRelease.release.walletTransaction.reference}. {payoutRelease.release.nextStep.description}
+            </p>
+          ) : (
+            <p className="mt-3 text-xs leading-5 text-white/45">
+              Bankauszahlung ist ausschliesslich im eigenen Wallet-Bereich moeglich.
+            </p>
+          )}
         </>
       ) : null}
     </div>
@@ -1037,7 +1015,44 @@ function SimilarOrders() {
 // ========================================
 // Footer Actions
 // ========================================
-function FooterActions() {
+function DriverOrderView({ orderId }: { orderId: string }) {
+  return (
+    <main className="dark min-h-screen bg-[#06121C] py-6 text-white" style={{ colorScheme: 'dark' }}>
+      <div className="mx-auto flex max-w-xl flex-col gap-5 px-4">
+        <OrderHeader orderId={orderId} status="Tour aktiv" risk="green" />
+        <Card className="border-white/10 bg-[#071927] text-white">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5 text-[#00D4FF]" />
+              Fahreransicht
+            </CardTitle>
+            <CardDescription className="text-white/55">
+              Fuer Fahrer bleiben nur Tour, Status, Fotos und POD/eCMR sichtbar.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/35">Naechste Aktion</p>
+              <p className="mt-2 text-lg font-semibold">POD / eCMR erfassen</p>
+              <p className="mt-2 text-sm leading-6 text-white/55">
+                Lieferung bestaetigen, Fotos hochladen und digitale Signatur erfassen.
+              </p>
+            </div>
+            <Button asChild className="w-full bg-[#1C7ED6] text-white hover:bg-[#166BBB]">
+              <a href="/driver/mobile">Mobile Tour öffnen</a>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </main>
+  );
+}
+
+function FooterActions({ viewer }: { viewer: OrderViewerRole }) {
+  const canAcceptOrder = viewer === 'carrier' || viewer === 'dispatcher';
+  const canReportIssue = viewer === 'shipper';
+  const canReview = isInternalViewer(viewer);
+
   return (
     <Card>
       <CardContent className="p-6">
@@ -1061,10 +1076,24 @@ function FooterActions() {
               <Phone className="w-4 h-4" />
               Kontakt
             </Button>
-            <Button className="gap-2">
-              <CheckCircle2 className="w-4 h-4" />
-              Auftrag annehmen
-            </Button>
+            {canAcceptOrder ? (
+              <Button className="gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                Angebot abgeben
+              </Button>
+            ) : null}
+            {canReportIssue ? (
+              <Button variant="outline" className="gap-2 border-[#F39C12]/40 text-[#F39C12]">
+                <Shield className="w-4 h-4" />
+                Streitfall melden
+              </Button>
+            ) : null}
+            {canReview ? (
+              <Button className="gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                Admin-Prüfung
+              </Button>
+            ) : null}
           </div>
         </div>
       </CardContent>
@@ -1080,21 +1109,28 @@ interface OrderDetailPageProps {
 }
 
 export default function OrderDetailPage({ orderId = 'TR-12345' }: OrderDetailPageProps) {
+  const user = useAuthStore((state) => state.user);
+  const viewer = getOrderViewerRole(user?.role);
+
+  if (viewer === 'driver') {
+    return <DriverOrderView orderId={orderId} />;
+  }
+
   return (
     <main className="dark min-h-screen bg-[#06121C] py-8 text-white" style={{ colorScheme: 'dark' }}>
       <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4">
         {/* Header */}
         <OrderHeader orderId={orderId} status="Offen" risk="green" />
 
-        <OrderCashFlow orderId={orderId} />
+        <OrderCashFlow orderId={orderId} viewer={viewer} userId={user?.id} userRole={user?.role} />
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Main Info */}
           <div className="lg:col-span-2 flex flex-col gap-6">
             <OrderInfo />
-            <RiskSection />
-            <InsuranceBox />
+            {(viewer === 'admin' || viewer === 'support' || viewer === 'shipper') ? <RiskSection /> : null}
+            {(viewer === 'admin' || viewer === 'support' || viewer === 'shipper') ? <InsuranceBox /> : null}
           </div>
 
           {/* Right Column - Sidebar */}
@@ -1105,7 +1141,7 @@ export default function OrderDetailPage({ orderId = 'TR-12345' }: OrderDetailPag
         </div>
 
         {/* Footer Actions */}
-        <FooterActions />
+        <FooterActions viewer={viewer} />
       </div>
     </main>
   );

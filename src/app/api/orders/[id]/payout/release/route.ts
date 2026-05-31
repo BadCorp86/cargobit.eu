@@ -1,199 +1,84 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
 import { createOrderPayoutRelease } from '@/lib/order-payout';
+import {
+  getOrderPayoutReadiness,
+  releaseOrderPayout,
+} from '@/services/order-payout-release.service';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
-  const body = await request.json().catch(() => ({}));
-  const fallbackAmount = Number(body.amount || 850);
+  const { searchParams } = new URL(request.url);
+  const fallbackAmount = Number(searchParams.get('amount') || 850);
 
   try {
-    const transport = await prisma.transport.findUnique({
-      where: { id },
-      include: {
-        shipperUser: true,
-        documents: true,
-        commissions: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-        assignment: {
-          include: {
-            driver: {
-              include: {
-                user: true,
-              },
-            },
-          },
-        },
-      },
+    const readiness = await getOrderPayoutReadiness({
+      orderId: id,
+      amount: fallbackAmount,
     });
 
-    if (!transport && !isDemoOrderId(id)) {
+    if (!readiness && !isDemoOrderId(id)) {
       return NextResponse.json(
         { error: 'NOT_FOUND', message: 'Transport not found' },
         { status: 404 },
       );
     }
 
-    if (!transport) {
-      return NextResponse.json(createFallbackRelease(id, fallbackAmount));
-    }
+    return NextResponse.json(readiness || createFallbackRelease(id, fallbackAmount));
+  } catch (error) {
+    console.error('[OrderPayoutReleaseAPI] GET failed:', error);
+    return NextResponse.json(createFallbackRelease(id, fallbackAmount, 'Database unavailable, using payout readiness fallback'));
+  }
+}
 
-    const driverUserId = transport.assignment?.driver.userId;
-    const amount = transport.agreedPrice || transport.shipperBudget || fallbackAmount;
-    const invoiceIssued = transport.documents.some((document) => document.type === 'rechnung');
-    const hasPod = Boolean(
-      transport.deliveredAt ||
-      transport.completedAt ||
-      transport.status === 'DELIVERY_DONE' ||
-      transport.status === 'COMPLETED' ||
-      transport.documents.some((document) => ['pod', 'lieferschein', 'foto_delivery'].includes(document.type)),
+export async function POST(request: NextRequest, { params }: RouteParams) {
+  const { id } = await params;
+  const body = await request.json().catch(() => ({}));
+  const fallbackAmount = Number(body.amount || 850);
+  const role = request.headers.get('x-user-role');
+  const actorId = request.headers.get('x-user-id');
+
+  if (!isPayoutAdminRole(role)) {
+    return NextResponse.json(
+      { error: 'FORBIDDEN', message: 'Manual payout release requires ADMIN or FINANCE role.' },
+      { status: 403 },
     );
-    const walletReady = Boolean(driverUserId);
-    const draft = createOrderPayoutRelease({
+  }
+
+  if (!body.reason || String(body.reason).trim().length < 8) {
+    return NextResponse.json(
+      { error: 'REASON_REQUIRED', message: 'Manual payout release requires an audit reason.' },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await releaseOrderPayout({
       orderId: id,
-      amount,
-      currency: transport.currency,
-      planKey: transport.commissions[0]?.plan,
-      hasPod,
-      invoiceIssued,
-      walletReady,
+      amount: fallbackAmount,
       riskLevel: body.riskLevel || 'green',
+      force: true,
+      actorId,
+      reason: String(body.reason),
     });
 
-    if (!driverUserId || draft.status === 'blocked') {
+    if (!result && !isDemoOrderId(id)) {
       return NextResponse.json(
-        {
-          success: false,
-          release: draft,
-          source: 'database',
-          message: 'Payout release blocked by settlement gates',
-        },
-        { status: 409 },
+        { error: 'NOT_FOUND', message: 'Transport not found' },
+        { status: 404 },
       );
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      let wallet = await tx.wallet.findFirst({
-        where: { ownerUserId: driverUserId },
-      });
+    if (!result) {
+      return NextResponse.json(createFallbackRelease(id, fallbackAmount));
+    }
 
-      if (!wallet) {
-        wallet = await tx.wallet.create({
-          data: {
-            ownerUserId: driverUserId,
-            balance: 0,
-            currency: transport.currency,
-            status: 'ACTIVE',
-          },
-        });
-      }
-
-      const existingTransaction = await tx.walletTransaction.findFirst({
-        where: {
-          walletId: wallet.id,
-          reference: draft.walletTransaction.reference,
-        },
-      });
-
-      if (existingTransaction) {
-        return {
-          wallet,
-          walletTransaction: existingTransaction,
-          notification: null,
-          duplicate: true,
-        };
-      }
-
-      const legacyImmediateCredit = await tx.walletTransaction.findFirst({
-        where: {
-          walletId: wallet.id,
-          relatedTransportId: id,
-          type: 'PAYMENT_IN',
-          amount: { gt: 0 },
-        },
-        orderBy: { createdAt: 'asc' },
-      });
-
-      if (legacyImmediateCredit) {
-        return {
-          wallet,
-          walletTransaction: legacyImmediateCredit,
-          notification: null,
-          duplicate: true,
-        };
-      }
-
-      const walletTransaction = await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: 'PAYMENT_IN',
-          amount: draft.walletTransaction.amount,
-          currency: draft.currency,
-          relatedTransportId: id,
-          description: draft.walletTransaction.description,
-          reference: draft.walletTransaction.reference,
-          processedAt: new Date(),
-        },
-      });
-
-      const updatedWallet = await tx.wallet.update({
-        where: { id: wallet.id },
-        data: {
-          balance: { increment: draft.walletTransaction.amount },
-          totalDeposited: { increment: draft.walletTransaction.amount },
-        },
-      });
-
-      const notification = await tx.notification.create({
-        data: {
-          userId: driverUserId,
-          type: 'PAYOUT_RELEASED',
-          title: 'Auszahlung ins Wallet freigegeben',
-          message: `${formatMoney(draft.walletTransaction.amount, draft.currency)} fuer Auftrag ${id} wurde ins Wallet gebucht.`,
-          data: JSON.stringify({
-            orderId: id,
-            releaseId: draft.releaseId,
-            walletTransactionId: walletTransaction.id,
-            walletBalance: updatedWallet.balance,
-            amount: draft.walletTransaction.amount,
-            currency: draft.currency,
-          }),
-        },
-      });
-
-      return {
-        wallet: updatedWallet,
-        walletTransaction,
-        notification,
-        duplicate: false,
-      };
-    });
-
-    return NextResponse.json({
-      success: true,
-      release: {
-        ...draft,
-        status: 'released',
-        releasedAt: new Date().toISOString(),
-      },
-      wallet: {
-        id: result.wallet.id,
-        balance: result.wallet.balance,
-        currency: result.wallet.currency,
-      },
-      walletTransaction: result.walletTransaction,
-      notification: result.notification,
-      duplicate: result.duplicate,
-      source: 'database',
-    });
+    return NextResponse.json(result, { status: result.success ? 200 : 409 });
   } catch (error) {
-    console.error('[OrderPayoutReleaseAPI] Failed:', error);
+    console.error('[OrderPayoutReleaseAPI] POST failed:', error);
     return NextResponse.json(createFallbackRelease(id, fallbackAmount, 'Database unavailable, using payout release fallback'));
   }
 }
@@ -241,6 +126,10 @@ function createFallbackRelease(orderId: string, amount: number, warning?: string
 
 function isDemoOrderId(orderId: string) {
   return orderId.startsWith('mission_demo') || orderId.startsWith('demo') || orderId.startsWith('TR-');
+}
+
+function isPayoutAdminRole(role: string | null) {
+  return role === 'ADMIN' || role === 'FINANCE';
 }
 
 function formatMoney(value: number, currency = 'EUR') {

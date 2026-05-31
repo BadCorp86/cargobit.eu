@@ -18,6 +18,7 @@
 import { prisma } from '@/lib/db';
 import { matchTransportersForJob, type JobRequirements } from './matching-ml.service';
 import { broadcastJobStatus, notifyUser, broadcastNewBid } from './redis-publisher.service';
+import { reserveTransportBudget } from './wallet-reservation.service';
 
 // ============================================
 // TYPES
@@ -180,12 +181,9 @@ export async function createJob(input: CreateJobInput): Promise<{ jobId: string;
     },
   });
   
-  // Publish job (trigger matching)
-  await publishJob(transport.id);
-  
   return {
     jobId: transport.id,
-    status: 'open',
+    status: 'draft',
   };
 }
 
@@ -209,6 +207,24 @@ export async function publishJob(jobId: string): Promise<void> {
   if (!transport) {
     throw new Error('Job not found');
   }
+
+  if (!transport.shipperBudget || transport.shipperBudget <= 0) {
+    const error = new Error('KI-Preisempfehlung oder Budget fehlt. Auftrag kann noch nicht veroeffentlicht werden.') as Error & {
+      code?: string;
+      status?: number;
+    };
+    error.code = 'PRICE_REQUIRED';
+    error.status = 400;
+    throw error;
+  }
+
+  await reserveTransportBudget({
+    transportId: transport.id,
+    shipperUserId: transport.shipperUserId,
+    shipperCompanyId: transport.shipperCompanyId,
+    amount: transport.shipperBudget,
+    currency: transport.currency,
+  });
   
   // Update status to PUBLISHED
   await prisma.transport.update({
@@ -242,7 +258,7 @@ export async function publishJob(jobId: string): Promise<void> {
       // Update job status to matched
       return prisma.transport.update({
         where: { id: jobId },
-        data: { status: 'ASSIGNED' }, // Using ASSIGNED as 'matched' equivalent
+        data: { status: 'PUBLISHED' },
       });
     })
     .catch(error => {

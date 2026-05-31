@@ -21,6 +21,10 @@ import {
   quoteBookingFees,
 } from '@/services/fee.service';
 import { createInsuranceReferralQuote } from '@/lib/insurance/referral';
+import {
+  finalizeTransportReservation,
+  WalletTopupRequiredError,
+} from '@/services/wallet-reservation.service';
 
 interface AcceptBidRequest {
   bid_id: string;
@@ -85,7 +89,7 @@ export async function PATCH(
     }
     
     // Python: if job.status not in ("open", "matched"): raise HTTPException(400, "Job not bookable")
-    const bookableStatuses = ['CREATED', 'PUBLISHED'];
+    const bookableStatuses = ['PUBLISHED'];
     if (!bookableStatuses.includes(job.status)) {
       return NextResponse.json(
         { error: 'Job not bookable in current status' },
@@ -125,32 +129,6 @@ export async function PATCH(
     });
     const transporterUserId = bid.driver.userId;
     
-    // Python: shipper_wallet = get_wallet_by_user(db, user_id)
-    const shipperWallet = await prisma.wallet.findFirst({
-      where: { ownerUserId: userId },
-    });
-    
-    if (!shipperWallet) {
-      return NextResponse.json(
-        { error: 'Wallet not found' },
-        { status: 400 }
-      );
-    }
-    
-    // Python: if shipper_wallet.balance_cents < shipper_debit_cents:
-    //     raise HTTPException(400, "Insufficient wallet balance")
-    const balanceCents = Math.round(shipperWallet.balance * 100);
-    if (balanceCents < feeQuote.shipperDebitAmountCents) {
-      return NextResponse.json(
-        {
-          error: 'Insufficient wallet balance',
-          required_cents: feeQuote.shipperDebitAmountCents,
-          available_cents: balanceCents,
-        },
-        { status: 400 }
-      );
-    }
-    
     // Get or create transporter's wallet
     const transporterWallet = await getOrCreateWallet(transporterUserId);
     
@@ -171,23 +149,16 @@ export async function PATCH(
     //   raise
     
     const result = await prisma.$transaction(async (tx) => {
-      // 1) Debit shipper: accepted price plus wallet fee.
-      await tx.wallet.update({
-        where: { id: shipperWallet.id },
-        data: { balance: { decrement: feeQuote.shipperDebitAmount } },
-      });
-      
-      await tx.walletTransaction.create({
-        data: {
-          walletId: shipperWallet.id,
-          type: 'PAYMENT_OUT',
-          amount: -feeQuote.shipperDebitAmount,
-          currency: feeQuote.currency,
-          relatedTransportId: jobId,
-          reference: bidId,
-          description: `Booking for job ${jobId} incl. ${feeQuote.walletFeePercent}% wallet fee`,
-          processedAt: new Date(),
-        },
+      // 1) Finalize reserved shipper wallet amount.
+      const finalizedBooking = await finalizeTransportReservation({
+        transportId: jobId,
+        shipperUserId: userId,
+        shipperCompanyId: job.shipperCompanyId,
+        amount: bid.price,
+        currency: bid.currency,
+        bookingReference: bidId,
+        description: `Booking for job ${jobId} incl. ${feeQuote.walletFeePercent}% wallet fee`,
+        client: tx,
       });
       
       // 2) Credit CargoBit: commission plus wallet fee.
@@ -200,11 +171,11 @@ export async function PATCH(
         data: {
           walletId: platformWallet.id,
           type: 'COMMISSION',
-          amount: feeQuote.platformCreditAmount,
-          currency: feeQuote.currency,
+          amount: finalizedBooking.feeQuote.platformCreditAmount,
+          currency: finalizedBooking.feeQuote.currency,
           relatedTransportId: jobId,
           reference: bidId,
-          description: `CargoBit fees for job ${jobId}: ${feeQuote.commissionPercent}% commission + ${feeQuote.walletFeePercent}% wallet fee`,
+          description: `CargoBit fees for job ${jobId}: ${finalizedBooking.feeQuote.commissionPercent}% commission + ${finalizedBooking.feeQuote.walletFeePercent}% wallet fee`,
           processedAt: new Date(),
         },
       });
@@ -216,10 +187,10 @@ export async function PATCH(
           walletId: transporterWallet.id,
           type: 'PAYMENT_IN',
           amount: 0,
-          currency: feeQuote.currency,
+          currency: finalizedBooking.feeQuote.currency,
           relatedTransportId: jobId,
           reference: `pending_${bidId}`,
-          description: `Settlement pending for job ${jobId}: ${feeQuote.transporterCreditAmount} ${feeQuote.currency} after POD and invoice`,
+          description: `Settlement pending for job ${jobId}: ${finalizedBooking.feeQuote.transporterCreditAmount} ${finalizedBooking.feeQuote.currency} after POD and invoice`,
         },
       });
       
@@ -277,11 +248,11 @@ export async function PATCH(
       await tx.commission.create({
         data: {
           transportId: jobId,
-          plan: feeQuote.plan,
-          commissionPercent: feeQuote.commissionPercent,
-          commissionAmount: feeQuote.commissionAmount,
-          walletFeePercent: feeQuote.walletFeePercent,
-          walletFeeAmount: feeQuote.walletFeeAmount,
+          plan: finalizedBooking.feeQuote.plan,
+          commissionPercent: finalizedBooking.feeQuote.commissionPercent,
+          commissionAmount: finalizedBooking.feeQuote.commissionAmount,
+          walletFeePercent: finalizedBooking.feeQuote.walletFeePercent,
+          walletFeeAmount: finalizedBooking.feeQuote.walletFeeAmount,
         },
       });
       
@@ -350,6 +321,17 @@ export async function PATCH(
     
   } catch (error: any) {
     console.error('[API] PATCH /jobs/[id]/accept_bid error:', error);
+    if (error instanceof WalletTopupRequiredError) {
+      return NextResponse.json(
+        {
+          error: error.code,
+          message: 'Wallet-Aufladung erforderlich, um dieses Angebot anzunehmen.',
+          wallet: error.details,
+        },
+        { status: error.status },
+      );
+    }
+
     return NextResponse.json(
       { error: error.message || 'Failed to accept bid' },
       { status: 500 }

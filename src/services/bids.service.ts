@@ -22,6 +22,7 @@ import {
   getOrCreateWallet,
   quoteBookingFees,
 } from './fee.service';
+import { finalizeTransportReservation } from './wallet-reservation.service';
 
 // ============================================
 // TYPES
@@ -73,7 +74,7 @@ export async function createBid(input: CreateBidInput): Promise<{ bidId: string;
     throw new Error('Job not found');
   }
   
-  if (!['CREATED', 'PUBLISHED', 'ASSIGNED'].includes(transport.status)) {
+  if (transport.status !== 'PUBLISHED') {
     throw new Error('Job is not open for bids');
   }
   
@@ -245,8 +246,8 @@ export async function acceptBid(
   }
   
   // Verify job is not already assigned
-  if (offer.transport.status === 'IN_TRANSIT' || offer.transport.status === 'COMPLETED') {
-    throw new Error('Job is already in progress or completed');
+  if (offer.transport.status !== 'PUBLISHED') {
+    throw new Error('Job is not bookable');
   }
   
   // Process booking (wallet transactions)
@@ -406,20 +407,6 @@ async function processBooking(offer: any): Promise<{ success: boolean; error?: s
       shipperCompanyId: transport.shipperCompanyId,
     });
     
-    // Get shipper's wallet
-    const shipperWallet = await prisma.wallet.findFirst({
-      where: { ownerUserId: transport.shipperUserId },
-    });
-    
-    if (!shipperWallet) {
-      return { success: false, error: 'Shipper wallet not found' };
-    }
-    
-    // Check balance
-    if (shipperWallet.balance < feeQuote.shipperDebitAmount) {
-      return { success: false, error: 'Insufficient balance. Please top up your wallet.' };
-    }
-    
     // Get transporter's wallet
     const transporterWallet = await getOrCreateWallet(transporterUserId);
     
@@ -427,67 +414,61 @@ async function processBooking(offer: any): Promise<{ success: boolean; error?: s
     const platformWallet = await getOrCreatePlatformWallet();
     
     // Run transaction
-    await prisma.$transaction([
-      // 1. Debit shipper
-      prisma.wallet.update({
-        where: { id: shipperWallet.id },
-        data: { balance: { decrement: feeQuote.shipperDebitAmount } },
-      }),
-      prisma.walletTransaction.create({
-        data: {
-          walletId: shipperWallet.id,
-          type: 'PAYMENT_OUT',
-          amount: -feeQuote.shipperDebitAmount,
-          currency: feeQuote.currency,
-          relatedTransportId: transport.id,
-          description: `Payment for job ${transport.id} incl. ${feeQuote.walletFeePercent}% wallet fee`,
-          processedAt: new Date(),
-        },
-      }),
+    await prisma.$transaction(async (tx) => {
+      const finalizedBooking = await finalizeTransportReservation({
+        transportId: transport.id,
+        shipperUserId: transport.shipperUserId,
+        shipperCompanyId: transport.shipperCompanyId,
+        amount,
+        currency: offer.currency,
+        bookingReference: offer.id,
+        description: `Payment for job ${transport.id} incl. ${feeQuote.walletFeePercent}% wallet fee`,
+        client: tx,
+      });
       
       // 2. Credit platform fee
-      prisma.wallet.update({
+      await tx.wallet.update({
         where: { id: platformWallet.id },
-        data: { balance: { increment: feeQuote.platformCreditAmount } },
-      }),
-      prisma.walletTransaction.create({
+        data: { balance: { increment: finalizedBooking.feeQuote.platformCreditAmount } },
+      });
+      await tx.walletTransaction.create({
         data: {
           walletId: platformWallet.id,
           type: 'COMMISSION',
-          amount: feeQuote.platformCreditAmount,
-          currency: feeQuote.currency,
+          amount: finalizedBooking.feeQuote.platformCreditAmount,
+          currency: finalizedBooking.feeQuote.currency,
           relatedTransportId: transport.id,
-          description: `CargoBit fees for job ${transport.id}: ${feeQuote.commissionPercent}% commission + ${feeQuote.walletFeePercent}% wallet fee`,
+          description: `CargoBit fees for job ${transport.id}: ${finalizedBooking.feeQuote.commissionPercent}% commission + ${finalizedBooking.feeQuote.walletFeePercent}% wallet fee`,
           processedAt: new Date(),
         },
-      }),
+      });
       
       // 3. Mark transporter settlement as pending. The actual wallet credit is released
       // after POD/eCMR and invoice gates have passed.
-      prisma.walletTransaction.create({
+      await tx.walletTransaction.create({
         data: {
           walletId: transporterWallet.id,
           type: 'PAYMENT_IN',
           amount: 0,
-          currency: feeQuote.currency,
+          currency: finalizedBooking.feeQuote.currency,
           relatedTransportId: transport.id,
           reference: `pending_${offer.id}`,
-          description: `Settlement pending for job ${transport.id}: ${feeQuote.transporterCreditAmount} ${feeQuote.currency} after POD and invoice`,
+          description: `Settlement pending for job ${transport.id}: ${finalizedBooking.feeQuote.transporterCreditAmount} ${finalizedBooking.feeQuote.currency} after POD and invoice`,
         },
-      }),
+      });
       
       // 4. Record commission
-      prisma.commission.create({
+      await tx.commission.create({
         data: {
           transportId: transport.id,
-          plan: feeQuote.plan,
-          commissionPercent: feeQuote.commissionPercent,
-          commissionAmount: feeQuote.commissionAmount,
-          walletFeePercent: feeQuote.walletFeePercent,
-          walletFeeAmount: feeQuote.walletFeeAmount,
+          plan: finalizedBooking.feeQuote.plan,
+          commissionPercent: finalizedBooking.feeQuote.commissionPercent,
+          commissionAmount: finalizedBooking.feeQuote.commissionAmount,
+          walletFeePercent: finalizedBooking.feeQuote.walletFeePercent,
+          walletFeeAmount: finalizedBooking.feeQuote.walletFeeAmount,
         },
-      }),
-    ]);
+      });
+    });
     
     console.log(`[Bids] Booking processed: ${amount} EUR (commission: ${feeQuote.commissionAmount}, wallet fee: ${feeQuote.walletFeeAmount}, payout: ${feeQuote.transporterCreditAmount})`);
     

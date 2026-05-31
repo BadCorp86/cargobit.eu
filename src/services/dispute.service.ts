@@ -9,7 +9,7 @@
  */
 
 import { prisma } from '@/lib/db';
-import type { DisputeStatus, DisputeAction } from '@prisma/client';
+import type { DisputeStatus } from '@prisma/client';
 
 // ============================================
 // TYPES
@@ -26,6 +26,8 @@ export interface ResolveDisputeRequest {
   resolution: string;
   refundAmountCents?: number;
 }
+
+export type DisputeAction = 'REFUND_FULL' | 'REFUND_PARTIAL' | 'REJECT';
 
 export interface DisputeResult {
   success: boolean;
@@ -72,6 +74,13 @@ export async function createDispute(
   // Get job
   const transport = await prisma.transport.findUnique({
     where: { id: jobId },
+    include: {
+      assignment: {
+        include: {
+          driver: true,
+        },
+      },
+    },
   });
   
   if (!transport) {
@@ -92,7 +101,7 @@ export async function createDispute(
   
   // Check if dispute already exists
   const existingDispute = await prisma.dispute.findFirst({
-    where: { transportId: jobId, status: { in: ['OPEN', 'IN_REVIEW'] } },
+    where: { jobId, status: { in: ['OPEN', 'IN_PROGRESS', 'IN_REVIEW', 'AWAITING_INFO'] } },
   });
   
   if (existingDispute) {
@@ -107,14 +116,26 @@ export async function createDispute(
   const dispute = await prisma.$transaction(async (tx) => {
     const d = await tx.dispute.create({
       data: {
-        transportId: jobId,
+        jobId,
         createdById: userId,
+        againstId: isShipper ? transport.assignment?.driver.userId : transport.shipperUserId,
         reason: req.reason,
-        description: req.description,
+        subject: req.reason,
+        description: req.description || req.reason,
         status: 'OPEN',
-        evidence: req.evidence ? JSON.stringify(req.evidence) : null,
       },
     });
+
+    if (req.evidence?.length) {
+      await tx.disputeAttachment.createMany({
+        data: req.evidence.map((fileUrl, index) => ({
+          disputeId: d.id,
+          fileName: `evidence-${index + 1}`,
+          fileUrl,
+          uploadedBy: userId,
+        })),
+      });
+    }
     
     // Update transport status (no IN_DISPUTE status, use note)
     await tx.transportStatusHistory.create({
@@ -201,7 +222,7 @@ export async function resolveDispute(
   
   // Get related entities
   const transport = await prisma.transport.findUnique({
-    where: { id: dispute.transportId },
+    where: { id: dispute.jobId },
     include: { 
       offers: { where: { status: 'ACCEPTED' } },
       assignment: true,
@@ -226,7 +247,7 @@ export async function resolveDispute(
   const result = await prisma.$transaction(async (tx) => {
     // Process refund if applicable
     if (refundAmount > 0 && req.action !== 'REJECT') {
-      await processRefundForJob(tx, dispute.transportId, transport.shipperUserId, refundAmount);
+      await processRefundForJob(tx, dispute.jobId, transport.shipperUserId, refundAmount);
     }
     
     // Update dispute
@@ -234,11 +255,10 @@ export async function resolveDispute(
       where: { id: disputeId },
       data: {
         status: req.action === 'REJECT' ? 'REJECTED' : 'REFUNDED',
-        action: req.action,
-        resolution: req.resolution,
-        refundAmount: refundAmount > 0 ? refundAmount : null,
-        reviewedById: adminId,
-        reviewedAt: new Date(),
+        resolution: req.action === 'REJECT' ? 'REJECT' : req.action === 'REFUND_FULL' ? 'REFUND_FULL' : 'REFUND_PARTIAL',
+        resolutionText: req.resolution,
+        refundAmountCents: refundAmount > 0 ? Math.round(refundAmount * 100) : null,
+        resolvedById: adminId,
         resolvedAt: new Date(),
       },
     });
@@ -246,7 +266,7 @@ export async function resolveDispute(
     // Create audit log
     await tx.transportStatusHistory.create({
       data: {
-        transportId: dispute.transportId,
+        transportId: dispute.jobId,
         status: transport.status,
         changedBy: adminId,
         note: `Dispute resolved: ${req.action} - ${req.resolution}`,
@@ -294,6 +314,7 @@ async function processRefundForJob(
       data: {
         ownerUserId: shipperUserId,
         balance: 0,
+        reservedBalance: 0,
         currency: 'EUR',
         status: 'ACTIVE',
       },
@@ -340,17 +361,35 @@ export async function getDisputes(options?: {
     take: options?.limit || 20,
     skip: options?.offset || 0,
     include: {
-      transport: {
-        select: {
-          id: true,
-          status: true,
-          shipperUserId: true,
+      createdBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+      against: { select: { id: true, email: true, firstName: true, lastName: true } },
+      attachments: true,
+    },
+  });
+
+  const transports = await prisma.transport.findMany({
+    where: { id: { in: [...new Set(disputes.map((dispute) => dispute.jobId))] } },
+    select: {
+      id: true,
+      status: true,
+      shipperUserId: true,
+      assignment: {
+        include: {
+          driver: {
+            include: {
+              user: { select: { id: true, email: true, firstName: true, lastName: true } },
+            },
+          },
         },
       },
     },
   });
-  
-  return disputes;
+  const transportsById = new Map(transports.map((transport) => [transport.id, transport]));
+
+  return disputes.map((dispute) => ({
+    ...dispute,
+    transport: transportsById.get(dispute.jobId) || null,
+  }));
 }
 
 // ============================================
@@ -358,17 +397,39 @@ export async function getDisputes(options?: {
 // ============================================
 
 export async function getDisputeById(disputeId: string) {
-  return prisma.dispute.findUnique({
+  const dispute = await prisma.dispute.findUnique({
     where: { id: disputeId },
     include: {
-      transport: {
+      createdBy: true,
+      against: true,
+      messages: { orderBy: { createdAt: 'asc' } },
+      attachments: true,
+      auditEvents: { orderBy: { createdAt: 'desc' } },
+    },
+  });
+
+  if (!dispute) return null;
+
+  const transport = await prisma.transport.findUnique({
+    where: { id: dispute.jobId },
+    include: {
+      offers: { where: { status: 'ACCEPTED' } },
+      assignment: {
         include: {
-          offers: { where: { status: 'ACCEPTED' } },
-          assignment: { include: { driver: true } },
+          driver: {
+            include: {
+              user: true,
+            },
+          },
         },
       },
     },
   });
+
+  return {
+    ...dispute,
+    transport,
+  };
 }
 
 // ============================================

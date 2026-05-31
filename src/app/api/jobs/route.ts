@@ -12,6 +12,7 @@ import {
   createTransportLimitResponse,
   SubscriptionLimitError,
 } from '@/services/subscription-limits.service';
+import { WalletTopupRequiredError } from '@/services/wallet-reservation.service';
 
 // ============================================
 // GET /api/jobs - List jobs
@@ -138,11 +139,40 @@ export async function POST(request: NextRequest) {
           persistLead: true,
         })
       : null;
+
+    try {
+      await jobsService.publishJob(result.jobId);
+    } catch (publishError: any) {
+      if (publishError instanceof WalletTopupRequiredError) {
+        return NextResponse.json({
+          success: true,
+          jobId: result.jobId,
+          status: 'CREATED',
+          actionRequired: 'WALLET_TOPUP_REQUIRED',
+          wallet: publishError.details,
+          message: 'Auftrag wurde als Entwurf erstellt. Bitte Wallet aufladen, damit er online gehen kann.',
+          insuranceReferral,
+        }, { status: 201 });
+      }
+
+      if (publishError?.code === 'PRICE_REQUIRED') {
+        return NextResponse.json({
+          success: true,
+          jobId: result.jobId,
+          status: 'CREATED',
+          actionRequired: 'PRICE_REQUIRED',
+          message: publishError.message,
+          insuranceReferral,
+        }, { status: 201 });
+      }
+
+      throw publishError;
+    }
     
     return NextResponse.json({
       success: true,
       jobId: result.jobId,
-      status: result.status,
+      status: 'PUBLISHED',
       insuranceReferral,
     }, { status: 201 });
     
@@ -153,6 +183,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         createTransportLimitResponse(error),
         { status: error.status }
+      );
+    }
+
+    if (error instanceof WalletTopupRequiredError) {
+      return NextResponse.json(
+        {
+          error: error.code,
+          message: error.message,
+          wallet: error.details,
+        },
+        { status: error.status },
       );
     }
 

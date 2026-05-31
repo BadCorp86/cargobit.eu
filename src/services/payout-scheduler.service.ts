@@ -7,6 +7,7 @@ import { db } from '@/lib/db';
 import { PayoutStatus } from '@prisma/client';
 import { leaderLock } from './leader-lock.service';
 import { payoutWorker } from './payout-worker.service';
+import { runAutomaticPayoutReleases } from './order-payout-release.service';
 
 // ============================================
 // INTERFACES
@@ -19,6 +20,7 @@ interface ReconciliationResult {
   processedPayouts: number;
   failedPayouts: number;
   reconciledPayouts: number;
+  autoReleasedPayouts: number;
   diffs: ReconciliationDiff[];
 }
 
@@ -96,6 +98,7 @@ export class PayoutSchedulerService {
         processedPayouts: 0,
         failedPayouts: 0,
         reconciledPayouts: 0,
+        autoReleasedPayouts: 0,
         diffs: [],
       };
     }
@@ -103,13 +106,16 @@ export class PayoutSchedulerService {
     try {
       console.log('[PayoutScheduler] Starting scheduled payout run...');
 
-      // 1. Process pending payouts
+      // 1. Release eligible transport settlements into carrier wallets
+      const autoReleaseResult = await runAutomaticPayoutReleases({ now: timestamp, limit: 100 });
+
+      // 2. Process pending bank payouts
       const pendingResult = await payoutWorker.processPendingPayouts(100);
 
-      // 2. Retry failed payouts
+      // 3. Retry failed bank payouts
       const retryResult = await payoutWorker.retryFailedPayouts(50);
 
-      // 3. Run reconciliation
+      // 4. Run reconciliation
       const reconciliation = await this.runReconciliation();
 
       // 4. Update stats
@@ -122,6 +128,7 @@ export class PayoutSchedulerService {
       console.log(`[PayoutScheduler] Completed in ${duration}ms`, {
         pending: pendingResult,
         retries: retryResult,
+        autoReleases: autoReleaseResult,
         reconciliation: reconciliation.diffs.length,
       });
 
@@ -131,6 +138,7 @@ export class PayoutSchedulerService {
         duration,
         pendingResult,
         retryResult,
+        autoReleaseResult,
         reconciliation,
       });
 
@@ -141,6 +149,7 @@ export class PayoutSchedulerService {
         processedPayouts: pendingResult.successful,
         failedPayouts: pendingResult.failed + retryResult.failed,
         reconciledPayouts: reconciliation.reconciled,
+        autoReleasedPayouts: autoReleaseResult.released,
         diffs: reconciliation.diffs,
       };
 
@@ -155,6 +164,7 @@ export class PayoutSchedulerService {
         processedPayouts: 0,
         failedPayouts: 0,
         reconciledPayouts: 0,
+        autoReleasedPayouts: 0,
         diffs: [],
       };
 
@@ -274,6 +284,7 @@ export class PayoutSchedulerService {
     duration: number;
     pendingResult: any;
     retryResult: any;
+    autoReleaseResult: any;
     reconciliation: any;
   }): Promise<void> {
     try {

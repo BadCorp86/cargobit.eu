@@ -44,6 +44,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const driverUserId = transport.assignment?.driver.userId;
+    const actorId = request.headers.get('x-user-id');
     const amount = transport.agreedPrice || transport.shipperBudget || fallbackAmount;
     const invoiceIssued = transport.documents.some((document) => document.type === 'rechnung');
     const hasPod = Boolean(
@@ -76,6 +77,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    if (!actorId || actorId !== driverUserId) {
+      return NextResponse.json(
+        {
+          success: false,
+          release,
+          message: 'Bankauszahlung ist nur im eigenen Wallet-Bereich des Empfaengers moeglich.',
+          source: 'database',
+        },
+        { status: 403 },
+      );
+    }
+
     const wallet = await prisma.wallet.findFirst({
       where: { ownerUserId: driverUserId },
       include: {
@@ -96,7 +109,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const amountCents = Math.round(release.settlement.carrierWalletCredit * 100);
-    if (wallet.balance * 100 < amountCents) {
+    const availableBalance = wallet.balance - (wallet.reservedBalance || 0);
+    if (Math.round(availableBalance * 100) < amountCents) {
       return NextResponse.json(
         {
           success: false,
@@ -106,7 +120,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             balance: wallet.balance,
             currency: wallet.currency,
           },
-          message: 'Wallet-Guthaben reicht fuer diese Bankauszahlung nicht aus.',
+          message: 'Frei verfuegbares Wallet-Guthaben reicht fuer diese Bankauszahlung nicht aus.',
           source: 'database',
         },
         { status: 409 },

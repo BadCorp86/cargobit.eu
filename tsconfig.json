@@ -38,6 +38,12 @@
   ],
   "exclude": [
     "node_modules",
-    "download/**/*.ts"
+    ".next",
+    "download/**/*.ts",
+    "__tests__",
+    "tests",
+    "src/**/__tests__",
+    "src/wallet/**",
+    "src/webhooks/**"
   ]
 }
