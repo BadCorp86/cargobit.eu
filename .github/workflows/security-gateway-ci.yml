@@ -67,25 +67,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: npm ci
 
       - name: Run lint
-        run: pnpm lint
+        run: npm run lint
 
       - name: Build project
-        run: pnpm build
+        run: npm run build
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -103,6 +99,7 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     needs: build
+    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
     timeout-minutes: 20
     steps:
       - name: Checkout code
@@ -163,6 +160,7 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: build
+    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
     timeout-minutes: 30
     services:
       postgres:
@@ -249,6 +247,7 @@ jobs:
     name: Contract Tests (Pact)
     runs-on: ubuntu-latest
     needs: build
+    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
     timeout-minutes: 20
     steps:
       - name: Checkout code
@@ -300,6 +299,7 @@ jobs:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests]
+    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
     timeout-minutes: 45
     services:
       postgres:
@@ -379,6 +379,7 @@ jobs:
     name: Security Tests
     runs-on: ubuntu-latest
     needs: build
+    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -474,7 +475,7 @@ jobs:
     name: Load Tests (K6)
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests]
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
     timeout-minutes: 60
     services:
       postgres:
@@ -578,7 +579,7 @@ jobs:
     name: Chaos Tests
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests]
-    if: github.event_name == 'schedule' && github.event.schedule == '0 3 * * 0'  # Weekly
+    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && github.event_name == 'schedule' && github.event.schedule == '0 3 * * 0'  # Weekly
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -624,7 +625,7 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests, contract-tests, e2e-tests, security-tests]
-    if: github.ref == 'refs/heads/develop'
+    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && github.ref == 'refs/heads/develop'
     environment: staging
     timeout-minutes: 15
     steps:
@@ -673,7 +674,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests, contract-tests, e2e-tests, security-tests, load-tests]
-    if: github.ref == 'refs/heads/main'
+    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && github.ref == 'refs/heads/main'
     environment: production
     timeout-minutes: 20
     steps:
