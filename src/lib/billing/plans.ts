@@ -12,6 +12,7 @@ export interface BillingPlanDefinition {
   vatNotice: string;
   commissionPercent: number;
   walletFeePercent: number;
+  maxTransportsMonthly: number;
   features: string[];
 }
 
@@ -44,6 +45,7 @@ export const BILLING_PLANS: Record<BillingPlanKey, BillingPlanDefinition> = {
     vatNotice: 'zzgl. gesetzlicher MwSt.',
     commissionPercent: 14,
     walletFeePercent: 3.5,
+    maxTransportsMonthly: 10,
     features: ['10 Transporte/Monat', 'Basis-Matching', 'E-Mail Support'],
   },
   STARTER: {
@@ -55,6 +57,7 @@ export const BILLING_PLANS: Record<BillingPlanKey, BillingPlanDefinition> = {
     vatNotice: 'zzgl. gesetzlicher MwSt.',
     commissionPercent: 10,
     walletFeePercent: 2.5,
+    maxTransportsMonthly: 50,
     features: ['50 Transporte/Monat', 'Erweitertes Matching', 'E-Mail Support', 'Versicherung verfügbar'],
   },
   PROFESSIONAL: {
@@ -66,6 +69,7 @@ export const BILLING_PLANS: Record<BillingPlanKey, BillingPlanDefinition> = {
     vatNotice: 'zzgl. gesetzlicher MwSt.',
     commissionPercent: 7,
     walletFeePercent: 2,
+    maxTransportsMonthly: 200,
     features: ['200 Transporte/Monat', 'Smart Matching Premium', 'Telefon-Support', 'Ads und Reports'],
   },
   ENTERPRISE: {
@@ -77,6 +81,7 @@ export const BILLING_PLANS: Record<BillingPlanKey, BillingPlanDefinition> = {
     vatNotice: 'zzgl. gesetzlicher MwSt.',
     commissionPercent: 5,
     walletFeePercent: 1.5,
+    maxTransportsMonthly: -1,
     features: ['Unbegrenzte Transporte', 'Dedizierter Account Manager', 'Individuelle Integration', 'SLA Garantie'],
   },
 };
@@ -138,6 +143,7 @@ export function getSubscriptionPlanConfig() {
           yearlyPrice,
           commissionPercent: plan.commissionPercent,
           walletFeePercent: plan.walletFeePercent,
+          maxTransportsMonthly: plan.maxTransportsMonthly,
           features: plan.features,
         },
       ];

@@ -7,6 +7,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jobsService, type CreateJobInput, type JobStatus } from '@/services/jobs.service';
 import { createInsuranceReferralQuote } from '@/lib/insurance/referral';
+import {
+  assertCanCreateTransport,
+  createTransportLimitResponse,
+  SubscriptionLimitError,
+} from '@/services/subscription-limits.service';
 
 // ============================================
 // GET /api/jobs - List jobs
@@ -109,6 +114,11 @@ export async function POST(request: NextRequest) {
       driverRequirements: body.driverRequirements,
       specialRequirements: body.specialRequirements,
     };
+
+    await assertCanCreateTransport({
+      shipperUserId: userId,
+      shipperCompanyId: body.shipperCompanyId,
+    });
     
     const result = await jobsService.createJob(input);
     const insuranceReferral = body.insuranceReferral?.requested
@@ -138,6 +148,14 @@ export async function POST(request: NextRequest) {
     
   } catch (error: any) {
     console.error('[API] POST /jobs error:', error);
+
+    if (error instanceof SubscriptionLimitError) {
+      return NextResponse.json(
+        createTransportLimitResponse(error),
+        { status: error.status }
+      );
+    }
+
     return NextResponse.json(
       { error: error.message || 'Failed to create job' },
       { status: 500 }

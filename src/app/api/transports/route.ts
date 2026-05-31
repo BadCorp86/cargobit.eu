@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { CreateTransportRequest, CreateTransportResponse, ApiErrorResponse } from '@/types/transport';
+import {
+  assertCanCreateTransport,
+  createTransportLimitResponse,
+  SubscriptionLimitError,
+} from '@/services/subscription-limits.service';
 
 // POST /api/transports - Create a new transport
 export async function POST(request: NextRequest) {
@@ -15,6 +20,10 @@ export async function POST(request: NextRequest) {
         code: 'MISSING_FIELDS'
       }, { status: 400 });
     }
+
+    await assertCanCreateTransport({
+      shipperUserId: body.shipperId,
+    });
 
     // Check if international transport
     const isInternational = body.pickup.country !== body.delivery.country;
@@ -97,6 +106,14 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Create transport error:', error);
+
+    if (error instanceof SubscriptionLimitError) {
+      return NextResponse.json(
+        createTransportLimitResponse(error),
+        { status: error.status }
+      );
+    }
+
     return NextResponse.json<ApiErrorResponse>({
       error: 'InternalServerError',
       message: 'Failed to create transport',

@@ -37,13 +37,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Check Docker registry secrets
+        id: registry
+        run: |
+          if [ -n "${{ secrets.DOCKER_REGISTRY }}" ] && \
+             [ -n "${{ secrets.DOCKER_NAMESPACE }}" ] && \
+             [ -n "${{ secrets.DOCKER_USERNAME }}" ] && \
+             [ -n "${{ secrets.DOCKER_PASSWORD }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Docker registry secrets are not configured. Skipping image build and push."
+          fi
+
       - name: Set up QEMU (multi-arch)
+        if: steps.registry.outputs.configured == 'true'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
+        if: steps.registry.outputs.configured == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to registry
+        if: steps.registry.outputs.configured == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ secrets.DOCKER_REGISTRY }}
@@ -51,6 +67,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Cache node modules
+        if: steps.registry.outputs.configured == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.npm
@@ -59,12 +76,15 @@ jobs:
             ${{ runner.os }}-node-
 
       - name: Install dependencies
+        if: steps.registry.outputs.configured == 'true'
         run: npm ci
 
       - name: Build project
+        if: steps.registry.outputs.configured == 'true'
         run: npm run build
 
       - name: Determine image tag
+        if: steps.registry.outputs.configured == 'true'
         id: meta
         run: |
           if [ -n "${{ github.event.inputs.tag }}" ]; then
@@ -76,6 +96,7 @@ jobs:
           echo "Building images with tag: $TAG"
 
       - name: Build and push backend image
+        if: steps.registry.outputs.configured == 'true'
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -89,6 +110,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push worker image
+        if: steps.registry.outputs.configured == 'true'
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -102,6 +124,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Scan images (optional)
+        if: steps.registry.outputs.configured == 'true'
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.tag }}
@@ -111,6 +134,7 @@ jobs:
         continue-on-error: true
 
       - name: Summary
+        if: steps.registry.outputs.configured == 'true'
         run: |
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -123,7 +147,7 @@ jobs:
   trigger-deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.build-and-push.outputs.image_tag != ''
     steps:
       - name: Trigger Helm deploy
         uses: peter-evans/repository-dispatch@v2

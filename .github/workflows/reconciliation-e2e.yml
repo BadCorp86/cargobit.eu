@@ -33,6 +33,7 @@ on:
 env:
   NODE_VERSION: '24'
   Newman_VERSION: '6'
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
 jobs:
   e2e-tests:
@@ -140,6 +141,7 @@ jobs:
 
     steps:
       - name: Send Slack Notification
+        if: env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1.24.0
         with:
           payload: |
@@ -156,7 +158,7 @@ jobs:
               ]
             }
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
           SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
 
   # Optional: Run smoke tests after reconciliation

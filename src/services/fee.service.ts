@@ -119,6 +119,7 @@ export async function resolveBillingPlan(
       vatNotice: 'zzgl. gesetzlicher MwSt.',
       commissionPercent: companyPlan.plan.commissionPercent,
       walletFeePercent: companyPlan.plan.walletFeePercent,
+      maxTransportsMonthly: safeMaxTransports(companyPlan.plan.featuresJson, normalizeBillingPlan(companyPlan.plan.name)),
       features: safeJsonFeatures(companyPlan.plan.featuresJson),
     };
   } catch (error) {
@@ -186,4 +187,18 @@ function safeJsonFeatures(featuresJson?: string | null): string[] {
   }
 
   return getBillingPlan('FREE').features;
+}
+
+function safeMaxTransports(featuresJson: string | null | undefined, planName: BillingPlanKey): number {
+  try {
+    const parsed = featuresJson ? JSON.parse(featuresJson) : null;
+    const maxTransports = Number(parsed?.maxTransports);
+
+    if (Number.isFinite(maxTransports)) {
+      return maxTransports;
+    }
+  } catch {
+  }
+
+  return getBillingPlan(planName).maxTransportsMonthly;
 }
