@@ -345,7 +345,7 @@ export function getRoleDashboardData(roleInput?: string | null, user?: RoleDashb
           { from: 'Mailand', to: 'Barcelona', progress: 64, detail: 'Spedition Enterprise', value: '680' },
         ],
         quickActions: [
-          { label: 'Audience bauen', detail: 'Segment prüfen', href: '/marketer/partners', color: '#1C7ED6', icon: 'users' },
+          { label: 'Audience bauen', detail: 'Segment prüfen', href: '/marketer/partners', color: '#1C7ED6', icon: 'user' },
           { label: 'Report exportieren', detail: 'Performance', href: '/marketer/analytics', color: '#00D4FF', icon: 'file' },
           { label: 'Budget optimieren', detail: 'CAC senken', href: '/marketer/campaigns', color: '#F39C12', icon: 'wallet' },
         ],

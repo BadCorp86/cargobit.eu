@@ -185,7 +185,7 @@ export function buildFeatures(job: Job, t: Transporter): FeatureVector {
     same_origin_region: sameOriginRegion,
     same_destination_region: sameDestinationRegion,
     transporter_rating: Number(t.rating ?? 3.0),
-    job_distance_km: Number(job.distanceKg ?? 0.0),
+    job_distance_km: Number(job.distanceKm ?? 0.0),
     historical_jobs_with_shipper: Number(t.stats?.jobsWithShipper ?? 0),
     historical_cancel_rate: Number(t.stats?.cancelRate ?? 0.0),
   };

@@ -539,16 +539,3 @@ export interface AuditLogEntry {
   userAgent?: string;
   createdAt: Date;
 }
-
-// ============================================
-// EXPORTS
-// ============================================
-
-export type {
-  Permission,
-  ResourceAccess,
-  VerificationRequirement,
-  RiskThreshold,
-  SecurityFlagConfig,
-  AuditLogEntry,
-};

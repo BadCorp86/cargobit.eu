@@ -853,26 +853,3 @@ async function extractSecurityContext(request: NextRequest): Promise<SecurityCon
     activeSecurityFlags: user.securityFlags.length,
   };
 }
-
-// ============================================
-// EXPORTS
-// ============================================
-
-export type {
-  SecurityContext,
-  PermissionCheckResult,
-  HybridSecurityResult,
-  ActionContext,
-  SecurityAction,
-  MitigationAction,
-  MitigationResult,
-};
-
-export {
-  COMPACT_PERMISSION_MATRIX,
-  checkPermission,
-  performRiskCheck,
-  performHybridSecurityCheck,
-  withHybridSecurity,
-  mitigationService,
-};

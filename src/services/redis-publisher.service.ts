@@ -122,7 +122,7 @@ export function getRedisPublisher(): Redis {
  * @param channel - Redis channel name (e.g., "job:123", "user:456")
  * @param payload - Event payload as object
  */
-export async function publishEvent(channel: string, payload: Record<string, unknown>): Promise<void> {
+export async function publishEvent(channel: string, payload: object): Promise<void> {
   const redis = getRedisPublisher();
   const message = JSON.stringify(payload);
   

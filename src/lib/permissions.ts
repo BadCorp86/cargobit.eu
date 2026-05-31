@@ -88,7 +88,7 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext 
     roles,
     companyId: companyUser?.companyId,
     companyRole: companyUser?.roleInCompany as 'owner' | 'admin' | 'member',
-    isVerified: user.businessVerified === 'VERIFIED',
+    isVerified: user.status === 'ACTIVE',
     riskScore,
     activeSecurityFlags: user.securityFlags.length
   };
@@ -188,7 +188,16 @@ export async function checkResourceOwnership(
     case 'transport': {
       const transport = await db.transport.findUnique({
         where: { id: resourceId },
-        select: { shipperUserId: true, driverId: true }
+        select: {
+          shipperUserId: true,
+          assignment: {
+            select: {
+              driver: {
+                select: { userId: true },
+              },
+            },
+          },
+        },
       });
       
       if (!transport) return false;
@@ -197,13 +206,7 @@ export async function checkResourceOwnership(
       if (transport.shipperUserId === authContext.userId) return true;
       
       // Check if user is assigned driver
-      if (transport.driverId) {
-        const driver = await db.driver.findUnique({
-          where: { id: transport.driverId },
-          select: { userId: true }
-        });
-        if (driver?.userId === authContext.userId) return true;
-      }
+      if (transport.assignment?.driver.userId === authContext.userId) return true;
       
       // Check company ownership
       if (authContext.companyId) {
@@ -390,9 +393,3 @@ export async function logAuditEvent(params: {
     }
   });
 }
-
-// ============================================
-// EXPORTS
-// ============================================
-
-export type { AuthContext, PermissionCheckResult };

@@ -306,7 +306,11 @@ export async function runAutomaticPayoutReleases(input: { now?: Date; limit?: nu
     take: input.limit || 100,
     orderBy: { updatedAt: 'asc' },
   });
-  const results = [];
+  const results: Array<{
+    orderId: string;
+    status: 'released' | 'blocked';
+    blockers: string[];
+  }> = [];
 
   for (const transport of candidates) {
     const hasPod = transport.documents.some((document) => ['pod', 'lieferschein', 'foto_delivery'].includes(document.type));

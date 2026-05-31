@@ -211,7 +211,7 @@ export async function calculateUserRiskScore(userId: string): Promise<RiskScore>
       ...USER_RISK_FACTORS.ENHANCED_KYC,
       description: 'KYC erfolgreich verifiziert',
     });
-    totalScore += USER_RISK_FACTORS.ENHANCED_KYC_KYC.impact;
+    totalScore += USER_RISK_FACTORS.ENHANCED_KYC.impact;
   }
 
   // Check account age
@@ -589,23 +589,3 @@ export async function calculateCombinedRiskScore(
     weights,
   };
 }
-
-// ============================================
-// EXPORTS
-// ============================================
-
-export type {
-  RiskScore,
-  RiskFactor,
-  UserRiskContext,
-  CompanyRiskContext,
-  TransactionRiskContext,
-  CombinedRiskScore,
-};
-
-export {
-  RISK_THRESHOLDS,
-  USER_RISK_FACTORS,
-  COMPANY_RISK_FACTORS,
-  TRANSACTION_RISK_FACTORS,
-};
