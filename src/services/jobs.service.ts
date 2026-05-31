@@ -618,7 +618,7 @@ async function handleJobCompletion(jobId: string): Promise<void> {
     where: { id: jobId },
     include: {
       assignment: { include: { driver: true } },
-      commission: true,
+      commissions: true,
     },
   });
   

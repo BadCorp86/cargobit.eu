@@ -164,7 +164,7 @@ export async function PATCH(
       // 2) Credit CargoBit: commission plus wallet fee.
       await tx.wallet.update({
         where: { id: platformWallet.id },
-        data: { balance: { increment: feeQuote.platformCreditAmount } },
+        data: { balance: { increment: finalizedBooking.feeQuote.platformCreditAmount } },
       });
       
       await tx.walletTransaction.create({
@@ -266,7 +266,7 @@ export async function PATCH(
         },
       });
       
-      return { job: updatedJob, bid: updatedBid };
+      return { job: updatedJob, bid: updatedBid, feeQuote: finalizedBooking.feeQuote };
     });
     
     // Notify transporter (bonus feature)
@@ -308,14 +308,14 @@ export async function PATCH(
       status: 'booked',
       job_id: jobId,
       bid_id: bidId,
-      amount_cents: feeQuote.grossAmountCents,
-      fee_cents: feeQuote.platformCreditAmountCents,
-      commission_cents: feeQuote.commissionAmountCents,
-      wallet_fee_cents: feeQuote.walletFeeAmountCents,
-      shipper_debit_cents: feeQuote.shipperDebitAmountCents,
-      transporter_amount_cents: feeQuote.transporterCreditAmountCents,
+      amount_cents: result.feeQuote.grossAmountCents,
+      fee_cents: result.feeQuote.platformCreditAmountCents,
+      commission_cents: result.feeQuote.commissionAmountCents,
+      wallet_fee_cents: result.feeQuote.walletFeeAmountCents,
+      shipper_debit_cents: result.feeQuote.shipperDebitAmountCents,
+      transporter_amount_cents: result.feeQuote.transporterCreditAmountCents,
       settlement_status: 'held_until_pod_invoice',
-      plan: feeQuote.plan,
+      plan: result.feeQuote.plan,
       insurance_referral: insuranceReferral,
     });
     
