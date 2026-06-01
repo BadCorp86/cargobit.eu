@@ -30,12 +30,14 @@ import {
   Linkedin,
   Instagram,
   Youtube,
+  Loader2,
+  Calculator,
 } from 'lucide-react';
 
 import { useAuthStore } from '@/lib/auth-store';
 import { AuthModal } from '@/components/auth/auth-modal';
 import { Dashboard } from '@/components/dashboard/dashboard';
-import { TransportForm } from '@/components/transport/transport-form';
+import { TransportForm, type TransportFormInitialData } from '@/components/transport/transport-form';
 import { PartnerPortal } from '@/components/partner/partner-portal';
 import { TransporteurOnboarding } from '@/components/onboarding/transporteur-onboarding';
 import { ShipperOnboarding } from '@/components/onboarding/shipper-onboarding';
@@ -49,6 +51,114 @@ const PUBLIC_PLAN_DESCRIPTIONS: Record<(typeof PUBLIC_PRICING_ORDER)[number], st
   professional: 'Für aktive Speditionen, Dispatcher und Teams mit höherem Transportvolumen.',
   enterprise: 'Für größere Unternehmen, Partner-Integrationen und individuelle Prozessanforderungen.',
 };
+
+type QuickQuoteForm = {
+  pickupCity: string;
+  deliveryCity: string;
+  transportType: 'pallet' | 'oversize' | 'cooling' | 'hazmat' | 'car_transport' | 'container' | 'lowloader';
+  weightKg: string;
+  lengthCm: string;
+  widthCm: string;
+  heightCm: string;
+  cargoValueEur: string;
+};
+
+type QuickQuoteResult = {
+  recommendedPrice: number;
+  marketPrice: number;
+  minPrice: number;
+  currency: string;
+  confidence: number;
+  source: string;
+  route: {
+    distanceKm: number;
+    durationMinutes: number;
+    tollCost: number;
+  };
+};
+
+const SPECIAL_TRANSPORT_LABELS: Record<QuickQuoteForm['transportType'], string> = {
+  pallet: 'Paletten / Standardfracht',
+  oversize: 'Uebergroesse',
+  cooling: 'Kuehltransport',
+  hazmat: 'Gefahrgut',
+  car_transport: 'Fahrzeugtransport',
+  container: 'Container',
+  lowloader: 'Tieflader',
+};
+
+const SEO_FAQS = [
+  {
+    question: 'Was kostet ein Transport?',
+    answer:
+      'Der Preis haengt von Strecke, Gewicht, Volumen, Frachtart, Maut, Fahrzeit, Risiko und Sonderanforderungen ab. CargoBit berechnet eine realistische KI-Preisempfehlung als Orientierung vor dem Auftrag.',
+  },
+  {
+    question: 'Kann ich Sondergut transportieren lassen?',
+    answer:
+      'Ja. CargoBit unterstuetzt Anfragen fuer Gefahrgut, Kuehltransporte, Uebergroesse, Fahrzeugtransporte, Container und Tieflader. Je nach Fracht koennen Nachweise, Versicherungen oder Spezialfahrzeuge erforderlich sein.',
+  },
+  {
+    question: 'Koennen Speditionen den KI-Preis unterbieten?',
+    answer:
+      'Transporteure und Speditionen koennen Angebote abgeben und den empfohlenen Preis unterbieten, solange das Angebot plausibel bleibt und nicht unter die Anti-Dumping- beziehungsweise Mindestpreislogik faellt.',
+  },
+  {
+    question: 'Wie funktioniert die Wallet-Zahlung?',
+    answer:
+      'Der Verlader laedt das Wallet auf und CargoBit reserviert den Betrag fuer den Auftrag. Nach Lieferung, POD/eCMR und Risikopruefung wird die Auszahlung an den Transporteur freigegeben.',
+  },
+  {
+    question: 'Wann wird ein Auftrag veroeffentlicht?',
+    answer:
+      'Ein Auftrag wird veroeffentlicht, wenn die wichtigsten Frachtdaten, der KI-Preis beziehungsweise das Budget und die notwendige Wallet-Reservierung vorliegen.',
+  },
+  {
+    question: 'Wie werden Transporteure geprueft?',
+    answer:
+      'CargoBit kombiniert Profil-, Dokumenten-, Versicherungs- und Trust-Signale. Je nach Rolle und Land koennen Gewerbenachweise, Lizenzen, Versicherungen und weitere Unterlagen erforderlich sein.',
+  },
+];
+
+const STRUCTURED_DATA = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'CargoBit',
+    url: 'https://cargobit.eu',
+    logo: 'https://cargobit.eu/images/dashboard-main.png',
+    description:
+      'CargoBit ist eine digitale Transportplattform fuer Verlader, Transporteure, Fahrer und Speditionen im DACH- und EU-Markt.',
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'CargoBit',
+    applicationCategory: 'BusinessApplication',
+    operatingSystem: 'Web',
+    url: 'https://cargobit.eu',
+    description:
+      'Digitale Logistikplattform mit KI-Preisrechner, Transportauftrag, Wallet, Verifizierung, Versicherung und Angebotsprozess.',
+    offers: {
+      '@type': 'Offer',
+      priceCurrency: 'EUR',
+      price: '0',
+      description: 'Kostenloser Einstieg mit optionalen Abo-Paketen.',
+    },
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: SEO_FAQS.map((faq) => ({
+      '@type': 'Question',
+      name: faq.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: faq.answer,
+      },
+    })),
+  },
+];
 
 function formatCurrency(value: number, fractionDigits = 0) {
   return new Intl.NumberFormat('de-DE', {
@@ -70,12 +180,35 @@ export default function Home() {
   const [showPartnerPortal, setShowPartnerPortal] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showShipperOnboarding, setShowShipperOnboarding] = useState(false);
+  const [quickQuoteForm, setQuickQuoteForm] = useState<QuickQuoteForm>({
+    pickupCity: 'Hamburg',
+    deliveryCity: 'Muenchen',
+    transportType: 'pallet',
+    weightKg: '500',
+    lengthCm: '',
+    widthCm: '',
+    heightCm: '',
+    cargoValueEur: '',
+  });
+  const [quickQuoteResult, setQuickQuoteResult] = useState<QuickQuoteResult | null>(null);
+  const [quickQuoteLoading, setQuickQuoteLoading] = useState(false);
+  const [quickQuoteError, setQuickQuoteError] = useState<string | null>(null);
+  const [pendingTransportData, setPendingTransportData] = useState<TransportFormInitialData | null>(null);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !pendingTransportData) return;
+
+    setShowTransportForm(true);
+    toast.success('Preisberechnung uebernommen', {
+      description: 'Die Daten aus dem KI-Preisrechner wurden in den Transportauftrag uebertragen.',
+    });
+  }, [isAuthenticated, pendingTransportData]);
 
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -93,9 +226,97 @@ export default function Home() {
 
   const handleTransportSubmit = () => {
     setShowTransportForm(false);
+    setPendingTransportData(null);
     toast.success('Transport erfolgreich erstellt!', {
       description: 'Ihr Transport wurde veröffentlicht. Sie erhalten Benachrichtigungen über neue Angebote.'
     });
+  };
+
+  const updateQuickQuote = (field: keyof QuickQuoteForm, value: string) => {
+    setQuickQuoteForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const quickQuoteVolumeM3 = () => {
+    const length = Number(quickQuoteForm.lengthCm);
+    const width = Number(quickQuoteForm.widthCm);
+    const height = Number(quickQuoteForm.heightCm);
+    if (!Number.isFinite(length) || !Number.isFinite(width) || !Number.isFinite(height)) return undefined;
+    if (length <= 0 || width <= 0 || height <= 0) return undefined;
+    return Math.round((length * width * height / 1_000_000) * 100) / 100;
+  };
+
+  const buildTransportInitialData = (quote?: QuickQuoteResult | null): TransportFormInitialData => ({
+    pickupCity: quickQuoteForm.pickupCity,
+    pickupCountry: 'Deutschland',
+    deliveryCity: quickQuoteForm.deliveryCity,
+    deliveryCountry: 'Deutschland',
+    description: `${SPECIAL_TRANSPORT_LABELS[quickQuoteForm.transportType]} ueber CargoBit Preisrechner`,
+    weight: quickQuoteForm.weightKg,
+    length: quickQuoteForm.lengthCm,
+    width: quickQuoteForm.widthCm,
+    height: quickQuoteForm.heightCm,
+    cargoValue: quickQuoteForm.cargoValueEur,
+    hazmat: quickQuoteForm.transportType === 'hazmat',
+    transportType: quickQuoteForm.transportType,
+    budget: quote?.recommendedPrice ? String(Math.round(quote.recommendedPrice)) : '',
+    aiSuggestedPrice: quote?.recommendedPrice ? Math.round(quote.recommendedPrice) : undefined,
+  });
+
+  const calculateQuickQuote = async () => {
+    if (!quickQuoteForm.pickupCity || !quickQuoteForm.deliveryCity || !quickQuoteForm.weightKg) {
+      setQuickQuoteError('Bitte Abholort, Zielort und Gewicht eingeben.');
+      return;
+    }
+
+    setQuickQuoteLoading(true);
+    setQuickQuoteError(null);
+
+    try {
+      const response = await fetch('/api/pricing/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pickup: {
+            city: quickQuoteForm.pickupCity,
+            country: 'Deutschland',
+          },
+          delivery: {
+            city: quickQuoteForm.deliveryCity,
+            country: 'Deutschland',
+          },
+          weightKg: Number(quickQuoteForm.weightKg),
+          volumeM3: quickQuoteVolumeM3(),
+          transportType: quickQuoteForm.transportType,
+          isHazmat: quickQuoteForm.transportType === 'hazmat',
+          requiresCooling: quickQuoteForm.transportType === 'cooling',
+          riskLevel: quickQuoteForm.transportType === 'hazmat' ? 'yellow' : 'green',
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message || 'Preis konnte nicht berechnet werden.');
+      }
+
+      setQuickQuoteResult(data);
+    } catch (error) {
+      setQuickQuoteError(error instanceof Error ? error.message : 'Preis konnte nicht berechnet werden.');
+    } finally {
+      setQuickQuoteLoading(false);
+    }
+  };
+
+  const publishQuickQuote = () => {
+    const initialData = buildTransportInitialData(quickQuoteResult);
+    setPendingTransportData(initialData);
+
+    if (isAuthenticated) {
+      setShowTransportForm(true);
+      return;
+    }
+
+    setAuthTab('register');
+    setShowAuthModal(true);
   };
 
   if (showOnboarding) {
@@ -131,6 +352,7 @@ export default function Home() {
           open={showTransportForm}
           onOpenChange={setShowTransportForm}
           onSubmit={handleTransportSubmit}
+          initialData={pendingTransportData}
         />
       </>
     );
@@ -138,6 +360,10 @@ export default function Home() {
 
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
+      />
       <Toaster position="top-right" richColors />
       <div className="min-h-screen bg-[#06121C]">
         {/* Navigation */}
@@ -159,6 +385,9 @@ export default function Home() {
 
               {/* Desktop Nav */}
               <div className="hidden lg:flex items-center gap-8">
+                <button onClick={() => scrollToSection('preisrechner')} className="text-gray-300 hover:text-[#00D4FF] transition-colors font-medium">
+                  Preisrechner
+                </button>
                 <button onClick={() => scrollToSection('matching')} className="text-gray-300 hover:text-[#00D4FF] transition-colors font-medium">
                   Matching
                 </button>
@@ -228,6 +457,9 @@ export default function Home() {
           {isMenuOpen && (
             <div className="lg:hidden bg-[#0B3C5D] border-t border-[#1C7ED6]/30 shadow-xl">
               <div className="px-4 py-6 space-y-4">
+                <button onClick={() => scrollToSection('preisrechner')} className="block w-full text-left py-2 text-gray-300 hover:text-[#00D4FF] transition-colors">
+                  Preisrechner
+                </button>
                 <button onClick={() => scrollToSection('matching')} className="block w-full text-left py-2 text-gray-300 hover:text-[#00D4FF] transition-colors">
                   Matching
                 </button>
@@ -303,14 +535,14 @@ export default function Home() {
 
                 {/* Main Headline */}
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 text-white">
-                  Transporte einfach.
+                  Digitale Transportplattform mit KI-Preisrechner
                   <br />
-                  <span className="text-[#00D4FF]">Europaweit vernetzt.</span>
+                  <span className="text-[#00D4FF]">fuer Fracht, Speditionen und Sondertransporte.</span>
                 </h1>
 
                 {/* Description */}
                 <p className="text-lg text-gray-300 max-w-xl mx-auto lg:mx-0 mb-8">
-                  CargoBit verbindet Verlader, Spediteure und Fahrer auf einer Plattform – schnell, sicher und effizient.
+                  Berechnen Sie realistische Preise fuer Fracht, Sondertransporte und Speditionsauftraege. CargoBit verbindet Verlader, Privatpersonen, Gewerbekunden, Transporteure und Fahrer.
                 </p>
 
                 {/* CTA Buttons */}
@@ -318,19 +550,19 @@ export default function Home() {
                   <Button 
                     size="lg" 
                     className="gap-2 px-8 h-14 text-lg bg-[#1C7ED6] hover:bg-[#1C7ED6]/80 shadow-xl"
-                    onClick={() => { setAuthTab('register'); setShowAuthModal(true); }}
+                    onClick={() => scrollToSection('preisrechner')}
                   >
-                    Transport erstellen
+                    Transportpreis berechnen
                     <ArrowRight className="w-5 h-5" />
                   </Button>
                   <Button 
                     variant="outline" 
                     size="lg" 
                     className="gap-2 px-8 h-14 text-lg border-gray-600 text-gray-300 hover:bg-white/10"
-                    onClick={() => scrollToSection('features')}
+                    onClick={publishQuickQuote}
                   >
-                    <Play className="w-5 h-5" />
-                    Mehr erfahren
+                    <Package className="w-5 h-5" />
+                    Auftrag erstellen
                   </Button>
                 </div>
 
@@ -383,6 +615,195 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* KI Price Calculator Lead Magnet */}
+        <section id="preisrechner" className="py-24 bg-[#081824]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
+              <div>
+                <Badge className="mb-4 bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/30">
+                  TRANSPORTPREIS ONLINE BERECHNEN
+                </Badge>
+                <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                  Sie moechten etwas verschicken und wissen nicht, was es kostet?
+                </h2>
+                <p className="text-lg leading-8 text-gray-300">
+                  Geben Sie Strecke, Frachtart und Gewicht ein. CargoBit berechnet einen realistischen Preis als Orientierung.
+                  Danach koennen Sie den Transportauftrag veroeffentlichen und Speditionen oder Transporteure koennen Angebote abgeben.
+                </p>
+
+                <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                  {[
+                    ['1', 'Preis berechnen', 'KI-Schaetzung fuer Route, Fracht, Maut, Fahrzeit und Risiko.'],
+                    ['2', 'Anmelden', 'Daten uebernehmen und den Auftrag mit Wallet-Schutz vorbereiten.'],
+                    ['3', 'Angebote erhalten', 'Transporteure koennen annehmen oder guenstiger bieten.'],
+                    ['4', 'Sicher abwickeln', 'POD, Rechnung, Auszahlung und Trust Gate bleiben nachvollziehbar.'],
+                  ].map(([number, title, detail]) => (
+                    <div key={number} className="rounded-2xl border border-[#1C7ED6]/20 bg-[#0B3C5D]/40 p-4">
+                      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#1C7ED6]/20 text-sm font-bold text-[#00D4FF]">
+                        {number}
+                      </div>
+                      <h3 className="font-semibold text-white">{title}</h3>
+                      <p className="mt-2 text-sm leading-6 text-gray-400">{detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#00D4FF]/20 bg-[#0B3C5D]/60 p-5 shadow-2xl shadow-[#00D4FF]/10">
+                <div className="mb-5 flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-semibold text-white">KI-Preisrechner</h3>
+                    <p className="mt-1 text-sm text-gray-400">Orientierungspreis, kein verbindliches Angebot.</p>
+                  </div>
+                  <div className="rounded-xl bg-[#00D4FF]/10 p-3 text-[#00D4FF]">
+                    <Calculator className="h-5 w-5" />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-sm text-gray-300">Abholort</span>
+                    <input
+                      value={quickQuoteForm.pickupCity}
+                      onChange={(event) => updateQuickQuote('pickupCity', event.target.value)}
+                      className="h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#00D4FF]/60"
+                      placeholder="z.B. Hamburg"
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm text-gray-300">Zielort</span>
+                    <input
+                      value={quickQuoteForm.deliveryCity}
+                      onChange={(event) => updateQuickQuote('deliveryCity', event.target.value)}
+                      className="h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#00D4FF]/60"
+                      placeholder="z.B. Muenchen"
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm text-gray-300">Frachtart</span>
+                    <select
+                      value={quickQuoteForm.transportType}
+                      onChange={(event) => updateQuickQuote('transportType', event.target.value)}
+                      className="h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#00D4FF]/60"
+                    >
+                      {Object.entries(SPECIAL_TRANSPORT_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm text-gray-300">Gewicht</span>
+                    <input
+                      type="number"
+                      value={quickQuoteForm.weightKg}
+                      onChange={(event) => updateQuickQuote('weightKg', event.target.value)}
+                      className="h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#00D4FF]/60"
+                      placeholder="500 kg"
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm text-gray-300">Masse optional</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        type="number"
+                        value={quickQuoteForm.lengthCm}
+                        onChange={(event) => updateQuickQuote('lengthCm', event.target.value)}
+                        className="h-12 rounded-xl border border-white/10 bg-[#06121C]/70 px-3 text-white outline-none transition focus:border-[#00D4FF]/60"
+                        placeholder="L"
+                      />
+                      <input
+                        type="number"
+                        value={quickQuoteForm.widthCm}
+                        onChange={(event) => updateQuickQuote('widthCm', event.target.value)}
+                        className="h-12 rounded-xl border border-white/10 bg-[#06121C]/70 px-3 text-white outline-none transition focus:border-[#00D4FF]/60"
+                        placeholder="B"
+                      />
+                      <input
+                        type="number"
+                        value={quickQuoteForm.heightCm}
+                        onChange={(event) => updateQuickQuote('heightCm', event.target.value)}
+                        className="h-12 rounded-xl border border-white/10 bg-[#06121C]/70 px-3 text-white outline-none transition focus:border-[#00D4FF]/60"
+                        placeholder="H"
+                      />
+                    </div>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm text-gray-300">Warenwert optional</span>
+                    <input
+                      type="number"
+                      value={quickQuoteForm.cargoValueEur}
+                      onChange={(event) => updateQuickQuote('cargoValueEur', event.target.value)}
+                      className="h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#00D4FF]/60"
+                      placeholder="z.B. 12000 EUR"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                  <Button
+                    className="h-12 flex-1 gap-2 bg-gradient-to-r from-[#1C7ED6] to-[#00D4FF] hover:opacity-90"
+                    onClick={calculateQuickQuote}
+                    disabled={quickQuoteLoading}
+                  >
+                    {quickQuoteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
+                    Preis berechnen
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="min-h-12 h-auto flex-1 border-[#00D4FF]/30 py-3 text-[#00D4FF] hover:bg-[#00D4FF]/10"
+                    onClick={publishQuickQuote}
+                  >
+                    {isAuthenticated ? 'Angebot veroeffentlichen' : 'Kostenlos anmelden und Angebot veroeffentlichen'}
+                  </Button>
+                </div>
+
+                {quickQuoteError ? (
+                  <div className="mt-4 rounded-xl border border-[#F39C12]/30 bg-[#F39C12]/10 p-3 text-sm text-[#ffd79a]">
+                    {quickQuoteError}
+                  </div>
+                ) : null}
+
+                {quickQuoteResult ? (
+                  <div className="mt-5 rounded-2xl border border-[#00D4FF]/20 bg-[#06121C]/70 p-5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <p className="text-sm text-gray-400">Empfohlener realistischer Preis</p>
+                        <p className="mt-1 text-4xl font-bold text-white">
+                          {formatCurrency(quickQuoteResult.recommendedPrice)}
+                        </p>
+                      </div>
+                      <Badge className="w-fit bg-[#2ECC71]/15 text-[#8ff0b4] border border-[#2ECC71]/25">
+                        {Math.round(quickQuoteResult.confidence * 100)}% Konfidenz
+                      </Badge>
+                    </div>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl bg-white/[0.04] p-3">
+                        <p className="text-xs text-gray-500">Mindestpreis</p>
+                        <p className="mt-1 font-semibold text-white">{formatCurrency(quickQuoteResult.minPrice)}</p>
+                      </div>
+                      <div className="rounded-xl bg-white/[0.04] p-3">
+                        <p className="text-xs text-gray-500">Entfernung</p>
+                        <p className="mt-1 font-semibold text-white">{Math.round(quickQuoteResult.route.distanceKm)} km</p>
+                      </div>
+                      <div className="rounded-xl bg-white/[0.04] p-3">
+                        <p className="text-xs text-gray-500">Maut/Fahrzeit</p>
+                        <p className="mt-1 font-semibold text-white">
+                          {formatCurrency(quickQuoteResult.route.tollCost)} · {Math.round(quickQuoteResult.route.durationMinutes / 60)}h
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-sm leading-6 text-gray-400">
+                      {quickQuoteForm.transportType === 'pallet'
+                        ? 'Speditionen koennen Angebote abgeben und guenstiger bieten, solange Mindestpreis und Trust-Regeln eingehalten werden.'
+                        : 'Fuer diese Frachtart koennen Spezialfahrzeuge, Versicherungen, Nachweise oder manuelle Pruefung erforderlich sein.'}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -738,6 +1159,78 @@ export default function Home() {
 
             <div className="mt-8 rounded-2xl border border-[#1C7ED6]/20 bg-[#0B3C5D]/40 p-5 text-sm text-gray-300">
               Der kostenlose Testzugang ist auf 10 Transporte pro Monat begrenzt und nutzt 14% Provision sowie 3,5% Wallet-Gebühr. Beim produktiven Abo-Abschluss werden Netto, MwSt. und Brutto auf der Rechnung einzeln ausgewiesen.
+            </div>
+          </div>
+        </section>
+
+        {/* SEO Content Section */}
+        <section className="py-24 bg-[#0B3C5D]/20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="mb-12 max-w-3xl">
+              <Badge className="mb-4 bg-[#1C7ED6]/20 text-[#00D4FF] border border-[#00D4FF]/30">
+                DIGITALE LOGISTIKPLATTFORM
+              </Badge>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                Transportauftrag erstellen, Spedition finden und Angebote vergleichen.
+              </h2>
+              <p className="text-lg leading-8 text-gray-400">
+                CargoBit ist fuer Menschen und Unternehmen gedacht, die Fracht transportieren lassen moechten,
+                aber noch keinen realistischen Preis kennen. Die Plattform verbindet Preisberechnung, Auftrag,
+                Matching, Wallet-Zahlung, Verifizierung, Versicherung und digitale Transportabwicklung.
+              </p>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-4">
+              {[
+                {
+                  title: 'Fuer Verlader',
+                  text: 'Transportpreis berechnen, Frachtauftrag erstellen, Angebote vergleichen und Zahlung per Wallet absichern.',
+                },
+                {
+                  title: 'Fuer Privatpersonen',
+                  text: 'Auch private oder einmalige Transporte koennen vorbereitet werden, wenn Route, Fracht und Zeitfenster klar beschrieben sind.',
+                },
+                {
+                  title: 'Fuer Transporteure',
+                  text: 'Passende Auftraege finden, faire Angebote abgeben und nach Lieferung ueber POD/eCMR die Auszahlung vorbereiten.',
+                },
+                {
+                  title: 'Fuer Speditionen',
+                  text: 'Teams, Dispatcher, Fahrer, Fahrzeuge, Verifizierungen und Transportprozesse digital koordinieren.',
+                },
+              ].map((item) => (
+                <div key={item.title} className="rounded-2xl border border-[#1C7ED6]/20 bg-[#06121C]/60 p-5">
+                  <h3 className="text-lg font-semibold text-white">{item.title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-gray-400">{item.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* FAQ Section */}
+        <section className="py-24 bg-[#06121C]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="mb-12 max-w-3xl">
+              <Badge className="mb-4 bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/30">
+                FRAGEN ZU TRANSPORTPREISEN
+              </Badge>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                Was kostet mein Transport und wer kann ihn uebernehmen?
+              </h2>
+              <p className="text-lg leading-8 text-gray-400">
+                Diese Fragen beantworten wir schon vor der Auftragserstellung: mit KI-Preisempfehlung,
+                Angebotsprozess, Trust Score und transparenter Wallet-Abwicklung.
+              </p>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              {SEO_FAQS.map((faq) => (
+                <div key={faq.question} className="rounded-2xl border border-[#1C7ED6]/20 bg-[#0B3C5D]/40 p-5">
+                  <h3 className="font-semibold text-white">{faq.question}</h3>
+                  <p className="mt-3 text-sm leading-6 text-gray-400">{faq.answer}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>

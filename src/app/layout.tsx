@@ -5,8 +5,65 @@ import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: "CargoBit v2",
-  description: "Premium SaaS Logistics Platform",
+  metadataBase: new URL("https://cargobit.eu"),
+  title: {
+    default: "CargoBit | Digitale Transportplattform mit KI-Preisrechner",
+    template: "%s | CargoBit",
+  },
+  description:
+    "CargoBit ist die digitale Transportplattform fuer Verlader, Transporteure, Fahrer und Speditionen. Berechnen Sie realistische Transportpreise, veroeffentlichen Sie Frachtauftraege und erhalten Sie Angebote.",
+  applicationName: "CargoBit",
+  keywords: [
+    "Transportplattform",
+    "Logistikplattform",
+    "Transportpreis berechnen",
+    "Transportauftrag erstellen",
+    "Spedition finden",
+    "Fracht transportieren",
+    "Transporteur finden",
+    "Sondertransport",
+    "digitale Logistik",
+    "Frachtboerse Alternative",
+    "Transport Marketplace",
+  ],
+  alternates: {
+    canonical: "https://cargobit.eu",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  openGraph: {
+    type: "website",
+    locale: "de_DE",
+    url: "https://cargobit.eu",
+    siteName: "CargoBit",
+    title: "CargoBit | Digitale Transportplattform mit KI-Preisrechner",
+    description:
+      "Transportpreis online berechnen, Frachtauftrag erstellen und passende Speditionen, Fahrer und Transporteure finden.",
+    images: [
+      {
+        url: "/images/dashboard-main.png",
+        width: 1200,
+        height: 630,
+        alt: "CargoBit digitale Logistikplattform",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CargoBit | Digitale Transportplattform mit KI-Preisrechner",
+    description:
+      "Berechnen Sie realistische Transportpreise und finden Sie passende Speditionen, Fahrer und Transporteure.",
+    images: ["/images/dashboard-main.png"],
+  },
 };
 
 export default function RootLayout({

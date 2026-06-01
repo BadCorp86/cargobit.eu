@@ -44,9 +44,29 @@ interface TransportFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: () => void;
+  initialData?: TransportFormInitialData | null;
 }
 
 type TransportType = 'pallet' | 'bulk' | 'liquid' | 'oversize' | 'lowloader' | 'car_transport' | 'cooling' | 'hazmat' | 'container';
+
+export type TransportFormInitialData = Partial<{
+  pickupCity: string;
+  pickupPostalCode: string;
+  pickupCountry: string;
+  deliveryCity: string;
+  deliveryPostalCode: string;
+  deliveryCountry: string;
+  description: string;
+  weight: string;
+  length: string;
+  width: string;
+  height: string;
+  cargoValue: string;
+  hazmat: boolean;
+  budget: string;
+  aiSuggestedPrice: number;
+  transportType: TransportType;
+}>;
 
 const transportTypes: { value: TransportType; label: string; icon: React.ReactNode }[] = [
   { value: 'pallet', label: 'Palettentransport', icon: <Package className="w-5 h-5" /> },
@@ -131,7 +151,7 @@ function calculateVolumeM3(formData: {
   return undefined;
 }
 
-export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormProps) {
+export function TransportForm({ open, onOpenChange, onSubmit, initialData }: TransportFormProps) {
   const [step, setStep] = useState(1);
   const [transportType, setTransportType] = useState<TransportType>('pallet');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -260,6 +280,23 @@ export function TransportForm({ open, onOpenChange, onSubmit }: TransportFormPro
   const updateFormData = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  useEffect(() => {
+    if (!open || !initialData) return;
+
+    const { transportType: nextTransportType, ...nextFormData } = initialData;
+    if (nextTransportType) {
+      setTransportType(nextTransportType);
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      ...nextFormData,
+      budget: nextFormData.budget || prev.budget,
+      aiSuggestedPrice: nextFormData.aiSuggestedPrice || prev.aiSuggestedPrice,
+    }));
+    setStep(4);
+  }, [initialData, open]);
 
   useEffect(() => {
     if (!open || step < 4 || !showAiPrice || !canRequestPricing) {
