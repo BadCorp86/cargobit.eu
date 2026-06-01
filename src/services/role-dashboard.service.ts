@@ -444,6 +444,7 @@ async function buildSupportDashboard(context: DashboardContext): Promise<Connect
     inProgressTickets,
     resolvedToday,
     urgentTickets,
+    productFeedbackOpen,
     categoryGroups,
   ] = await Promise.all([
     prisma.supportTicket.findMany({
@@ -455,6 +456,7 @@ async function buildSupportDashboard(context: DashboardContext): Promise<Connect
     prisma.supportTicket.count({ where: { status: 'IN_PROGRESS' } }),
     prisma.supportTicket.count({ where: { status: 'RESOLVED', resolvedAt: { gte: dayWindow().start } } }),
     prisma.supportTicket.count({ where: { priority: { in: ['HIGH', 'URGENT'] }, status: { in: OPEN_TICKET_STATUSES as any } } }),
+    prisma.supportTicket.count({ where: { category: 'PRODUCT_FEEDBACK', status: { in: OPEN_TICKET_STATUSES as any } } }),
     prisma.supportTicket.groupBy({
       by: ['category'],
       _count: { _all: true },
@@ -476,6 +478,7 @@ async function buildSupportDashboard(context: DashboardContext): Promise<Connect
       { label: 'Kritisch', value: `${urgentTickets} Tickets`, tone: urgentTickets ? 'danger' : 'success' },
       { label: 'Offen', value: String(openTickets), tone: openTickets ? 'warning' : 'success' },
       { label: 'In Bearbeitung', value: String(inProgressTickets), tone: inProgressTickets ? 'info' : 'success' },
+      { label: 'Produkt-Feedback', value: String(productFeedbackOpen), tone: productFeedbackOpen ? 'info' : 'success' },
       { label: 'Heute gelöst', value: String(resolvedToday), tone: 'success' },
     ],
     insightValue: `${resolvedToday}`,
