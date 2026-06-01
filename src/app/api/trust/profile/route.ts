@@ -75,9 +75,9 @@ function buildTrustProfileFromUser(user: any, role?: string | null): TrustProfil
       id: 'verification',
       label: isTransportRole ? 'KYC/KYB Verifizierung' : 'Identitaet / Firmenprofil',
       detail: approved.length
-        ? `${approved.length} Pruefung(en) freigegeben`
+        ? `${approved.length} Prüfung(en) freigegeben`
         : pending.length
-          ? 'Pruefung wartet auf Admin/Support'
+          ? 'Prüfung wartet auf Admin/Support'
           : 'Noch keine abgeschlossene Verifizierung',
       status: approved.length ? 'verified' : pending.length ? 'pending' : 'missing',
       owner: 'CargoBit',
@@ -131,7 +131,7 @@ function buildTrustProfileFromUser(user: any, role?: string | null): TrustProfil
     level: rejected.length ? 'restricted' : score >= 90 ? 'premium' : score >= 70 ? 'trusted' : 'starter',
     title: isTransportRole ? 'Transporteur Trust Profil' : 'Auftraggeber Trust Profil',
     summary: rejected.length
-      ? 'Es gibt abgelehnte Pruefpunkte. Support muss den Account vor kritischen Aktionen pruefen.'
+      ? 'Es gibt abgelehnte Prüfpunkte. Support muss den Account vor kritischen Aktionen prüfen.'
       : 'Dieses Profil verbindet Verifizierung, Zahlungsschutz, Lizenzen und Bewertungen in einem sichtbaren Trust Score.',
     signals,
     requiredNextSteps: signals

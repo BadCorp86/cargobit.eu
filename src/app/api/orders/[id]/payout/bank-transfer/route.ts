@@ -120,7 +120,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             balance: wallet.balance,
             currency: wallet.currency,
           },
-          message: 'Frei verfuegbares Wallet-Guthaben reicht fuer diese Bankauszahlung nicht aus.',
+          message: 'Frei verfügbares Wallet-Guthaben reicht für diese Bankauszahlung nicht aus.',
           source: 'database',
         },
         { status: 409 },

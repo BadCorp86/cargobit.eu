@@ -70,11 +70,11 @@ function normalizeEvidence(items?: string[]) {
 
 function buildEvidenceRequestMessage(missingEvidence: string[]) {
   return [
-    'Bitte reichen Sie die fehlenden Nachweise fuer den Streitfall nach.',
+    'Bitte reichen Sie die fehlenden Nachweise für den Streitfall nach.',
     '',
     ...missingEvidence.map((item) => `- ${item}`),
     '',
-    'Ohne belastbare Nachweise bleibt der Fall in manueller Pruefung und es wird keine automatische Auszahlung oder Erstattung ausgeloest.',
+    'Ohne belastbare Nachweise bleibt der Fall in manueller Prüfung und es wird keine automatische Auszahlung oder Erstattung ausgelöst.',
   ].join('\n');
 }
 
@@ -129,7 +129,7 @@ async function createEvidenceRequestWorkflow(input: {
         userId: dispute.createdById,
         type: 'DISPUTE_EVIDENCE_REQUEST',
         title: 'Nachweise zum Streitfall erforderlich',
-        message: 'CargoBit Support hat weitere Nachweise fuer Ihren Streitfall angefordert.',
+        message: 'CargoBit Support hat weitere Nachweise für Ihren Streitfall angefordert.',
         data: JSON.stringify({
           disputeId: input.disputeId,
           jobId: dispute.jobId,
@@ -241,7 +241,7 @@ async function findOrCreateSupportTicket(
     data: {
       userId: input.createdById,
       transportId: input.jobId,
-      subject: `Nachweise fuer Streitfall ${input.disputeId}`,
+      subject: `Nachweise für Streitfall ${input.disputeId}`,
       description: buildSupportTicketMessage(input),
       priority: input.priority,
       status: 'OPEN',
@@ -265,12 +265,12 @@ async function findOrCreateSupportTicket(
 
 function buildSupportTicketMessage(input: { disputeId: string; jobId: string; missingEvidence: string[] }) {
   return [
-    `Streitfall ${input.disputeId} fuer Auftrag ${input.jobId} benoetigt weitere Nachweise.`,
+    `Streitfall ${input.disputeId} für Auftrag ${input.jobId} benötigt weitere Nachweise.`,
     '',
     'Fehlend:',
     ...input.missingEvidence.map((item) => `- ${item}`),
     '',
-    'Support soll den Nutzer kontaktieren, Frist setzen und den Fall anschliessend erneut pruefen.',
+    'Support soll den Nutzer kontaktieren, Frist setzen und den Fall anschließend erneut prüfen.',
   ].join('\n');
 }
 

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         mission: {
           ...getFallbackDriverMission(),
           title: 'Kein aktiver Auftrag',
-          subtitle: 'Du bist verfuegbar fuer passende DACH/Benelux Loads.',
+          subtitle: 'Du bist verfügbar für passende DACH/Benelux Loads.',
           status: driver.isAvailable ? 'AVAILABLE' : 'OFFLINE',
           progress: 0,
         },

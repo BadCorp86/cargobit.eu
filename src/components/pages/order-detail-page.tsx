@@ -579,7 +579,7 @@ function OrderCashFlow({
   };
 
   const releasePayout = async () => {
-    const reason = window.prompt('Audit-Grund fuer manuelle Admin-/Finance-Freigabe', 'Manuelle Admin-Freigabe nach Pruefung');
+    const reason = window.prompt('Audit-Grund für manuelle Admin-/Finance-Freigabe', 'Manuelle Admin-Freigabe nach Prüfung');
     if (!reason || reason.trim().length < 8) return;
 
     setReleasing(true);
@@ -1027,12 +1027,12 @@ function DriverOrderView({ orderId }: { orderId: string }) {
               Fahreransicht
             </CardTitle>
             <CardDescription className="text-white/55">
-              Fuer Fahrer bleiben nur Tour, Status, Fotos und POD/eCMR sichtbar.
+              Für Fahrer bleiben nur Tour, Status, Fotos und POD/eCMR sichtbar.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/35">Naechste Aktion</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/35">Nächste Aktion</p>
               <p className="mt-2 text-lg font-semibold">POD / eCMR erfassen</p>
               <p className="mt-2 text-sm leading-6 text-white/55">
                 Lieferung bestaetigen, Fotos hochladen und digitale Signatur erfassen.

@@ -124,7 +124,7 @@ export default function DriverMobilePage() {
         ? payload.orderDetailHref || payload.invoicePreviewHref
         : null);
     } catch {
-      setLastAction('Aktion konnte lokal nicht gesendet werden. Bitte Verbindung pruefen.');
+      setLastAction('Aktion konnte lokal nicht gesendet werden. Bitte Verbindung prüfen.');
     } finally {
       setActionPending(null);
     }

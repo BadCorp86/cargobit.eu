@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     template: "%s | CargoBit",
   },
   description:
-    "CargoBit ist die digitale Transportplattform fuer Verlader, Transporteure, Fahrer und Speditionen. Berechnen Sie realistische Transportpreise, veroeffentlichen Sie Frachtauftraege und erhalten Sie Angebote.",
+    "CargoBit ist die digitale Transportplattform für Verlader, Transporteure, Fahrer und Speditionen. Berechnen Sie realistische Transportpreise, veröffentlichen Sie Frachtaufträge und erhalten Sie Angebote.",
   applicationName: "CargoBit",
   keywords: [
     "Transportplattform",

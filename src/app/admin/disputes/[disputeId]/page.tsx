@@ -531,7 +531,7 @@ export default function DisputeDetailPage() {
     const finalResolutionText =
       resolutionNote.trim() ||
       recommendation?.resolutionDraft ||
-      'Admin-Entscheidung nach manueller Pruefung.';
+      'Admin-Entscheidung nach manueller Prüfung.';
 
     if (resolutionType === 'refund_partial' && (!refundAmountCents || refundAmountCents <= 0)) {
       alert('Bitte einen gueltigen Erstattungsbetrag eingeben.');
@@ -616,7 +616,7 @@ export default function DisputeDetailPage() {
         const nextTicket = data.supportTicket?.id
           ? {
               id: data.supportTicket.id,
-              subject: `Nachweise fuer Streitfall ${current.id}`,
+              subject: `Nachweise für Streitfall ${current.id}`,
               priority: data.supportTicket.priority,
               status: data.supportTicket.status,
               createdAt: requestedAt,

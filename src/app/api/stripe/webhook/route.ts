@@ -461,7 +461,7 @@ async function handleInvoicePaymentSucceeded(event: StripeWebhookEvent): Promise
         userId,
         type: 'SUBSCRIPTION_PAYMENT_SUCCEEDED',
         title: 'Abo-Zahlung erfolgreich',
-        message: `Ihre Abo-Zahlung ueber ${formatMoney((invoice.amount_paid || invoice.amount || 0) / 100, invoice.currency || 'EUR')} wurde verarbeitet.`,
+        message: `Ihre Abo-Zahlung über ${formatMoney((invoice.amount_paid || invoice.amount || 0) / 100, invoice.currency || 'EUR')} wurde verarbeitet.`,
         data: JSON.stringify({
           invoiceId: invoice.id,
           subscriptionId: invoice.subscription,
@@ -515,7 +515,7 @@ async function handleInvoicePaymentFailed(event: StripeWebhookEvent): Promise<We
         userId,
         type: 'SUBSCRIPTION_PAYMENT_FAILED',
         title: 'Abo-Zahlung fehlgeschlagen',
-        message: 'Ihre Abo-Zahlung konnte nicht verarbeitet werden. Bitte pruefen Sie Ihre Zahlungsmethode.',
+        message: 'Ihre Abo-Zahlung konnte nicht verarbeitet werden. Bitte prüfen Sie Ihre Zahlungsmethode.',
         data: JSON.stringify({
           invoiceId: invoice.id,
           subscriptionId: invoice.subscription,
@@ -978,7 +978,7 @@ async function sendSubscriptionInvoiceEmail(
         <h1 style="margin:8px 0 0;font-size:26px">Ihre Abo-Rechnung ist bereit</h1>
       </div>
       <p style="color:#C7D7E4">${salutation},</p>
-      <p style="color:#C7D7E4">die Zahlung fuer Ihre CargoBit Subscription wurde verarbeitet. Die Rechnung <strong>${invoiceNumber}</strong> wurde automatisch erstellt.</p>
+      <p style="color:#C7D7E4">die Zahlung für Ihre CargoBit Subscription wurde verarbeitet. Die Rechnung <strong>${invoiceNumber}</strong> wurde automatisch erstellt.</p>
       <table style="width:100%;border-collapse:collapse;margin:24px 0;background:rgba(255,255,255,.05);border-radius:14px;overflow:hidden">
         <tr><td style="padding:14px 16px;color:#9EB2C2">Netto</td><td style="padding:14px 16px;text-align:right;font-weight:700">${formatMoney(subtotal, currency)}</td></tr>
         <tr><td style="padding:14px 16px;color:#9EB2C2;border-top:1px solid rgba(255,255,255,.08)">MwSt.</td><td style="padding:14px 16px;text-align:right;font-weight:700;border-top:1px solid rgba(255,255,255,.08)">${formatMoney(tax, currency)}</td></tr>

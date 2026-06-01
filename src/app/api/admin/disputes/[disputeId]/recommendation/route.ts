@@ -152,7 +152,7 @@ function createFallbackDecisionInput(disputeId: string): DisputeDecisionInput {
   return {
     id: disputeId,
     jobId: 'job_preview',
-    reason: 'Waren beschaedigt angekommen',
+    reason: 'Waren beschädigt angekommen',
     description:
       'Die Ware wurde in beschaedigtem Zustand geliefert. Fotos und Lieferschein sollen vom Support geprueft werden.',
     disputedAmountCents: 25_000,
@@ -163,12 +163,12 @@ function createFallbackDecisionInput(disputeId: string): DisputeDecisionInput {
     messages: [
       {
         senderType: 'USER',
-        message: 'Ich moechte eine Erstattung, da die Ware beschaedigt ist. Fotos liegen vor.',
+        message: 'Ich möchte eine Erstattung, da die Ware beschädigt ist. Fotos liegen vor.',
         createdAt: new Date().toISOString(),
       },
       {
         senderType: 'USER',
-        message: 'Die Ware wurde beim Laden kontrolliert. Bitte POD/CMR pruefen.',
+        message: 'Die Ware wurde beim Laden kontrolliert. Bitte POD/CMR prüfen.',
         createdAt: new Date().toISOString(),
       },
     ],

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -32,6 +32,9 @@ import {
   Youtube,
   Loader2,
   Calculator,
+  MessageSquare,
+  Send,
+  Lightbulb,
 } from 'lucide-react';
 
 import { useAuthStore } from '@/lib/auth-store';
@@ -79,44 +82,60 @@ type QuickQuoteResult = {
 
 const SPECIAL_TRANSPORT_LABELS: Record<QuickQuoteForm['transportType'], string> = {
   pallet: 'Paletten / Standardfracht',
-  oversize: 'Uebergroesse',
-  cooling: 'Kuehltransport',
+  oversize: 'Übergröße',
+  cooling: 'Kühltransport',
   hazmat: 'Gefahrgut',
   car_transport: 'Fahrzeugtransport',
   container: 'Container',
   lowloader: 'Tieflader',
 };
 
+const FEEDBACK_CATEGORIES = [
+  'Funktion fehlt',
+  'Bedienbarkeit',
+  'Preis & Wallet',
+  'Transportprozess',
+  'Verifizierung',
+  'Sonstiges',
+] as const;
+
+type FeedbackForm = {
+  category: (typeof FEEDBACK_CATEGORIES)[number];
+  roleContext: string;
+  message: string;
+  pageUrl: string;
+};
+
 const SEO_FAQS = [
   {
     question: 'Was kostet ein Transport?',
     answer:
-      'Der Preis haengt von Strecke, Gewicht, Volumen, Frachtart, Maut, Fahrzeit, Risiko und Sonderanforderungen ab. CargoBit berechnet eine realistische KI-Preisempfehlung als Orientierung vor dem Auftrag.',
+      'Der Preis hängt von Strecke, Gewicht, Volumen, Frachtart, Maut, Fahrzeit, Risiko und Sonderanforderungen ab. CargoBit berechnet eine realistische KI-Preisempfehlung als Orientierung vor dem Auftrag.',
   },
   {
     question: 'Kann ich Sondergut transportieren lassen?',
     answer:
-      'Ja. CargoBit unterstuetzt Anfragen fuer Gefahrgut, Kuehltransporte, Uebergroesse, Fahrzeugtransporte, Container und Tieflader. Je nach Fracht koennen Nachweise, Versicherungen oder Spezialfahrzeuge erforderlich sein.',
+      'Ja. CargoBit unterstützt Anfragen für Gefahrgut, Kühltransporte, Übergröße, Fahrzeugtransporte, Container und Tieflader. Je nach Fracht können Nachweise, Versicherungen oder Spezialfahrzeuge erforderlich sein.',
   },
   {
-    question: 'Koennen Speditionen den KI-Preis unterbieten?',
+    question: 'Können Speditionen den KI-Preis unterbieten?',
     answer:
-      'Transporteure und Speditionen koennen Angebote abgeben und den empfohlenen Preis unterbieten, solange das Angebot plausibel bleibt und nicht unter die Anti-Dumping- beziehungsweise Mindestpreislogik faellt.',
+      'Transporteure und Speditionen können Angebote abgeben und den empfohlenen Preis unterbieten, solange das Angebot plausibel bleibt und nicht unter die Anti-Dumping- beziehungsweise Mindestpreislogik fällt.',
   },
   {
     question: 'Wie funktioniert die Wallet-Zahlung?',
     answer:
-      'Der Verlader laedt das Wallet auf und CargoBit reserviert den Betrag fuer den Auftrag. Nach Lieferung, POD/eCMR und Risikopruefung wird die Auszahlung an den Transporteur freigegeben.',
+      'Der Verlader lädt das Wallet auf und CargoBit reserviert den Betrag für den Auftrag. Nach Lieferung, POD/eCMR und Risikoprüfung wird die Auszahlung an den Transporteur freigegeben.',
   },
   {
-    question: 'Wann wird ein Auftrag veroeffentlicht?',
+    question: 'Wann wird ein Auftrag veröffentlicht?',
     answer:
-      'Ein Auftrag wird veroeffentlicht, wenn die wichtigsten Frachtdaten, der KI-Preis beziehungsweise das Budget und die notwendige Wallet-Reservierung vorliegen.',
+      'Ein Auftrag wird veröffentlicht, wenn die wichtigsten Frachtdaten, der KI-Preis beziehungsweise das Budget und die notwendige Wallet-Reservierung vorliegen.',
   },
   {
-    question: 'Wie werden Transporteure geprueft?',
+    question: 'Wie werden Transporteure geprüft?',
     answer:
-      'CargoBit kombiniert Profil-, Dokumenten-, Versicherungs- und Trust-Signale. Je nach Rolle und Land koennen Gewerbenachweise, Lizenzen, Versicherungen und weitere Unterlagen erforderlich sein.',
+      'CargoBit kombiniert Profil-, Dokumenten-, Versicherungs- und Trust-Signale. Je nach Rolle und Land können Gewerbenachweise, Lizenzen, Versicherungen und weitere Unterlagen erforderlich sein.',
   },
 ];
 
@@ -128,7 +147,7 @@ const STRUCTURED_DATA = [
     url: 'https://cargobit.eu',
     logo: 'https://cargobit.eu/images/dashboard-main.png',
     description:
-      'CargoBit ist eine digitale Transportplattform fuer Verlader, Transporteure, Fahrer und Speditionen im DACH- und EU-Markt.',
+      'CargoBit ist eine digitale Transportplattform für Verlader, Transporteure, Fahrer und Speditionen im DACH- und EU-Markt.',
   },
   {
     '@context': 'https://schema.org',
@@ -170,7 +189,7 @@ function formatCurrency(value: number, fractionDigits = 0) {
 }
 
 export default function Home() {
-  const { isAuthenticated, logout } = useAuthStore();
+  const { isAuthenticated, user, logout } = useAuthStore();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -194,6 +213,14 @@ export default function Home() {
   const [quickQuoteLoading, setQuickQuoteLoading] = useState(false);
   const [quickQuoteError, setQuickQuoteError] = useState<string | null>(null);
   const [pendingTransportData, setPendingTransportData] = useState<TransportFormInitialData | null>(null);
+  const [feedbackForm, setFeedbackForm] = useState<FeedbackForm>({
+    category: 'Funktion fehlt',
+    roleContext: '',
+    message: '',
+    pageUrl: '/',
+  });
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [pendingFeedbackAfterAuth, setPendingFeedbackAfterAuth] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -205,8 +232,8 @@ export default function Home() {
     if (!isAuthenticated || !pendingTransportData) return;
 
     setShowTransportForm(true);
-    toast.success('Preisberechnung uebernommen', {
-      description: 'Die Daten aus dem KI-Preisrechner wurden in den Transportauftrag uebertragen.',
+    toast.success('Preisberechnung übernommen', {
+      description: 'Die Daten aus dem KI-Preisrechner wurden in den Transportauftrag übertragen.',
     });
   }, [isAuthenticated, pendingTransportData]);
 
@@ -250,7 +277,7 @@ export default function Home() {
     pickupCountry: 'Deutschland',
     deliveryCity: quickQuoteForm.deliveryCity,
     deliveryCountry: 'Deutschland',
-    description: `${SPECIAL_TRANSPORT_LABELS[quickQuoteForm.transportType]} ueber CargoBit Preisrechner`,
+    description: `${SPECIAL_TRANSPORT_LABELS[quickQuoteForm.transportType]} über CargoBit Preisrechner`,
     weight: quickQuoteForm.weightKg,
     length: quickQuoteForm.lengthCm,
     width: quickQuoteForm.widthCm,
@@ -318,6 +345,86 @@ export default function Home() {
     setAuthTab('register');
     setShowAuthModal(true);
   };
+
+  const updateFeedbackForm = (field: keyof FeedbackForm, value: string) => {
+    setFeedbackForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const submitFeedback = useCallback(async (forceSubmit = false) => {
+    const message = feedbackForm.message.trim();
+
+    if (!message) {
+      toast.error('Bitte beschreibe kurz, was wir verbessern können.');
+      return;
+    }
+
+    if (!forceSubmit && !isAuthenticated) {
+      setPendingFeedbackAfterAuth(true);
+      setFeedbackForm((prev) => ({
+        ...prev,
+        pageUrl: typeof window !== 'undefined' ? window.location.href : prev.pageUrl,
+      }));
+      setAuthTab('register');
+      setShowAuthModal(true);
+      toast.info('Bitte anmelden, damit wir Rückfragen stellen können.');
+      return;
+    }
+
+    if (!user) {
+      toast.error('Bitte anmelden, damit wir dein Feedback zuordnen können.');
+      return;
+    }
+
+    setFeedbackSubmitting(true);
+
+    try {
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.id,
+          'x-user-email': user.email,
+          'x-user-role': user.role,
+        },
+        body: JSON.stringify({
+          category: feedbackForm.category,
+          roleContext: feedbackForm.roleContext || user.role,
+          message,
+          pageUrl: typeof window !== 'undefined' ? window.location.href : feedbackForm.pageUrl,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message || 'Feedback konnte nicht gesendet werden.');
+      }
+
+      setPendingFeedbackAfterAuth(false);
+      setFeedbackForm({
+        category: 'Funktion fehlt',
+        roleContext: '',
+        message: '',
+        pageUrl: typeof window !== 'undefined' ? window.location.href : '/',
+      });
+      toast.success('Danke für dein Feedback.', {
+        description: 'Wir prüfen deinen Vorschlag und nehmen ihn in die Produkt-Roadmap auf.',
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Feedback konnte nicht gesendet werden.');
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  }, [feedbackForm, isAuthenticated, user]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !pendingFeedbackAfterAuth || !feedbackForm.message.trim()) return;
+
+    const timer = window.setTimeout(() => {
+      void submitFeedback(true);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [feedbackForm.message, isAuthenticated, pendingFeedbackAfterAuth, submitFeedback]);
 
   if (showOnboarding) {
     return <TransporteurOnboarding />;
@@ -400,6 +507,9 @@ export default function Home() {
                 <button onClick={() => scrollToSection('support')} className="text-gray-300 hover:text-[#00D4FF] transition-colors font-medium">
                   Support
                 </button>
+                <button onClick={() => scrollToSection('verbesserungen')} className="text-gray-300 hover:text-[#00D4FF] transition-colors font-medium">
+                  Verbesserungen
+                </button>
               </div>
 
               {/* Right Side */}
@@ -472,6 +582,9 @@ export default function Home() {
                 <button onClick={() => scrollToSection('support')} className="block w-full text-left py-2 text-gray-300 hover:text-[#00D4FF] transition-colors">
                   Support
                 </button>
+                <button onClick={() => scrollToSection('verbesserungen')} className="block w-full text-left py-2 text-gray-300 hover:text-[#00D4FF] transition-colors">
+                  Verbesserungen
+                </button>
                 <Separator className="bg-[#1C7ED6]/30" />
                 <div className="flex gap-2">
                   <Button 
@@ -537,12 +650,12 @@ export default function Home() {
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 text-white">
                   Digitale Transportplattform mit KI-Preisrechner
                   <br />
-                  <span className="text-[#00D4FF]">fuer Fracht, Speditionen und Sondertransporte.</span>
+                  <span className="text-[#00D4FF]">für Fracht, Speditionen und Sondertransporte.</span>
                 </h1>
 
                 {/* Description */}
                 <p className="text-lg text-gray-300 max-w-xl mx-auto lg:mx-0 mb-8">
-                  Berechnen Sie realistische Preise fuer Fracht, Sondertransporte und Speditionsauftraege. CargoBit verbindet Verlader, Privatpersonen, Gewerbekunden, Transporteure und Fahrer.
+                  Berechnen Sie realistische Preise für Fracht, Sondertransporte und Speditionsaufträge. CargoBit verbindet Verlader, Privatpersonen, Gewerbekunden, Transporteure und Fahrer.
                 </p>
 
                 {/* CTA Buttons */}
@@ -629,18 +742,18 @@ export default function Home() {
                   TRANSPORTPREIS ONLINE BERECHNEN
                 </Badge>
                 <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-                  Sie moechten etwas verschicken und wissen nicht, was es kostet?
+                  Sie möchten etwas verschicken und wissen nicht, was es kostet?
                 </h2>
                 <p className="text-lg leading-8 text-gray-300">
                   Geben Sie Strecke, Frachtart und Gewicht ein. CargoBit berechnet einen realistischen Preis als Orientierung.
-                  Danach koennen Sie den Transportauftrag veroeffentlichen und Speditionen oder Transporteure koennen Angebote abgeben.
+                  Danach können Sie den Transportauftrag veröffentlichen und Speditionen oder Transporteure können Angebote abgeben.
                 </p>
 
                 <div className="mt-8 grid gap-4 sm:grid-cols-2">
                   {[
-                    ['1', 'Preis berechnen', 'KI-Schaetzung fuer Route, Fracht, Maut, Fahrzeit und Risiko.'],
-                    ['2', 'Anmelden', 'Daten uebernehmen und den Auftrag mit Wallet-Schutz vorbereiten.'],
-                    ['3', 'Angebote erhalten', 'Transporteure koennen annehmen oder guenstiger bieten.'],
+                    ['1', 'Preis berechnen', 'KI-Schätzung für Route, Fracht, Maut, Fahrzeit und Risiko.'],
+                    ['2', 'Anmelden', 'Daten übernehmen und den Auftrag mit Wallet-Schutz vorbereiten.'],
+                    ['3', 'Angebote erhalten', 'Transporteure können annehmen oder günstiger bieten.'],
                     ['4', 'Sicher abwickeln', 'POD, Rechnung, Auszahlung und Trust Gate bleiben nachvollziehbar.'],
                   ].map(([number, title, detail]) => (
                     <div key={number} className="rounded-2xl border border-[#1C7ED6]/20 bg-[#0B3C5D]/40 p-4">
@@ -758,7 +871,7 @@ export default function Home() {
                     className="min-h-12 h-auto flex-1 border-[#00D4FF]/30 py-3 text-[#00D4FF] hover:bg-[#00D4FF]/10"
                     onClick={publishQuickQuote}
                   >
-                    {isAuthenticated ? 'Angebot veroeffentlichen' : 'Kostenlos anmelden und Angebot veroeffentlichen'}
+                    {isAuthenticated ? 'Angebot veröffentlichen' : 'Kostenlos anmelden und Angebot veröffentlichen'}
                   </Button>
                 </div>
 
@@ -799,8 +912,8 @@ export default function Home() {
                     </div>
                     <p className="mt-4 text-sm leading-6 text-gray-400">
                       {quickQuoteForm.transportType === 'pallet'
-                        ? 'Speditionen koennen Angebote abgeben und guenstiger bieten, solange Mindestpreis und Trust-Regeln eingehalten werden.'
-                        : 'Fuer diese Frachtart koennen Spezialfahrzeuge, Versicherungen, Nachweise oder manuelle Pruefung erforderlich sein.'}
+                        ? 'Speditionen können Angebote abgeben und günstiger bieten, solange Mindestpreis und Trust-Regeln eingehalten werden.'
+                        : 'Für diese Frachtart können Spezialfahrzeuge, Versicherungen, Nachweise oder manuelle Prüfung erforderlich sein.'}
                     </p>
                   </div>
                 ) : null}
@@ -1174,7 +1287,7 @@ export default function Home() {
                 Transportauftrag erstellen, Spedition finden und Angebote vergleichen.
               </h2>
               <p className="text-lg leading-8 text-gray-400">
-                CargoBit ist fuer Menschen und Unternehmen gedacht, die Fracht transportieren lassen moechten,
+                CargoBit ist für Menschen und Unternehmen gedacht, die Fracht transportieren lassen möchten,
                 aber noch keinen realistischen Preis kennen. Die Plattform verbindet Preisberechnung, Auftrag,
                 Matching, Wallet-Zahlung, Verifizierung, Versicherung und digitale Transportabwicklung.
               </p>
@@ -1183,19 +1296,19 @@ export default function Home() {
             <div className="grid gap-6 lg:grid-cols-4">
               {[
                 {
-                  title: 'Fuer Verlader',
+                  title: 'Für Verlader',
                   text: 'Transportpreis berechnen, Frachtauftrag erstellen, Angebote vergleichen und Zahlung per Wallet absichern.',
                 },
                 {
-                  title: 'Fuer Privatpersonen',
-                  text: 'Auch private oder einmalige Transporte koennen vorbereitet werden, wenn Route, Fracht und Zeitfenster klar beschrieben sind.',
+                  title: 'Für Privatpersonen',
+                  text: 'Auch private oder einmalige Transporte können vorbereitet werden, wenn Route, Fracht und Zeitfenster klar beschrieben sind.',
                 },
                 {
-                  title: 'Fuer Transporteure',
-                  text: 'Passende Auftraege finden, faire Angebote abgeben und nach Lieferung ueber POD/eCMR die Auszahlung vorbereiten.',
+                  title: 'Für Transporteure',
+                  text: 'Passende Aufträge finden, faire Angebote abgeben und nach Lieferung über POD/eCMR die Auszahlung vorbereiten.',
                 },
                 {
-                  title: 'Fuer Speditionen',
+                  title: 'Für Speditionen',
                   text: 'Teams, Dispatcher, Fahrer, Fahrzeuge, Verifizierungen und Transportprozesse digital koordinieren.',
                 },
               ].map((item) => (
@@ -1216,7 +1329,7 @@ export default function Home() {
                 FRAGEN ZU TRANSPORTPREISEN
               </Badge>
               <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-                Was kostet mein Transport und wer kann ihn uebernehmen?
+                Was kostet mein Transport und wer kann ihn übernehmen?
               </h2>
               <p className="text-lg leading-8 text-gray-400">
                 Diese Fragen beantworten wir schon vor der Auftragserstellung: mit KI-Preisempfehlung,
@@ -1231,6 +1344,103 @@ export default function Home() {
                   <p className="mt-3 text-sm leading-6 text-gray-400">{faq.answer}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Feedback Section */}
+        <section id="verbesserungen" className="py-24 bg-[#081824]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-start">
+              <div>
+                <Badge className="mb-4 bg-[#2ECC71]/10 text-[#8ff0b4] border border-[#2ECC71]/30">
+                  PRODUKT-FEEDBACK
+                </Badge>
+                <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                  CargoBit verbessern
+                </h2>
+                <p className="text-lg leading-8 text-gray-300">
+                  Eine Logistikplattform wird besser, wenn echte Nutzer ihre Arbeitsabläufe spiegeln.
+                  Teile uns mit, welche Funktion fehlt, welcher Schritt zu kompliziert ist oder wo CargoBit
+                  Zeit und Kosten noch besser sparen kann.
+                </p>
+
+                <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                  {[
+                    ['Schneller lernen', 'Ideen landen direkt bei Produkt, Support und Admin.'],
+                    ['Bessere Abläufe', 'Wir priorisieren Vorschläge nach Wirkung im echten Transportprozess.'],
+                    ['Rückfragen möglich', 'Mit Login können wir dich kontaktieren und Details klären.'],
+                  ].map(([title, detail]) => (
+                    <div key={title} className="rounded-2xl border border-[#2ECC71]/20 bg-[#0B3C5D]/40 p-4">
+                      <Lightbulb className="mb-3 h-5 w-5 text-[#8ff0b4]" />
+                      <h3 className="font-semibold text-white">{title}</h3>
+                      <p className="mt-2 text-sm leading-6 text-gray-400">{detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#2ECC71]/20 bg-[#0B3C5D]/60 p-5 shadow-2xl shadow-[#2ECC71]/10">
+                <div className="mb-5 flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-semibold text-white">Verbesserung vorschlagen</h3>
+                    <p className="mt-1 text-sm text-gray-400">
+                      Öffentlich sichtbar, aber Absenden mit Login, damit wir Rückfragen stellen können.
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-[#2ECC71]/10 p-3 text-[#8ff0b4]">
+                    <MessageSquare className="h-5 w-5" />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-sm text-gray-300">Kategorie</span>
+                    <select
+                      value={feedbackForm.category}
+                      onChange={(event) => updateFeedbackForm('category', event.target.value)}
+                      className="h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#2ECC71]/60"
+                    >
+                      {FEEDBACK_CATEGORIES.map((category) => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm text-gray-300">Rolle oder Kontext</span>
+                    <input
+                      value={feedbackForm.roleContext}
+                      onChange={(event) => updateFeedbackForm('roleContext', event.target.value)}
+                      className="h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#2ECC71]/60"
+                      placeholder="z.B. Verlader, Fahrer, Spedition"
+                    />
+                  </label>
+                </div>
+
+                <label className="mt-4 block space-y-2">
+                  <span className="text-sm text-gray-300">Was sollen wir verbessern?</span>
+                  <textarea
+                    value={feedbackForm.message}
+                    onChange={(event) => updateFeedbackForm('message', event.target.value)}
+                    rows={5}
+                    className="w-full resize-none rounded-xl border border-white/10 bg-[#06121C]/70 px-4 py-3 text-white outline-none transition focus:border-[#2ECC71]/60"
+                    placeholder="Beschreibe kurz, was fehlt, wo etwas unklar ist oder welcher Ablauf einfacher werden sollte."
+                  />
+                </label>
+
+                <Button
+                  className="mt-5 h-12 w-full gap-2 bg-gradient-to-r from-[#1C7ED6] to-[#2ECC71] hover:opacity-90"
+                  onClick={() => void submitFeedback()}
+                  disabled={feedbackSubmitting}
+                >
+                  {feedbackSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Vorschlag senden
+                </Button>
+
+                <p className="mt-3 text-xs leading-5 text-gray-500">
+                  Feedback wird intern als Produkt-Feedback-Ticket gespeichert. Kritische Supportfälle oder Streitfälle bitte weiterhin über die jeweilige Auftragsansicht melden.
+                </p>
+              </div>
             </div>
           </div>
         </section>
@@ -1351,6 +1561,7 @@ export default function Home() {
                 <ul className="space-y-2">
                   <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Hilfe-Center</a></li>
                   <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Support anfragen</a></li>
+                  <li><a href="#verbesserungen" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Verbesserungen</a></li>
                   <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Status</a></li>
                 </ul>
               </div>

@@ -315,7 +315,7 @@ async function markPayoutPaid(event: StripeWebhookEvent): Promise<HandlerResult>
         userId: payout.userId,
         type: 'PAYOUT_COMPLETED',
         title: 'Auszahlung abgeschlossen',
-        message: `Ihre Auszahlung ueber ${formatMoney(payout.amountCents / 100, payout.currency)} wurde erfolgreich verarbeitet.`,
+        message: `Ihre Auszahlung über ${formatMoney(payout.amountCents / 100, payout.currency)} wurde erfolgreich verarbeitet.`,
         data: JSON.stringify({
           payoutId: payout.id,
           stripeObjectId: stripeObject.id,
@@ -440,7 +440,7 @@ async function markPayoutFailed(event: StripeWebhookEvent): Promise<HandlerResul
         userId: payout.userId,
         type: 'PAYOUT_FAILED',
         title: 'Auszahlung fehlgeschlagen',
-        message: `Ihre Auszahlung konnte nicht verarbeitet werden. ${payoutWalletTransaction && !existingRefund ? 'Der Betrag wurde Ihrem Wallet gutgeschrieben.' : 'Bitte pruefen Sie die Auszahlungsmethode.'}`,
+        message: `Ihre Auszahlung konnte nicht verarbeitet werden. ${payoutWalletTransaction && !existingRefund ? 'Der Betrag wurde Ihrem Wallet gutgeschrieben.' : 'Bitte prüfen Sie die Auszahlungsmethode.'}`,
         data: JSON.stringify({
           payoutId: payout.id,
           failureReason,

@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     product: 'CargoBit Operating Model',
-    positioning: 'Verifizierte DACH/Benelux-Transportabwicklung fuer kleine Gewerbe, Solo-Transporteure und Speditionen.',
+    positioning: 'Verifizierte DACH/Benelux-Transportabwicklung für kleine Gewerbe, Solo-Transporteure und Speditionen.',
     model: getPlatformOperatingModel(role),
   });
 }

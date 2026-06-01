@@ -4,7 +4,7 @@ export default function CarrierWalletPage() {
   return (
     <UserWalletPage
       title="Transporteur Wallet"
-      subtitle="Freigegebenes Guthaben, Reservierungen und Bankauszahlungen fuer Speditionen und selbststaendige Transporteure."
+      subtitle="Freigegebenes Guthaben, Reservierungen und Bankauszahlungen für Speditionen und selbstständige Transporteure."
     />
   );
 }

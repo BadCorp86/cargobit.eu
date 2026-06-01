@@ -188,16 +188,16 @@ const mockQueue: VerificationQueueResponse = {
               status: 'partial',
               source: 'pdf_page_ocr',
               confidence: 61,
-              warnings: ['Rueckseite fehlt oder ist unscharf.'],
+              warnings: ['Rückseite fehlt oder ist unscharf.'],
               extractedFields: {
                 documentNumbers: ['D1234567'],
               },
             },
           },
         ],
-        manualReviewReasons: ['OCR fuer DRIVERS_LICENSE hat nur Teilinformationen erkannt'],
+        manualReviewReasons: ['OCR für DRIVERS_LICENSE hat nur Teilinformationen erkannt'],
       },
-      reviewReason: 'OCR fuer DRIVERS_LICENSE hat nur Teilinformationen erkannt',
+      reviewReason: 'OCR für DRIVERS_LICENSE hat nur Teilinformationen erkannt',
       createdAt: new Date(Date.now() - 1000 * 60 * 115).toISOString(),
       updatedAt: new Date(Date.now() - 1000 * 60 * 78).toISOString(),
       supportTicket: {
@@ -205,7 +205,7 @@ const mockQueue: VerificationQueueResponse = {
         subject: 'Führerscheinprüfung braucht Nachsicht',
         priority: 'NORMAL',
         status: 'IN_PROGRESS',
-        description: 'OCR-Hinweis: Vorderseite erkannt, Rueckseite fehlt. Bitte neues Dokument anfordern.',
+        description: 'OCR-Hinweis: Vorderseite erkannt, Rückseite fehlt. Bitte neues Dokument anfordern.',
       },
     },
     {

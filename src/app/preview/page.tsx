@@ -364,11 +364,11 @@ export default function PreviewPage() {
               <p className="text-sm font-medium text-[#00D4FF]">System-Readiness</p>
               <h2 className="mt-1 text-2xl font-semibold tracking-normal">Preview Status</h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-white/55">
-                Live-Pruefung fuer App, Produktionsdatenbank, Stripe-Setup und automatische Cron-Jobs. Lokal ist ein roter DB-Status normal, solange keine Postgres-Datenbank verbunden ist.
+                Live-Prüfung für App, Produktionsdatenbank, Stripe-Setup und automatische Cron-Jobs. Lokal ist ein roter DB-Status normal, solange keine Postgres-Datenbank verbunden ist.
               </p>
             </div>
             <Badge className={healthStatusClass(health?.status)}>
-              {healthLoading ? 'Prueft...' : healthLabel(health?.status)}
+              {healthLoading ? 'Prüft...' : healthLabel(health?.status)}
             </Badge>
           </div>
 
@@ -378,7 +378,7 @@ export default function PreviewPage() {
               title="App"
               status={health?.status || 'error'}
               value={healthLoading ? '...' : healthLabel(health?.status)}
-              detail={health?.timestamp ? `Geprueft: ${new Date(health.timestamp).toLocaleTimeString('de-DE')}` : 'Noch keine Pruefung'}
+              detail={health?.timestamp ? `Geprüft: ${new Date(health.timestamp).toLocaleTimeString('de-DE')}` : 'Noch keine Prüfung'}
             />
             <ReadinessMiniCard
               icon={<Database className="h-5 w-5" />}
