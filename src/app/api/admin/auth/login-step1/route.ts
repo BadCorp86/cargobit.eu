@@ -40,6 +40,22 @@ interface SuccessResponse {
   email: string;
 }
 
+function getFailureCode(error: string, statusCode: number) {
+  if (error.includes('nicht konfiguriert')) {
+    return 'ADMIN_AUTH_NOT_CONFIGURED';
+  }
+
+  if (error.includes('gesperrt')) {
+    return 'ACCOUNT_LOCKED';
+  }
+
+  if (error.includes('deaktiviert')) {
+    return 'ACCOUNT_DISABLED';
+  }
+
+  return statusCode === 403 ? 'ACCOUNT_DISABLED' : 'INVALID_CREDENTIALS';
+}
+
 // ============================================
 // POST: LOGIN STEP 1
 // ============================================
@@ -91,7 +107,7 @@ export async function POST(request: NextRequest) {
       
       const errorResponse: ErrorResponseDto = {
         error: result.error,
-        code: statusCode === 403 ? 'ACCOUNT_DISABLED' : 'INVALID_CREDENTIALS',
+        code: getFailureCode(result.error, statusCode),
       };
       
       return NextResponse.json(errorResponse, { status: statusCode });

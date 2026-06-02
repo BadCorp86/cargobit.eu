@@ -7,23 +7,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuthService } from '@/services/admin-auth.service';
+import { withAdminAuth } from '@/lib/admin-rbac';
 
 export async function POST(request: NextRequest) {
-  try {
-    const token = request.cookies.get('admin_access_token')?.value;
-
-    if (!token) {
+  return withAdminAuth(request, async (admin) => {
+    if (admin.id === 'env-admin') {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const admin = await adminAuthService.verifyAdminToken(token);
-    if (!admin) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
+        {
+          error: '2FA setup requires a database-backed admin user.',
+          code: 'ENV_ADMIN_2FA_UNSUPPORTED',
+        },
+        { status: 400 },
       );
     }
 
@@ -37,7 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const success = await adminAuthService.enable2fa(admin.adminId, code);
+    const success = await adminAuthService.enable2fa(admin.id, code);
 
     if (!success) {
       return NextResponse.json(
@@ -50,12 +44,5 @@ export async function POST(request: NextRequest) {
       success: true,
       message: '2FA has been enabled for your account',
     });
-
-  } catch (error) {
-    console.error('[Admin Auth] 2FA enable error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+  });
 }

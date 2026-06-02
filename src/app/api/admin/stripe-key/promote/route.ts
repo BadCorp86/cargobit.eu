@@ -6,29 +6,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuthService } from '@/services/admin-auth.service';
 import { secretsService } from '@/services/secrets.service';
+import { AdminRole, withAdminAuth } from '@/lib/admin-rbac';
 
 export async function POST(request: NextRequest) {
-  try {
-    const token = request.cookies.get('admin_access_token')?.value;
-
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const admin = await adminAuthService.verifyAdminToken(token);
-    if (!admin) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const result = await secretsService.promoteStripeKey(admin.adminId);
+  return withAdminAuth(request, async (admin) => {
+    const result = await secretsService.promoteStripeKey(admin.id);
 
     if (!result.success) {
       return NextResponse.json(
@@ -41,12 +24,5 @@ export async function POST(request: NextRequest) {
       success: true,
       message: result.message,
     });
-
-  } catch (error) {
-    console.error('[Admin] Stripe key promotion error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+  }, [AdminRole.ADMIN]);
 }

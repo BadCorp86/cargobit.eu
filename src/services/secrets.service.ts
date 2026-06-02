@@ -51,18 +51,16 @@ export async function storeSecret(
 ): Promise<void> {
   const encryptedValue = encrypt(value);
 
-  await prisma.secret.upsert({
-    where: { name },
+  await prisma.systemSetting.upsert({
+    where: { key: name },
     update: {
       value: encryptedValue,
-      lastRotatedAt: new Date(),
-      rotatedBy: adminId,
+      description: adminId ? `Secret updated by admin ${adminId}` : 'Encrypted secret',
     },
     create: {
-      name,
+      key: name,
       value: encryptedValue,
-      lastRotatedAt: new Date(),
-      rotatedBy: adminId,
+      description: adminId ? `Secret created by admin ${adminId}` : 'Encrypted secret',
     },
   });
 
@@ -75,8 +73,8 @@ export async function storeSecret(
  * Retrieve a secret value (decrypted)
  */
 export async function getSecret(name: string): Promise<string | null> {
-  const secret = await prisma.secret.findUnique({
-    where: { name },
+  const secret = await prisma.systemSetting.findUnique({
+    where: { key: name },
   });
 
   if (!secret) {
@@ -95,8 +93,8 @@ export async function getSecret(name: string): Promise<string | null> {
  * Check if a secret exists
  */
 export async function hasSecret(name: string): Promise<boolean> {
-  const secret = await prisma.secret.findUnique({
-    where: { name },
+  const secret = await prisma.systemSetting.findUnique({
+    where: { key: name },
     select: { id: true },
   });
   return !!secret;
@@ -106,8 +104,8 @@ export async function hasSecret(name: string): Promise<boolean> {
  * Delete a secret
  */
 export async function deleteSecret(name: string, adminId?: string): Promise<void> {
-  await prisma.secret.delete({
-    where: { name },
+  await prisma.systemSetting.deleteMany({
+    where: { key: name },
   });
 
   if (adminId) {
@@ -238,11 +236,11 @@ export async function getStripeKeyStatus(): Promise<{
   lastRotatedAt: Date | null;
 }> {
   const [activeSecret, nextSecret] = await Promise.all([
-    prisma.secret.findUnique({
-      where: { name: SECRET_NAMES.STRIPE_SECRET_KEY_ACTIVE },
+    prisma.systemSetting.findUnique({
+      where: { key: SECRET_NAMES.STRIPE_SECRET_KEY_ACTIVE },
     }),
-    prisma.secret.findUnique({
-      where: { name: SECRET_NAMES.STRIPE_SECRET_KEY_NEXT },
+    prisma.systemSetting.findUnique({
+      where: { key: SECRET_NAMES.STRIPE_SECRET_KEY_NEXT },
     }),
   ]);
 
@@ -260,7 +258,7 @@ export async function getStripeKeyStatus(): Promise<{
     hasNextKey: !!nextKey,
     activeKeyPreview: maskKey(activeKey),
     nextKeyPreview: maskKey(nextKey),
-    lastRotatedAt: activeSecret?.lastRotatedAt || null,
+    lastRotatedAt: activeSecret?.updatedAt || null,
   };
 }
 

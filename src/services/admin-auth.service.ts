@@ -94,6 +94,41 @@ const ENV_ADMIN_ID = 'env-admin';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MINUTES = 30;
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function encodeBase32(buffer: Buffer): string {
+  let bits = '';
+  let output = '';
+
+  for (const byte of buffer) {
+    bits += byte.toString(2).padStart(8, '0');
+  }
+
+  for (let index = 0; index < bits.length; index += 5) {
+    const chunk = bits.slice(index, index + 5).padEnd(5, '0');
+    output += BASE32_ALPHABET[parseInt(chunk, 2)];
+  }
+
+  return output;
+}
+
+function decodeBase32(value: string): Buffer {
+  const normalized = value.toUpperCase().replace(/=+$/g, '').replace(/[^A-Z2-7]/g, '');
+  let bits = '';
+  const bytes: number[] = [];
+
+  for (const char of normalized) {
+    const index = BASE32_ALPHABET.indexOf(char);
+    if (index === -1) continue;
+    bits += index.toString(2).padStart(5, '0');
+  }
+
+  for (let index = 0; index + 8 <= bits.length; index += 8) {
+    bytes.push(parseInt(bits.slice(index, index + 8), 2));
+  }
+
+  return Buffer.from(bytes);
+}
 
 function getEnvAdmin() {
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
@@ -340,7 +375,7 @@ export class AdminAuthService {
     
     // If 2FA is enabled, verify code
     if (admin.is2faEnabled) {
-      const codeValid = await this.verify2faCode(admin.id, code, admin.totpSecret);
+      const codeValid = await this.verify2faCode(admin.twoFactorSecret, code);
       if (!codeValid) {
         await this.incrementFailedAttempts(admin.id);
         return { success: false, error: 'Ungültiger 2FA-Code' };
@@ -534,9 +569,8 @@ export class AdminAuthService {
   /**
    * Setup 2FA for admin user.
    */
-  async setup2fa(adminId: string): Promise<{ secret: string; qrCodeUrl: string; backupCodes: string[] }> {
+  async setup2fa(adminId: string): Promise<{ secret: string; qrCodeUrl: string }> {
     const secret = this.generateTotpSecret();
-    const backupCodes = this.generateBackupCodes();
     
     const admin = await prisma.adminUser.findUnique({ where: { id: adminId } });
     
@@ -544,14 +578,13 @@ export class AdminAuthService {
     await prisma.adminUser.update({
       where: { id: adminId },
       data: {
-        totpSecret: secret,
-        backupCodes: JSON.stringify(backupCodes),
+        twoFactorSecret: secret,
       },
     });
     
     const qrCodeUrl = this.generateQRCodeUrl(secret, admin?.email || 'admin@cargobit.eu');
     
-    return { secret, qrCodeUrl, backupCodes };
+    return { secret, qrCodeUrl };
   }
   
   /**
@@ -560,11 +593,11 @@ export class AdminAuthService {
   async enable2fa(adminId: string, code: string): Promise<boolean> {
     const admin = await prisma.adminUser.findUnique({ where: { id: adminId } });
     
-    if (!admin?.totpSecret) {
+    if (!admin?.twoFactorSecret) {
       return false;
     }
     
-    const valid = this.verifyTotp(admin.totpSecret, code);
+    const valid = this.verifyTotp(admin.twoFactorSecret, code);
     if (!valid) {
       return false;
     }
@@ -585,11 +618,11 @@ export class AdminAuthService {
   async disable2fa(adminId: string, code: string): Promise<boolean> {
     const admin = await prisma.adminUser.findUnique({ where: { id: adminId } });
     
-    if (!admin?.totpSecret) {
+    if (!admin?.twoFactorSecret) {
       return false;
     }
     
-    const valid = this.verifyTotp(admin.totpSecret, code);
+    const valid = this.verifyTotp(admin.twoFactorSecret, code);
     if (!valid) {
       return false;
     }
@@ -598,8 +631,7 @@ export class AdminAuthService {
       where: { id: adminId },
       data: {
         is2faEnabled: false,
-        totpSecret: null,
-        backupCodes: null,
+        twoFactorSecret: null,
       },
     });
     
@@ -730,15 +762,7 @@ export class AdminAuthService {
   }
   
   private generateTotpSecret(): string {
-    return crypto.randomBytes(20).toString('base32').substring(0, 32);
-  }
-  
-  private generateBackupCodes(): string[] {
-    const codes: string[] = [];
-    for (let i = 0; i < 10; i++) {
-      codes.push(crypto.randomBytes(4).toString('hex').toUpperCase());
-    }
-    return codes;
+    return encodeBase32(crypto.randomBytes(20));
   }
   
   private generateQRCodeUrl(secret: string, email: string): string {
@@ -770,7 +794,7 @@ export class AdminAuthService {
     const buffer = Buffer.alloc(8);
     buffer.writeBigUInt64BE(BigInt(counter));
     
-    const hmac = crypto.createHmac('sha1', Buffer.from(secret, 'base32'));
+    const hmac = crypto.createHmac('sha1', decodeBase32(secret));
     hmac.update(buffer);
     const digest = hmac.digest();
     
@@ -779,32 +803,14 @@ export class AdminAuthService {
     return (code % 1000000).toString().padStart(6, '0');
   }
   
-  private async verify2faCode(adminId: string, code: string, totpSecret?: string | null): Promise<boolean> {
+  private async verify2faCode(twoFactorSecret: string | null, code: string): Promise<boolean> {
     // Check TOTP code with window tolerance (±30 seconds)
-    if (totpSecret) {
-      if (this.verifyTotp(totpSecret, code, 1)) {
+    if (twoFactorSecret) {
+      if (this.verifyTotp(twoFactorSecret, code, 1)) {
         return true;
       }
     }
-    
-    // Check backup codes
-    const admin = await prisma.adminUser.findUnique({
-      where: { id: adminId },
-    });
-    
-    if (admin?.backupCodes) {
-      const backupCodes: string[] = JSON.parse(admin.backupCodes);
-      if (backupCodes.includes(code.toUpperCase())) {
-        // Remove used backup code
-        const newBackupCodes = backupCodes.filter(c => c !== code.toUpperCase());
-        await prisma.adminUser.update({
-          where: { id: adminId },
-          data: { backupCodes: JSON.stringify(newBackupCodes) },
-        });
-        return true;
-      }
-    }
-    
+
     return false;
   }
   
@@ -830,18 +836,18 @@ export class AdminAuthService {
   
   private async incrementFailedAttempts(adminId: string): Promise<void> {
     const admin = await prisma.adminUser.findUnique({ where: { id: adminId } });
-    const attempts = (admin?.failedAttempts || 0) + 1;
+    const attempts = (admin?.failedLoginAttempts || 0) + 1;
     
     if (attempts >= MAX_FAILED_ATTEMPTS) {
       const lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000);
       await prisma.adminUser.update({
         where: { id: adminId },
-        data: { failedAttempts: attempts, lockedUntil },
+        data: { failedLoginAttempts: attempts, lockedUntil },
       });
     } else {
       await prisma.adminUser.update({
         where: { id: adminId },
-        data: { failedAttempts: attempts },
+        data: { failedLoginAttempts: attempts },
       });
     }
   }
@@ -849,7 +855,7 @@ export class AdminAuthService {
   private async resetFailedAttempts(adminId: string): Promise<void> {
     await prisma.adminUser.update({
       where: { id: adminId },
-      data: { failedAttempts: 0, lockedUntil: null },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
     });
   }
   

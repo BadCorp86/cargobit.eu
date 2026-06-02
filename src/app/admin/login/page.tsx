@@ -14,6 +14,25 @@ import Link from 'next/link';
 
 type LoginStep = 'credentials' | '2fa' | 'success';
 
+function getLoginErrorMessage(data: { error?: string; code?: string } | null, fallback: string) {
+  if (!data) return fallback;
+
+  switch (data.code) {
+    case 'ADMIN_AUTH_NOT_CONFIGURED':
+      return 'Admin-Login ist noch nicht vollständig konfiguriert. Bitte ADMIN_EMAIL, ADMIN_PASSWORD und ADMIN_JWT_SECRET in der Umgebung setzen.';
+    case 'ACCOUNT_LOCKED':
+      return data.error || 'Admin-Konto ist vorübergehend gesperrt.';
+    case 'ACCOUNT_DISABLED':
+      return data.error || 'Admin-Konto ist deaktiviert.';
+    case 'INVALID_CREDENTIALS':
+      return 'E-Mail oder Passwort ist falsch.';
+    case 'INVALID_2FA':
+      return 'Der 2FA-Code ist ungültig oder abgelaufen.';
+    default:
+      return data.error || fallback;
+  }
+}
+
 export default function AdminLoginPage() {
   const router = useRouter();
   
@@ -43,7 +62,7 @@ export default function AdminLoginPage() {
       const data = await res.json();
       
       if (!res.ok) {
-        setError(data.error || 'Anmeldung fehlgeschlagen');
+        setError(getLoginErrorMessage(data, 'Anmeldung fehlgeschlagen'));
         return;
       }
       
@@ -53,7 +72,7 @@ export default function AdminLoginPage() {
         // No 2FA required - login directly
         await handleFinalLogin();
       }
-    } catch (err) {
+    } catch {
       setError('Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.');
     } finally {
       setLoading(false);
@@ -76,7 +95,7 @@ export default function AdminLoginPage() {
       const data = await res.json();
       
       if (!res.ok) {
-        setError(data.error || 'Ungültiger 2FA-Code');
+        setError(getLoginErrorMessage(data, 'Ungültiger 2FA-Code'));
         return;
       }
       
@@ -85,7 +104,7 @@ export default function AdminLoginPage() {
       setTimeout(() => {
         router.push('/admin/dashboard');
       }, 1000);
-    } catch (err) {
+    } catch {
       setError('Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.');
     } finally {
       setLoading(false);
@@ -100,13 +119,15 @@ export default function AdminLoginPage() {
       body: JSON.stringify({ email, code: '' }),
     });
     
+    const data = await res.json().catch(() => null);
+
     if (res.ok) {
       setStep('success');
       setTimeout(() => {
         router.push('/admin/dashboard');
       }, 1000);
     } else {
-      setError('Anmeldung fehlgeschlagen');
+      setError(getLoginErrorMessage(data, 'Anmeldung fehlgeschlagen'));
     }
   };
   

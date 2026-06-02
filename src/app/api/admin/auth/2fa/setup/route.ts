@@ -7,39 +7,27 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuthService } from '@/services/admin-auth.service';
+import { withAdminAuth } from '@/lib/admin-rbac';
 
 export async function GET(request: NextRequest) {
-  try {
-    const token = request.cookies.get('admin_access_token')?.value;
-
-    if (!token) {
+  return withAdminAuth(request, async (admin) => {
+    if (admin.id === 'env-admin') {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
+        {
+          error: '2FA setup requires a database-backed admin user.',
+          code: 'ENV_ADMIN_2FA_UNSUPPORTED',
+        },
+        { status: 400 },
       );
     }
 
-    const admin = await adminAuthService.verifyAdminToken(token);
-    if (!admin) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      );
-    }
-
-    const result = await adminAuthService.setup2fa(admin.adminId);
+    const result = await adminAuthService.setup2fa(admin.id);
 
     return NextResponse.json({
       success: true,
       secret: result.secret,
-      otpAuthUrl: result.otpAuthUrl,
+      otpAuthUrl: result.qrCodeUrl,
+      qrCodeUrl: result.qrCodeUrl,
     });
-
-  } catch (error) {
-    console.error('[Admin Auth] 2FA setup error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
+  });
 }
