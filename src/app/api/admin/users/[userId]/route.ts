@@ -1,34 +1,38 @@
 /**
- * CargoBit Admin User Detail API
- * 
- * PATCH /api/admin/users/{userId} - Update admin user
- * DELETE /api/admin/users/{userId} - Deactivate admin user
- * 
+ * CargoBit Admin Platform User Detail API
+ *
+ * PATCH /api/admin/users/{userId} - Update platform user status
+ *
  * RBAC: ADMIN role only
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { SecurityFlagSeverity, SecurityFlagType, UserStatus } from '@prisma/client';
+import { prisma } from '@/lib/db';
 import { withAdminAuth, AdminRole } from '@/lib/admin-rbac';
-import { adminAuthService } from '@/services/admin-auth.service';
-import { AdminRole as PrismaAdminRole } from '@prisma/client';
 
-// ============================================
-// PATCH: UPDATE ADMIN USER
-// ============================================
+function parseUserStatus(value?: string) {
+  if (!value) return null;
+  const normalized = value.toUpperCase();
+  if (normalized === 'ACTIVE') return UserStatus.ACTIVE;
+  if (normalized === 'PENDING') return UserStatus.PENDING;
+  if (normalized === 'BLOCKED') return UserStatus.BLOCKED;
+  if (normalized === 'SUSPENDED') return UserStatus.SUSPENDED;
+  return null;
+}
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   return withAdminAuth(request, async (admin) => {
-    const userId = params.userId;
-    
-    // Parse request
+    const { userId } = await params;
+
     let body: {
-      role?: string;
-      is_active?: boolean;
+      status?: string;
+      reason?: string;
     };
-    
+
     try {
       body = await request.json();
     } catch {
@@ -37,105 +41,93 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    
-    const { role, is_active } = body;
-    
-    // At least one field must be provided
-    if (!role && is_active === undefined) {
+
+    const status = parseUserStatus(body.status);
+
+    if (!status) {
       return NextResponse.json(
-        { error: 'At least one field must be provided: role or is_active' },
+        { error: 'Invalid status. Must be: ACTIVE, PENDING, BLOCKED, or SUSPENDED' },
         { status: 400 }
       );
     }
-    
-    // Validate role
-    if (role && !['ADMIN', 'FINANCE', 'SUPPORT'].includes(role)) {
-      return NextResponse.json(
-        { error: 'Invalid role. Must be: ADMIN, FINANCE, or SUPPORT' },
-        { status: 400 }
-      );
-    }
-    
-    // Prevent self-demotion/deactivation
-    if (userId === admin.id) {
-      if (role && role !== admin.role) {
-        return NextResponse.json(
-          { error: 'Cannot change your own role' },
-          { status: 400 }
-        );
-      }
-      if (is_active === false) {
-        return NextResponse.json(
-          { error: 'Cannot deactivate yourself' },
-          { status: 400 }
-        );
-      }
-    }
-    
-    // Update role if provided
-    if (role) {
-      const success = await adminAuthService.updateAdminRole(
-        userId,
-        role as PrismaAdminRole,
-        admin.id
-      );
-      
-      if (!success) {
-        return NextResponse.json(
-          { error: 'Admin user not found' },
-          { status: 404 }
-        );
-      }
-    }
-    
-    // Update active status if provided
-    if (is_active !== undefined) {
-      if (is_active) {
-        // Reactivate
-        await adminAuthService.deactivateAdmin(userId, admin.id);
-      } else {
-        // Deactivate
-        await adminAuthService.deactivateAdmin(userId, admin.id);
-      }
-    }
-    
-    return NextResponse.json({
-      status: 'updated',
+
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+      },
     });
-  }, [AdminRole.ADMIN]); // ADMIN only
-}
 
-// ============================================
-// DELETE: DEACTIVATE ADMIN USER
-// ============================================
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { userId: string } }
-) {
-  return withAdminAuth(request, async (admin) => {
-    const userId = params.userId;
-    
-    // Prevent self-deactivation
-    if (userId === admin.id) {
+    if (!existing) {
       return NextResponse.json(
-        { error: 'Cannot deactivate yourself' },
-        { status: 400 }
-      );
-    }
-    
-    // Deactivate admin
-    const success = await adminAuthService.deactivateAdmin(userId, admin.id);
-    
-    if (!success) {
-      return NextResponse.json(
-        { error: 'Admin user not found' },
+        { error: 'User not found' },
         { status: 404 }
       );
     }
-    
-    return NextResponse.json({
-      status: 'deactivated',
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: { status },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          updatedAt: true,
+        },
+      });
+
+      if (status === UserStatus.BLOCKED || status === UserStatus.SUSPENDED) {
+        await tx.securityFlag.create({
+          data: {
+            userId,
+            type: SecurityFlagType.SUSPICIOUS_ACTIVITY,
+            severity: status === UserStatus.BLOCKED ? SecurityFlagSeverity.HIGH : SecurityFlagSeverity.MEDIUM,
+            active: true,
+            notes: body.reason || `Admin ${admin.email} changed user status from ${existing.status} to ${status}`,
+          },
+        });
+      }
+
+      if (status === UserStatus.ACTIVE) {
+        await tx.securityFlag.updateMany({
+          where: {
+            userId,
+            active: true,
+            type: SecurityFlagType.SUSPICIOUS_ACTIVITY,
+          },
+          data: {
+            active: false,
+            resolvedAt: new Date(),
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          action: 'STATUS_CHANGE',
+          entityType: 'user',
+          entityId: userId,
+          dataBefore: JSON.stringify({ status: existing.status }),
+          dataAfter: JSON.stringify({
+            status,
+            reason: body.reason || null,
+            adminId: admin.id,
+            adminEmail: admin.email,
+          }),
+        },
+      });
+
+      return user;
     });
-  }, [AdminRole.ADMIN]); // ADMIN only
+
+    return NextResponse.json({
+      status: 'updated',
+      user: updated,
+    });
+  }, [AdminRole.ADMIN]);
 }
