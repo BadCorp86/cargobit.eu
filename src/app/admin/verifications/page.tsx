@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -96,149 +96,14 @@ interface VerificationQueueResponse {
   };
 }
 
-const mockQueue: VerificationQueueResponse = {
+const EMPTY_QUEUE: VerificationQueueResponse = {
   summary: {
-    total: 4,
-    pending: 2,
-    approved: 1,
-    rejected: 1,
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
   },
-  items: [
-    {
-      id: 'mock_verification_1',
-      userId: 'demo-carrier',
-      userName: 'Anna Schmidt',
-      userEmail: 'carrier@cargobit.eu',
-      userStatus: 'PENDING',
-      role: 'CARRIER',
-      companyName: 'Schmidt Spedition',
-      companyCountry: 'DE',
-      companyVatNumber: 'DE123456789',
-      type: 'KYB',
-      status: 'PENDING',
-      documentType: 'COMMERCIAL_REGISTER_EXTRACT',
-      documentUrl: '/uploads/demo-business.pdf',
-      reviewData: {
-        decision: 'manual_review',
-        score: 72,
-        providerMode: 'metadata-rules',
-        costPolicy: { mode: 'local_rules_vies', shouldUsePaidProvider: false },
-        registryChecks: [
-          {
-            provider: 'vies',
-            status: 'failed',
-            message: 'USt-ID wurde von VIES nicht als gueltig bestaetigt.',
-          },
-        ],
-        documents: [
-          {
-            type: 'COMMERCIAL_REGISTER_EXTRACT',
-            ocr: {
-              status: 'completed',
-              source: 'image_ocr',
-              confidence: 93,
-              extractedFields: {
-                vatNumbers: ['DE123456789'],
-                documentNumbers: ['HRB12345'],
-                expiryDate: '2030-12-31',
-              },
-            },
-          },
-        ],
-        manualReviewReasons: ['VIES: USt-ID wurde von VIES nicht als gueltig bestaetigt.'],
-      },
-      reviewReason: 'VIES: USt-ID wurde von VIES nicht als gueltig bestaetigt.',
-      createdAt: new Date(Date.now() - 1000 * 60 * 38).toISOString(),
-      updatedAt: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
-      supportTicket: {
-        id: 'ticket_demo_1',
-        subject: 'Manuelle Verifizierung erforderlich: Spedition / Transporteur',
-        priority: 'HIGH',
-        status: 'OPEN',
-        description: [
-          'Prüfmodus: metadata-rules',
-          'Kostenmodus: local_rules_vies',
-          'Register-/Provider-Pruefungen:',
-          '- vies: failed (USt-ID wurde von VIES nicht als gueltig bestaetigt.)',
-          'OCR-Ergebnisse:',
-          '- COMMERCIAL_REGISTER_EXTRACT: completed, image_ocr, Confidence 93 (USt-ID: DE123456789; Nummern: HRB12345; Ablauf: 2030-12-31)',
-        ].join('\n'),
-      },
-    },
-    {
-      id: 'mock_verification_2',
-      userId: 'demo-driver',
-      userName: 'Thomas Weber',
-      userEmail: 'driver@cargobit.eu',
-      userStatus: 'ACTIVE',
-      role: 'DRIVER_SELF_EMPLOYED',
-      type: 'DRIVER_LICENSE',
-      status: 'PENDING',
-      documentType: 'DRIVERS_LICENSE',
-      documentUrl: '/uploads/demo-license.pdf',
-      reviewData: {
-        decision: 'manual_review',
-        score: 64,
-        providerMode: 'metadata-rules',
-        costPolicy: { mode: 'local_rules_manual_review', shouldUsePaidProvider: false },
-        documents: [
-          {
-            type: 'DRIVERS_LICENSE',
-            ocr: {
-              status: 'partial',
-              source: 'pdf_page_ocr',
-              confidence: 61,
-              warnings: ['Rückseite fehlt oder ist unscharf.'],
-              extractedFields: {
-                documentNumbers: ['D1234567'],
-              },
-            },
-          },
-        ],
-        manualReviewReasons: ['OCR für DRIVERS_LICENSE hat nur Teilinformationen erkannt'],
-      },
-      reviewReason: 'OCR für DRIVERS_LICENSE hat nur Teilinformationen erkannt',
-      createdAt: new Date(Date.now() - 1000 * 60 * 115).toISOString(),
-      updatedAt: new Date(Date.now() - 1000 * 60 * 78).toISOString(),
-      supportTicket: {
-        id: 'ticket_demo_2',
-        subject: 'Führerscheinprüfung braucht Nachsicht',
-        priority: 'NORMAL',
-        status: 'IN_PROGRESS',
-        description: 'OCR-Hinweis: Vorderseite erkannt, Rückseite fehlt. Bitte neues Dokument anfordern.',
-      },
-    },
-    {
-      id: 'mock_verification_3',
-      userId: 'demo-shipper',
-      userName: 'Max Müller',
-      userEmail: 'shipper@cargobit.eu',
-      userStatus: 'ACTIVE',
-      role: 'SHIPPER_COMPANY',
-      companyName: 'Müller Logistics GmbH',
-      type: 'KYB',
-      status: 'APPROVED',
-      documentType: 'BUSINESS_REGISTRATION',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
-      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-      reviewedAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-    },
-    {
-      id: 'mock_verification_4',
-      userId: 'demo-private',
-      userName: 'Laura Becker',
-      userEmail: 'shipper.private@cargobit.eu',
-      userStatus: 'ACTIVE',
-      role: 'SHIPPER_PRIVATE',
-      type: 'KYC',
-      status: 'REJECTED',
-      documentType: 'ID_CARD',
-      reviewReason: 'Dokument ist abgelaufen.',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 11).toISOString(),
-      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 9).toISOString(),
-      reviewedAt: new Date(Date.now() - 1000 * 60 * 60 * 9).toISOString(),
-    },
-  ],
+  items: [],
 };
 
 const statusLabels: Record<VerificationStatus, string> = {
@@ -248,41 +113,52 @@ const statusLabels: Record<VerificationStatus, string> = {
 };
 
 export default function AdminVerificationsPage() {
-  const [queue, setQueue] = useState<VerificationQueueResponse>(mockQueue);
-  const [selected, setSelected] = useState<AdminVerificationItem | null>(mockQueue.items[0]);
+  const [queue, setQueue] = useState<VerificationQueueResponse>(EMPTY_QUEUE);
+  const [selected, setSelected] = useState<AdminVerificationItem | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [typeFilter, setTypeFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [reviewReason, setReviewReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const params = new URLSearchParams();
-        params.set('status', statusFilter);
-        params.set('type', typeFilter);
-        if (query) params.set('query', query);
+  const loadQueue = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage('');
 
-        const response = await fetch(`/api/admin/verifications?${params.toString()}`);
-        if (!response.ok) throw new Error('Verification queue unavailable');
-        const payload = await response.json();
-        setQueue(payload);
-        setSelected(payload.items[0] || null);
-      } catch (error) {
-        console.warn('[AdminVerifications] using demo queue:', error);
-        const filtered = filterMockQueue(statusFilter, typeFilter, query);
-        setQueue(filtered);
-        setSelected(filtered.items[0] || null);
-      } finally {
-        setLoading(false);
+    try {
+      const params = new URLSearchParams();
+      params.set('status', statusFilter);
+      params.set('type', typeFilter);
+      if (query) params.set('query', query);
+
+      const response = await fetch(`/api/admin/verifications?${params.toString()}`);
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || 'Verification queue unavailable');
       }
-    };
 
-    load();
+      const nextQueue = payload as VerificationQueueResponse;
+      setQueue(nextQueue);
+      setSelected((current) => {
+        if (!current) return nextQueue.items[0] || null;
+        return nextQueue.items.find((item) => item.id === current.id) || nextQueue.items[0] || null;
+      });
+    } catch (error) {
+      console.error('[AdminVerifications] queue failed:', error);
+      setQueue(EMPTY_QUEUE);
+      setSelected(null);
+      setErrorMessage(error instanceof Error ? error.message : 'Verifizierungen konnten nicht geladen werden.');
+    } finally {
+      setLoading(false);
+    }
   }, [statusFilter, typeFilter, query]);
+
+  useEffect(() => {
+    loadQueue();
+  }, [loadQueue]);
 
   const visibleItems = queue.items;
   const selectedDetails = useMemo(() => parseReviewDetails(selected), [selected]);
@@ -304,50 +180,20 @@ export default function AdminVerificationsPage() {
         }),
       });
 
-      if (!response.ok) throw new Error('Review action failed');
-      applyLocalReview(item.id, action, reviewReason.trim());
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || 'Review action failed');
+      }
+
+      await loadQueue();
     } catch (error) {
-      console.warn('[AdminVerifications] local review fallback:', error);
-      applyLocalReview(item.id, action, reviewReason.trim());
+      console.error('[AdminVerifications] review failed:', error);
+      alert(error instanceof Error ? error.message : 'Review-Aktion konnte nicht gespeichert werden.');
     } finally {
       setReviewReason('');
       setSubmitting(false);
     }
-  };
-
-  const applyLocalReview = (id: string, action: 'approve' | 'reject' | 'manual_review', reason?: string) => {
-    const nextStatus: VerificationStatus = action === 'approve'
-      ? 'APPROVED'
-      : action === 'reject'
-        ? 'REJECTED'
-        : 'PENDING';
-    const now = new Date().toISOString();
-
-    setQueue((current) => ({
-      ...current,
-      items: current.items.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              status: nextStatus,
-              reviewReason: action === 'approve' ? item.reviewReason : reason || item.reviewReason,
-              reviewedAt: action === 'manual_review' ? item.reviewedAt : now,
-              updatedAt: now,
-            }
-          : item,
-      ),
-    }));
-    setSelected((current) =>
-      current?.id === id
-        ? {
-            ...current,
-            status: nextStatus,
-            reviewReason: action === 'approve' ? current.reviewReason : reason || current.reviewReason,
-            reviewedAt: action === 'manual_review' ? current.reviewedAt : now,
-            updatedAt: now,
-          }
-        : current,
-    );
   };
 
   return (
@@ -407,7 +253,19 @@ export default function AdminVerificationsPage() {
             </div>
 
             <div className="divide-y divide-white/[0.06]">
-              {visibleItems.length === 0 ? (
+              {errorMessage ? (
+                <div className="p-8 text-center">
+                  <p className="text-sm font-semibold text-[#E74C3C]">Verifizierungen konnten nicht geladen werden.</p>
+                  <p className="mt-2 text-sm text-white/50">{errorMessage}</p>
+                  <button
+                    type="button"
+                    onClick={loadQueue}
+                    className="mt-5 rounded-xl border border-[#00D4FF]/25 bg-[#00D4FF]/10 px-4 py-2 text-sm font-semibold text-[#00D4FF] transition hover:bg-[#00D4FF]/15"
+                  >
+                    Erneut laden
+                  </button>
+                </div>
+              ) : visibleItems.length === 0 ? (
                 <div className="p-8 text-center text-sm text-white/50">Keine Verifizierungen gefunden.</div>
               ) : (
                 visibleItems.map((item) => (

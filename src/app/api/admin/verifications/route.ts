@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { VerificationStatus, VerificationType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { AdminRole, withAdminAuth } from '@/lib/admin-rbac';
 
@@ -20,22 +21,24 @@ export async function GET(request: NextRequest) {
 
     const where: any = {};
 
-    if (status && status !== 'all') {
-      where.status = status.toUpperCase();
+    const normalizedStatus = parseVerificationStatus(status);
+    const normalizedType = parseVerificationType(type);
+
+    if (normalizedStatus) {
+      where.status = normalizedStatus;
     }
 
-    if (type && type !== 'all') {
-      where.type = type.toUpperCase();
+    if (normalizedType) {
+      where.type = normalizedType;
     }
 
     if (query) {
-      where.user = {
-        OR: [
-          { email: { contains: query } },
-          { firstName: { contains: query } },
-          { lastName: { contains: query } },
-        ],
-      };
+      where.OR = [
+        { user: { email: { contains: query, mode: 'insensitive' } } },
+        { user: { firstName: { contains: query, mode: 'insensitive' } } },
+        { user: { lastName: { contains: query, mode: 'insensitive' } } },
+        { user: { companyUsers: { some: { company: { name: { contains: query, mode: 'insensitive' } } } } } },
+      ];
     }
 
     try {
@@ -170,4 +173,20 @@ function parseReviewData(value: string | null) {
   } catch {
     return null;
   }
+}
+
+function parseVerificationStatus(value: string | null) {
+  if (!value || value === 'all') return null;
+  const normalized = value.toUpperCase();
+  return Object.values(VerificationStatus).includes(normalized as VerificationStatus)
+    ? normalized as VerificationStatus
+    : null;
+}
+
+function parseVerificationType(value: string | null) {
+  if (!value || value === 'all') return null;
+  const normalized = value.toUpperCase();
+  return Object.values(VerificationType).includes(normalized as VerificationType)
+    ? normalized as VerificationType
+    : null;
 }

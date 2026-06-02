@@ -12,9 +12,10 @@ type ReviewAction = 'approve' | 'reject' | 'manual_review';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { verificationId: string } },
+  { params }: { params: Promise<{ verificationId: string }> },
 ) {
   return withAdminAuth(request, async (admin) => {
+    const { verificationId } = await params;
     let body: { action?: ReviewAction; reason?: string };
 
     try {
@@ -45,7 +46,7 @@ export async function PATCH(
 
     try {
       const current = await prisma.verification.findUnique({
-        where: { id: params.verificationId },
+        where: { id: verificationId },
         include: {
           user: {
             select: {
@@ -72,7 +73,7 @@ export async function PATCH(
           : 'PENDING';
 
       const updated = await prisma.verification.update({
-        where: { id: params.verificationId },
+        where: { id: verificationId },
         data: {
           status: nextStatus,
           rejectionReason: action === 'approve' ? null : reason,
