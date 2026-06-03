@@ -587,29 +587,3 @@ function relativeTime(value: string) {
   if (hours < 24) return `vor ${hours} Std.`;
   return new Date(value).toLocaleDateString('de-DE');
 }
-
-function filterMockQueue(status: string, type: string, query: string): VerificationQueueResponse {
-  const normalizedQuery = query.toLowerCase().trim();
-  const items = mockQueue.items.filter((item) => {
-    const statusMatch = status === 'all' || item.status === status;
-    const typeMatch = type === 'all' || item.type === type;
-    const queryMatch = !normalizedQuery || [
-      item.userName,
-      item.userEmail,
-      item.companyName,
-      item.role,
-    ].filter(Boolean).some((value) => value!.toLowerCase().includes(normalizedQuery));
-
-    return statusMatch && typeMatch && queryMatch;
-  });
-
-  return {
-    items,
-    summary: {
-      total: mockQueue.items.length,
-      pending: mockQueue.items.filter((item) => item.status === 'PENDING').length,
-      approved: mockQueue.items.filter((item) => item.status === 'APPROVED').length,
-      rejected: mockQueue.items.filter((item) => item.status === 'REJECTED').length,
-    },
-  };
-}

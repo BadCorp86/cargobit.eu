@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import AdminLayout from '@/components/admin/admin-layout';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import DashboardLayout from '@/components/layout/DashboardLayout';
 import { DataTable, Column } from '@/components/admin/data-table';
 import { FilterBar } from '@/components/admin/filter-bar';
 import { StatusBadge } from '@/components/admin/status-badge';
@@ -49,67 +49,13 @@ interface FeedbackResponse {
   };
 }
 
-const DEMO_FEEDBACK: FeedbackTicket[] = [
-  {
-    id: 'feedback_demo_1',
-    subject: 'Produkt-Feedback: Bedienbarkeit',
-    description: 'Kategorie: Bedienbarkeit\nRolle/Kontext: Verlader\nSeite: /#verbesserungen\n\nDer Auftragserstellungsprozess sollte nach der KI-Preisberechnung noch klarer erklären, warum Wallet-Guthaben reserviert wird.',
-    priority: 'NORMAL',
-    status: 'OPEN',
-    category: 'PRODUCT_FEEDBACK',
-    createdAt: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-    user: { id: 'demo-user', email: 'shipper@cargobit.eu', name: 'Max Müller' },
-    message: {
-      id: 'message_demo_1',
-      senderRole: 'USER',
-      createdAt: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-      message: 'Der Auftragserstellungsprozess sollte nach der KI-Preisberechnung noch klarer erklären, warum Wallet-Guthaben reserviert wird.',
-    },
-    messages: [
-      {
-        id: 'message_demo_1',
-        senderRole: 'USER',
-        isInternal: false,
-        createdAt: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-        message: 'Der Auftragserstellungsprozess sollte nach der KI-Preisberechnung noch klarer erklären, warum Wallet-Guthaben reserviert wird.',
-      },
-    ],
-  },
-  {
-    id: 'feedback_demo_2',
-    subject: 'Produkt-Feedback: Funktion fehlt',
-    description: 'Kategorie: Funktion fehlt\nRolle/Kontext: Fahrer\n\nFahrer sollten in der mobilen Ansicht schnell eine beschädigte Ware mit Foto melden können.',
-    priority: 'HIGH',
-    status: 'IN_PROGRESS',
-    category: 'PRODUCT_FEEDBACK',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 7).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    user: { id: 'demo-driver', email: 'driver@cargobit.eu', name: 'Thomas Weber' },
-    message: {
-      id: 'message_demo_2',
-      senderRole: 'USER',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 7).toISOString(),
-      message: 'Fahrer sollten in der mobilen Ansicht schnell eine beschädigte Ware mit Foto melden können.',
-    },
-    messages: [
-      {
-        id: 'message_demo_2',
-        senderRole: 'USER',
-        isInternal: false,
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 7).toISOString(),
-        message: 'Fahrer sollten in der mobilen Ansicht schnell eine beschädigte Ware mit Foto melden können.',
-      },
-      {
-        id: 'message_demo_2_internal',
-        senderRole: 'ADMIN',
-        isInternal: true,
-        createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-        message: 'Produkt-Feedback aktualisiert.\nStatus: OPEN -> IN_PROGRESS\nNotiz: Vorschlag wird geprüft.',
-      },
-    ],
-  },
-];
+const EMPTY_SUMMARY = {
+  total: 0,
+  open: 0,
+  inProgress: 0,
+  resolved: 0,
+  highPriority: 0,
+};
 
 function formatDateTime(value?: string) {
   if (!value) return '-';
@@ -122,19 +68,6 @@ function formatDateTime(value?: string) {
   });
 }
 
-function priorityClass(priority: string) {
-  switch (priority) {
-    case 'URGENT':
-      return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-    case 'HIGH':
-      return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
-    case 'NORMAL':
-      return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-    default:
-      return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
-  }
-}
-
 function priorityLabel(priority: string) {
   const labels: Record<string, string> = {
     LOW: 'Niedrig',
@@ -143,6 +76,19 @@ function priorityLabel(priority: string) {
     URGENT: 'Dringend',
   };
   return labels[priority] || priority;
+}
+
+function priorityClasses(priority: string) {
+  switch (priority) {
+    case 'URGENT':
+      return 'border-[#E74C3C]/25 bg-[#E74C3C]/10 text-[#FF8D8D]';
+    case 'HIGH':
+      return 'border-[#F39C12]/25 bg-[#F39C12]/10 text-[#FFD28A]';
+    case 'NORMAL':
+      return 'border-[#1C7ED6]/25 bg-[#1C7ED6]/10 text-[#8BC5FF]';
+    default:
+      return 'border-white/[0.08] bg-white/[0.05] text-white/65';
+  }
 }
 
 function statusLabel(status: string) {
@@ -168,10 +114,15 @@ function extractContext(description: string) {
   return { role, page };
 }
 
+function publicMessage(ticket: FeedbackTicket) {
+  return ticket.message?.message || ticket.description || '';
+}
+
 export default function AdminFeedbackPage() {
   const [items, setItems] = useState<FeedbackTicket[]>([]);
-  const [summary, setSummary] = useState<FeedbackResponse['summary']>();
+  const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -182,6 +133,7 @@ export default function AdminFeedbackPage() {
 
   const loadFeedback = useCallback(async () => {
     setLoading(true);
+    setErrorMessage('');
 
     try {
       const params = new URLSearchParams();
@@ -190,21 +142,25 @@ export default function AdminFeedbackPage() {
       if (filters.priority) params.set('priority', filters.priority);
 
       const response = await fetch(`/api/admin/feedback?${params.toString()}`);
-      if (!response.ok) throw new Error('Feedback API unavailable');
+      const payload = await response.json().catch(() => null);
 
-      const payload = await response.json() as FeedbackResponse;
-      setItems(payload.items || []);
-      setSummary(payload.summary);
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Feedback API unavailable');
+      }
+
+      const nextPayload = payload as FeedbackResponse;
+      setItems(nextPayload.items || []);
+      setSummary(nextPayload.summary || EMPTY_SUMMARY);
+      setSelectedFeedback((current) => {
+        if (!current) return null;
+        return nextPayload.items.find((item) => item.id === current.id) || null;
+      });
     } catch (error) {
       console.error('Failed to load feedback:', error);
-      setItems(DEMO_FEEDBACK);
-      setSummary({
-        total: DEMO_FEEDBACK.length,
-        open: DEMO_FEEDBACK.filter((item) => item.status === 'OPEN').length,
-        inProgress: DEMO_FEEDBACK.filter((item) => item.status === 'IN_PROGRESS').length,
-        resolved: DEMO_FEEDBACK.filter((item) => item.status === 'RESOLVED' || item.status === 'CLOSED').length,
-        highPriority: DEMO_FEEDBACK.filter((item) => ['HIGH', 'URGENT'].includes(item.priority)).length,
-      });
+      setItems([]);
+      setSummary(EMPTY_SUMMARY);
+      setSelectedFeedback(null);
+      setErrorMessage(error instanceof Error ? error.message : 'Verbesserungsvorschläge konnten nicht geladen werden.');
     } finally {
       setLoading(false);
     }
@@ -214,7 +170,10 @@ export default function AdminFeedbackPage() {
     loadFeedback();
   }, [loadFeedback]);
 
-  const updateFeedback = useCallback(async (ticket: FeedbackTicket, data: { status?: FeedbackStatus; priority?: FeedbackPriority; note?: string }) => {
+  const updateFeedback = useCallback(async (
+    ticket: FeedbackTicket,
+    data: { status?: FeedbackStatus; priority?: FeedbackPriority; note?: string },
+  ) => {
     setActionLoading(`${ticket.id}:${data.status || data.priority || 'update'}`);
 
     try {
@@ -223,56 +182,23 @@ export default function AdminFeedbackPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
+      const payload = await response.json().catch(() => null) as { ticket?: FeedbackTicket; error?: string } | null;
 
       if (!response.ok) {
-        const payload = await response.json().catch(() => null);
         throw new Error(payload?.error || 'Feedback konnte nicht aktualisiert werden.');
       }
 
-      const payload = await response.json().catch(() => null) as { ticket?: FeedbackTicket } | null;
       if (payload?.ticket) {
         setItems((current) => current.map((item) => (item.id === ticket.id ? payload.ticket! : item)));
         setSelectedFeedback((current) => (current?.id === ticket.id ? payload.ticket! : current));
+        setDetailStatus(payload.ticket.status);
+        setDetailPriority(payload.ticket.priority);
       }
 
       await loadFeedback();
     } catch (error) {
       console.error('Failed to update feedback:', error);
-      if (ticket.id.startsWith('feedback_demo_')) {
-        const now = new Date().toISOString();
-        const internalMessage = data.note
-          ? {
-              id: `demo_note_${Date.now()}`,
-              senderRole: 'ADMIN',
-              isInternal: true,
-              createdAt: now,
-              message: [
-                'Produkt-Feedback aktualisiert.',
-                data.status && data.status !== ticket.status ? `Status: ${ticket.status} -> ${data.status}` : null,
-                data.priority && data.priority !== ticket.priority ? `Priorität: ${ticket.priority} -> ${data.priority}` : null,
-                `Notiz: ${data.note}`,
-              ].filter(Boolean).join('\n'),
-            }
-          : null;
-
-        const applyDemoUpdate = (item: FeedbackTicket) => (
-          item.id === ticket.id
-            ? {
-                ...item,
-                ...data,
-                updatedAt: now,
-                messages: internalMessage ? [...(item.messages || []), internalMessage] : item.messages,
-              }
-            : item
-        );
-
-        setItems((current) => current.map((item) => (
-          applyDemoUpdate(item)
-        )));
-        setSelectedFeedback((current) => (current?.id === ticket.id ? applyDemoUpdate(current) : current));
-      } else {
-        alert(error instanceof Error ? error.message : 'Feedback konnte nicht aktualisiert werden.');
-      }
+      alert(error instanceof Error ? error.message : 'Feedback konnte nicht aktualisiert werden.');
     } finally {
       setActionLoading(null);
     }
@@ -302,12 +228,12 @@ export default function AdminFeedbackPage() {
       key: 'subject',
       header: 'Vorschlag',
       render: (row) => {
-        const context = extractContext(row.description || row.message?.message || '');
+        const context = extractContext(row.description || publicMessage(row));
         return (
           <div className="max-w-xl">
             <p className="text-sm font-semibold text-gray-900 dark:text-white">{row.subject.replace('Produkt-Feedback: ', '')}</p>
             <p className="mt-1 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">
-              {row.message?.message || row.description}
+              {publicMessage(row)}
             </p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
               {context.role ? <span>Kontext: {context.role}</span> : null}
@@ -338,7 +264,7 @@ export default function AdminFeedbackPage() {
       header: 'Priorität',
       sortable: true,
       render: (row) => (
-        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${priorityClass(row.priority)}`}>
+        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${priorityClasses(row.priority)}`}>
           {priorityLabel(row.priority)}
         </span>
       ),
@@ -355,31 +281,34 @@ export default function AdminFeedbackPage() {
       render: (row) => (
         <div className="flex min-w-[260px] flex-wrap gap-2">
           <button
+            type="button"
             onClick={(event) => {
               event.stopPropagation();
               openFeedback(row);
             }}
-            className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600"
+            className="rounded-lg border border-white/[0.08] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white/75 hover:bg-white/[0.08]"
           >
             Details
           </button>
           <button
+            type="button"
             onClick={(event) => {
               event.stopPropagation();
               updateFeedback(row, { status: 'IN_PROGRESS', note: 'Vorschlag wird geprüft.' });
             }}
             disabled={Boolean(actionLoading) || row.status === 'IN_PROGRESS'}
-            className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-900/40 dark:text-blue-200"
+            className="rounded-lg border border-[#1C7ED6]/25 bg-[#1C7ED6]/10 px-3 py-1.5 text-xs font-semibold text-[#8BC5FF] hover:bg-[#1C7ED6]/18 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Prüfen
           </button>
           <button
+            type="button"
             onClick={(event) => {
               event.stopPropagation();
               updateFeedback(row, { status: 'RESOLVED', note: 'Vorschlag wurde geprüft und für die Roadmap bewertet.' });
             }}
             disabled={Boolean(actionLoading) || row.status === 'RESOLVED' || row.status === 'CLOSED'}
-            className="rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-green-900/40 dark:text-green-200"
+            className="rounded-lg border border-[#2ECC71]/25 bg-[#2ECC71]/10 px-3 py-1.5 text-xs font-semibold text-[#9EF2BC] hover:bg-[#2ECC71]/18 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Erledigt
           </button>
@@ -388,7 +317,7 @@ export default function AdminFeedbackPage() {
             onClick={(event) => event.stopPropagation()}
             onChange={(event) => updateFeedback(row, { priority: event.target.value as FeedbackPriority, note: 'Priorität wurde angepasst.' })}
             disabled={Boolean(actionLoading)}
-            className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            className="rounded-lg border border-white/[0.08] bg-[#06121C] px-2 py-1.5 text-xs text-white disabled:opacity-50"
           >
             <option value="LOW">Niedrig</option>
             <option value="NORMAL">Normal</option>
@@ -424,18 +353,13 @@ export default function AdminFeedbackPage() {
   ];
 
   return (
-    <AdminLayout>
+    <DashboardLayout title="Verbesserungen" subtitle="Produkt-Feedback sichten, priorisieren und für die Roadmap bewerten">
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Verbesserungen</h1>
-            <p className="mt-1 text-gray-500 dark:text-gray-400">
-              Produkt-Feedback aus der Landingpage sichten, priorisieren und für die Roadmap bewerten.
-            </p>
-          </div>
+        <div className="flex justify-end">
           <button
+            type="button"
             onClick={() => loadFeedback()}
-            className="w-fit rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
+            className="rounded-xl border border-[#00D4FF]/25 bg-[#00D4FF]/10 px-4 py-2 text-sm font-semibold text-[#00D4FF] transition hover:bg-[#00D4FF]/15"
           >
             Aktualisieren
           </button>
@@ -443,14 +367,14 @@ export default function AdminFeedbackPage() {
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            ['Offen', summary?.open ?? 0, 'text-red-600 dark:text-red-300'],
-            ['In Bearbeitung', summary?.inProgress ?? 0, 'text-blue-600 dark:text-blue-300'],
-            ['Erledigt', summary?.resolved ?? 0, 'text-green-600 dark:text-green-300'],
-            ['Hohe Priorität', summary?.highPriority ?? 0, 'text-orange-600 dark:text-orange-300'],
+            ['Offen', summary.open, 'text-[#FF8D8D]'],
+            ['In Bearbeitung', summary.inProgress, 'text-[#8BC5FF]'],
+            ['Erledigt', summary.resolved, 'text-[#9EF2BC]'],
+            ['Hohe Priorität', summary.highPriority, 'text-[#FFD28A]'],
           ].map(([label, value, color]) => (
-            <div key={String(label)} className="rounded-lg bg-white p-4 shadow dark:bg-gray-800">
-              <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
-              <p className={`mt-2 text-3xl font-bold ${color}`}>{value}</p>
+            <div key={String(label)} className="rounded-[18px] border border-white/[0.08] bg-white/[0.05] p-5 shadow-xl shadow-black/10 backdrop-blur-xl">
+              <p className="text-sm text-white/55">{label}</p>
+              <p className={`mt-3 text-3xl font-semibold ${color}`}>{value}</p>
             </div>
           ))}
         </div>
@@ -462,40 +386,56 @@ export default function AdminFeedbackPage() {
           filters={filterOptions}
         />
 
-        <DataTable
-          columns={columns}
-          data={items}
-          keyField="id"
-          onRowClick={openFeedback}
-          loading={loading}
-          emptyMessage="Noch keine Verbesserungsvorschläge vorhanden"
-          pageSize={8}
-        />
+        {errorMessage ? (
+          <div className="rounded-[18px] border border-[#E74C3C]/20 bg-[#E74C3C]/10 p-8 text-center shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <p className="text-sm font-semibold text-[#FF8D8D]">Verbesserungsvorschläge konnten nicht geladen werden.</p>
+            <p className="mt-2 text-sm text-white/55">{errorMessage}</p>
+            <button
+              type="button"
+              onClick={loadFeedback}
+              className="mt-5 rounded-xl border border-[#00D4FF]/25 bg-[#00D4FF]/10 px-4 py-2 text-sm font-semibold text-[#00D4FF] transition hover:bg-[#00D4FF]/15"
+            >
+              Erneut laden
+            </button>
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={items}
+            keyField="id"
+            onRowClick={openFeedback}
+            loading={loading}
+            emptyMessage="Noch keine Verbesserungsvorschläge vorhanden"
+            pageSize={8}
+          />
+        )}
 
         {selectedFeedback ? (
-          <div className="fixed inset-0 z-50 flex justify-end bg-gray-900/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex justify-end bg-[#06121C]/70 backdrop-blur-sm">
             <button
+              type="button"
               aria-label="Detailansicht schließen"
               className="hidden flex-1 cursor-default lg:block"
               onClick={() => setSelectedFeedback(null)}
             />
-            <aside className="flex h-full w-full max-w-2xl flex-col overflow-y-auto bg-white shadow-2xl dark:bg-gray-900">
-              <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 p-6 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+            <aside className="flex h-full w-full max-w-2xl flex-col overflow-y-auto border-l border-white/[0.08] bg-[#06121C] shadow-2xl">
+              <div className="sticky top-0 z-10 border-b border-white/[0.08] bg-[#06121C]/95 p-6 backdrop-blur">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-300">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#00D4FF]">
                       Produktvorschlag
                     </p>
-                    <h2 className="mt-2 text-xl font-bold text-gray-900 dark:text-white">
+                    <h2 className="mt-2 text-xl font-bold text-white">
                       {selectedFeedback.subject.replace('Produkt-Feedback: ', '')}
                     </h2>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    <p className="mt-1 text-sm text-white/45">
                       Erstellt am {formatDateTime(selectedFeedback.createdAt)} · Aktualisiert am {formatDateTime(selectedFeedback.updatedAt)}
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={() => setSelectedFeedback(null)}
-                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                    className="rounded-xl border border-white/[0.08] px-3 py-1.5 text-sm text-white/75 hover:bg-white/[0.06]"
                   >
                     Schließen
                   </button>
@@ -504,49 +444,43 @@ export default function AdminFeedbackPage() {
 
               <div className="space-y-6 p-6">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-                    <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Nutzer</p>
-                    <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
-                      {selectedFeedback.user?.name || 'Unbekannt'}
-                    </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{selectedFeedback.user?.email || '-'}</p>
-                  </div>
-                  <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-                    <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Status</p>
+                  <DetailBox label="Nutzer">
+                    <p className="mt-2 text-sm font-semibold text-white">{selectedFeedback.user?.name || 'Unbekannt'}</p>
+                    <p className="text-sm text-white/45">{selectedFeedback.user?.email || '-'}</p>
+                  </DetailBox>
+                  <DetailBox label="Status">
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <StatusBadge status={selectedFeedback.status.toLowerCase()} size="sm" />
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${priorityClass(selectedFeedback.priority)}`}>
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${priorityClasses(selectedFeedback.priority)}`}>
                         {priorityLabel(selectedFeedback.priority)}
                       </span>
                     </div>
-                  </div>
+                  </DetailBox>
                 </div>
 
-                <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Vorschlag</h3>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700 dark:text-gray-200">
-                    {selectedFeedback.message?.message || selectedFeedback.description}
+                <DetailBox label="Vorschlag">
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-white/72">
+                    {publicMessage(selectedFeedback)}
                   </p>
                   {(() => {
                     const context = extractContext(selectedFeedback.description || '');
                     return context.role || context.page ? (
-                      <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
-                        {context.role ? <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-gray-800">Kontext: {context.role}</span> : null}
-                        {context.page ? <span className="rounded-full bg-gray-100 px-2 py-1 dark:bg-gray-800">Seite: {context.page}</span> : null}
+                      <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/50">
+                        {context.role ? <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1">Kontext: {context.role}</span> : null}
+                        {context.page ? <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1">Seite: {context.page}</span> : null}
                       </div>
                     ) : null;
                   })()}
-                </div>
+                </DetailBox>
 
-                <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Bearbeitung</h3>
+                <DetailBox label="Bearbeitung">
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    <label className="text-sm font-medium text-white/75">
                       Status
                       <select
                         value={detailStatus}
                         onChange={(event) => setDetailStatus(event.target.value as FeedbackStatus)}
-                        className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                        className="mt-2 w-full rounded-xl border border-white/[0.08] bg-[#071927] px-3 py-2 text-sm text-white outline-none"
                       >
                         <option value="OPEN">{statusLabel('OPEN')}</option>
                         <option value="IN_PROGRESS">{statusLabel('IN_PROGRESS')}</option>
@@ -554,12 +488,12 @@ export default function AdminFeedbackPage() {
                         <option value="CLOSED">{statusLabel('CLOSED')}</option>
                       </select>
                     </label>
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    <label className="text-sm font-medium text-white/75">
                       Priorität
                       <select
                         value={detailPriority}
                         onChange={(event) => setDetailPriority(event.target.value as FeedbackPriority)}
-                        className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                        className="mt-2 w-full rounded-xl border border-white/[0.08] bg-[#071927] px-3 py-2 text-sm text-white outline-none"
                       >
                         <option value="LOW">{priorityLabel('LOW')}</option>
                         <option value="NORMAL">{priorityLabel('NORMAL')}</option>
@@ -568,29 +502,29 @@ export default function AdminFeedbackPage() {
                       </select>
                     </label>
                   </div>
-                  <label className="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-200">
+                  <label className="mt-4 block text-sm font-medium text-white/75">
                     Interne Notiz
                     <textarea
                       value={adminNote}
                       onChange={(event) => setAdminNote(event.target.value)}
                       rows={4}
                       placeholder="Bewertung, Entscheidung oder Rückfrage für Support/Product festhalten..."
-                      className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                      className="mt-2 w-full resize-none rounded-xl border border-white/[0.08] bg-[#071927] px-3 py-2 text-sm text-white outline-none placeholder:text-white/35"
                     />
                   </label>
                   <div className="mt-4 flex justify-end">
                     <button
+                      type="button"
                       onClick={saveDetailUpdate}
                       disabled={Boolean(actionLoading)}
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-xl bg-[#1C7ED6] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Aktualisierung speichern
                     </button>
                   </div>
-                </div>
+                </DetailBox>
 
-                <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Verlauf</h3>
+                <DetailBox label="Verlauf">
                   <div className="mt-4 space-y-3">
                     {(selectedFeedback.messages?.length ? selectedFeedback.messages : selectedFeedback.message ? [{
                       id: selectedFeedback.message.id,
@@ -601,30 +535,45 @@ export default function AdminFeedbackPage() {
                     }] : []).map((message) => (
                       <div
                         key={message.id}
-                        className={`rounded-lg border p-3 ${
+                        className={`rounded-xl border p-3 ${
                           message.isInternal
-                            ? 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/40'
-                            : 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800'
+                            ? 'border-[#1C7ED6]/25 bg-[#1C7ED6]/10'
+                            : 'border-white/[0.08] bg-white/[0.04]'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                          <span className="text-xs font-semibold text-white/75">
                             {senderLabel(message.senderRole, message.isInternal)}
                           </span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(message.createdAt)}</span>
+                          <span className="text-xs text-white/40">{formatDateTime(message.createdAt)}</span>
                         </div>
-                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700 dark:text-gray-200">
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/72">
                           {message.message}
                         </p>
                       </div>
                     ))}
                   </div>
-                </div>
+                </DetailBox>
               </div>
             </aside>
           </div>
         ) : null}
       </div>
-    </AdminLayout>
+    </DashboardLayout>
+  );
+}
+
+function DetailBox({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[18px] border border-white/[0.08] bg-white/[0.04] p-4">
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/40">{label}</p>
+      {children}
+    </div>
   );
 }
