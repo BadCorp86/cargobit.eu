@@ -83,7 +83,7 @@ export async function POST(
       }
     }
 
-    // Calculate escrow amount (price + fees)
+    // Calculate payment protection amount (price + fees)
     const platformFee = (agreedPrice || 0) * 0.04; // 4% shipper fee
     const escrowAmount = (agreedPrice || 0) + platformFee;
 
@@ -109,7 +109,7 @@ export async function POST(
             amount: escrowAmount,
             fee: platformFee,
             netAmount: agreedPrice || 0,
-            description: `Escrow for transport ${transportId}`,
+            description: `Zahlungsschutz für Transport ${transportId}`,
             transportId
           }
         })

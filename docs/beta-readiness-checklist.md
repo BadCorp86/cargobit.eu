@@ -13,6 +13,33 @@ Diese Checkliste ist der harte Gate vor einer kontrollierten Beta. Vercel kann w
 - `npm run readiness:env` ist vor Beta grün.
 - `npm run readiness` ist auf dem Zielserver grün.
 
+## Erwartet rote Checks vor echter Konfiguration
+
+`npm run readiness:env` darf auf lokalen Maschinen und frischen Servern rot bleiben, solange diese Werte fehlen:
+
+- `NEXT_PUBLIC_APP_URL`
+- `ENCRYPTION_KEY`
+- `CRON_SECRET`
+- `ADMIN_JWT_SECRET`
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET`
+- `STRIPE_PRICE_BUSINESS_MONTHLY`
+- `LEGAL_REVIEW_CONFIRMED=true`
+
+`STRIPE_PAYOUT_WEBHOOK_SECRET` und `SENDGRID_API_KEY` sind Warnungen, müssen aber vor echten Auszahlungen bzw. automatischen Rechnungs-E-Mails ebenfalls geprüft werden.
+
+## Stripe-Testschritte vor Beta
+
+- Stripe-Testkeys setzen: `pk_test_...`, `sk_test_...`, `whsec_...`.
+- Einen Stripe-Testpreis für `STRIPE_PRICE_BUSINESS_MONTHLY` anlegen.
+- `/admin/system/stripe` öffnen und fehlende Pflichtwerte prüfen.
+- Business-Checkout im Testmodus durchführen.
+- `checkout.session.completed` und `invoice.payment_succeeded` aus Stripe erneut senden.
+- Zahlungsschutz-Aufladung testen und doppelte Webhooks prüfen.
+- Sicherstellen, dass doppelte Webhooks kein Guthaben doppelt buchen.
+- Erst nach erfolgreichem Test und juristischer Freigabe auf Live-Keys wechseln.
+
 ## Tägliche Beta-Kontrolle
 
 - Offene Verifizierungen prüfen.
@@ -30,7 +57,7 @@ Diese Checkliste ist der harte Gate vor einer kontrollierten Beta. Vercel kann w
 - Begrenzte Auftragswerte.
 - Keine Garantie, dass jeder Auftrag angenommen wird.
 - Versicherung nur als Partner-/Lead-Modell, nicht als eigener Versicherungsabschluss.
-- Öffentlich weiterhin `Zahlungsschutz` verwenden, nicht `Escrow`.
+- Öffentlich weiterhin `Zahlungsschutz` verwenden, nicht den englischen Treuhandbegriff.
 
 ## Commit-Scope
 

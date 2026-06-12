@@ -35,9 +35,7 @@ const mockStripeCheckout = {
 function getStripePriceId(plan: string, billingCycle: 'monthly' | 'yearly') {
   const envKey = STRIPE_PRICE_ENV_KEYS[plan]?.[billingCycle];
   if (envKey) {
-    return process.env[envKey]
-      || (plan === 'starter' && billingCycle === 'monthly' ? process.env.STRIPE_PRICE_STARTER_MONTHLY : undefined)
-      || `price_${plan}_${billingCycle}_mock`;
+    return process.env[envKey] || `price_${plan}_${billingCycle}_mock`;
   }
 
   return undefined;

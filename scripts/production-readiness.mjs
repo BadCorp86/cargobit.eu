@@ -82,7 +82,6 @@ checkEnv('STRIPE_PAYOUT_WEBHOOK_SECRET', {
 checkEnv('STRIPE_PRICE_BUSINESS_MONTHLY', {
   required: true,
   prefix: ['price_'],
-  fallback: process.env.STRIPE_PRICE_STARTER_MONTHLY,
 });
 
 checkEnv('SENDGRID_API_KEY', {

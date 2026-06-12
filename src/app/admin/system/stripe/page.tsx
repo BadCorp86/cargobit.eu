@@ -37,7 +37,7 @@ export default async function AdminStripeReadinessPage() {
             <div className="max-w-2xl">
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.06] px-3 py-1 text-xs font-medium text-white/70">
                 <span className={`h-2 w-2 rounded-full ${productionReady ? 'bg-[#2ECC71]' : 'bg-[#F39C12]'}`} />
-                {productionReady ? 'Production ready' : 'Setup unvollständig'}
+                {productionReady ? 'Beta bereit' : 'Setup unvollständig'}
               </div>
               <h2 className="text-3xl font-semibold tracking-tight text-white">Stripe Zahlungszentrale</h2>
               <p className="mt-2 max-w-xl text-sm leading-6 text-white/55">

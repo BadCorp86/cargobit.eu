@@ -353,9 +353,9 @@ export default function PreviewPage() {
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">
-          <TrustPreviewCard icon={<ShieldCheck className="h-5 w-5" />} title="Vertrauen" detail="KYC/KYB, Versicherung, Lizenz, Bewertung und Zahlungsabsicherung werden als Trust Score gebuendelt." />
-          <TrustPreviewCard icon={<Wallet className="h-5 w-5" />} title="Zahlung" detail="Zahlungsschutz, Gebuehrenquote, Rechnung und Payout-Risk-Gate bilden den Geldfluss." />
-          <TrustPreviewCard icon={<PackageCheck className="h-5 w-5" />} title="Ablieferung" detail="Mobile Fahreransicht fuehrt Status, GPS, CMR/POD und Support direkt im Auftrag zusammen." />
+          <TrustPreviewCard icon={<ShieldCheck className="h-5 w-5" />} title="Vertrauen" detail="KYC/KYB, Versicherung, Lizenz, Bewertung und Zahlungsabsicherung werden als Trust Score gebündelt." />
+          <TrustPreviewCard icon={<Wallet className="h-5 w-5" />} title="Zahlung" detail="Zahlungsschutz, Gebührenquote, Rechnung und Payout-Risk-Gate bilden den Geldfluss." />
+          <TrustPreviewCard icon={<PackageCheck className="h-5 w-5" />} title="Ablieferung" detail="Mobile Fahreransicht führt Status, GPS, CMR/POD und Support direkt im Auftrag zusammen." />
         </section>
 
         <section className="rounded-[18px] border border-white/10 bg-white/[0.05] p-5 shadow-2xl shadow-black/25 backdrop-blur-xl">

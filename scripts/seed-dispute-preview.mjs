@@ -166,7 +166,7 @@ async function main() {
       deliveryAddressId: delivery.id,
       pickupDatetime: yesterday,
       deliveryDatetime: now,
-      description: 'Preview Transport mit beschaedigter Ware fuer Dispute Workflow',
+      description: 'Preview Transport mit beschädigter Ware für Dispute Workflow',
       distanceKm: 790,
       estimatedDuration: 480,
       shipperBudget: 280,

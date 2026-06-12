@@ -300,7 +300,7 @@ async function main() {
         currency: 'EUR',
         relatedTransportId: transport.id,
         reference: `reservation_${transport.id}`,
-        description: `Lokale Test-Reservierung fuer Marketplace-Auftrag ${transport.id}`,
+        description: `Lokale Test-Reservierung für Marketplace-Auftrag ${transport.id}`,
         processedAt: new Date(),
       },
     });

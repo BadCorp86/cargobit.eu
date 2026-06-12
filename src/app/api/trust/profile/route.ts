@@ -132,7 +132,7 @@ function buildTrustProfileFromUser(user: any, role?: string | null): TrustProfil
     {
       id: 'payment_protection',
       label: 'Zahlungsabsicherung',
-      detail: wallet ? `Zahlungsschutz ${wallet.status}, ${wallet.balance.toFixed(2)} ${wallet.currency}` : 'Zahlungsschutz wird vor Buchung benoetigt',
+      detail: wallet ? `Zahlungsschutz ${wallet.status}, ${wallet.balance.toFixed(2)} ${wallet.currency}` : 'Zahlungsschutz wird vor Buchung benötigt',
       status: wallet?.status === 'ACTIVE' ? 'verified' : 'missing',
       owner: 'CargoBit',
     },

@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
       return newAssignment;
     });
 
-    // ===== CREATE ESCROW (if wallet exists) =====
+    // ===== CREATE PAYMENT PROTECTION (if wallet exists) =====
     let escrowCreated = false;
     let escrowAmount = 0;
 
@@ -205,8 +205,7 @@ export async function POST(request: NextRequest) {
       escrowAmount = transport.agreedPrice;
       escrowCreated = true;
       
-      // In production, this would create an escrow transaction
-      // await createEscrow(transport, driver.user.wallet, escrowAmount);
+      // In production, this would create a payment protection transaction.
     }
 
     return NextResponse.json<AutoAssignResponse>({
