@@ -672,7 +672,7 @@ export function RiskProfileDetail({ entityId, onBack }: RiskProfileDetailProps) 
                   <span className="text-[#1F2D3D]">{profile.metadata.company}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#6B7C93]">Wallet Balance</span>
+                  <span className="text-[#6B7C93]">Zahlungsschutz</span>
                   <span className="font-medium text-[#1F2D3D]">€{profile.metadata.walletBalance?.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">

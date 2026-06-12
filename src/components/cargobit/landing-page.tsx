@@ -220,7 +220,7 @@ const audiences = [
   {
     title: 'Shipper / Verlader',
     description: 'Private und gewerbliche Kunden, die Transporte beauftragen.',
-    features: ['Transport-Management', 'Wallet & Escrow', 'Dokumente automatisiert'],
+    features: ['Transport-Management', 'Wallet & Zahlungsschutz', 'Dokumente automatisiert'],
     icon: Package,
     color: 'text-blue-500',
     bgColor: 'bg-blue-500/10',
@@ -293,7 +293,7 @@ export function SecuritySection() {
           <div>
             <Badge variant="outline" className="mb-4">Security & Compliance</Badge>
             <h2 className="text-3xl sm:text-4xl font-bold mb-6">
-              Enterprise-Grade Sicherheit für jede Transaktion
+              Plattform-Sicherheit für jede Transaktion
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
               Unsere Risk-Engine bewertet jede Transaktion in Echtzeit und schützt vor Fraud.

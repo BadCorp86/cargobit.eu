@@ -172,13 +172,13 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                 </Card>
                 <Card>
                   <CardContent className="pt-4">
-                    <div className="text-sm text-muted-foreground">Escrow</div>
+                    <div className="text-sm text-muted-foreground">Zahlungsschutz</div>
                     <div className="text-2xl font-bold text-yellow-600">€{pendingBalance.toFixed(2)}</div>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Escrow Info */}
+              {/* Zahlungsschutz Info */}
               <Card className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/20">
                 <CardContent className="pt-4">
                   <div className="flex items-start gap-3">
@@ -186,7 +186,7 @@ export function WalletModal({ open, onOpenChange }: WalletModalProps) {
                       <Shield className="w-5 h-5 text-blue-500" />
                     </div>
                     <div className="flex-1">
-                      <div className="font-medium mb-1">Escrow-Schutz</div>
+                      <div className="font-medium mb-1">Zahlungsschutz</div>
                       <div className="text-sm text-muted-foreground">
                         Zahlungen werden sicher verwahrt bis zur erfolgreichen Lieferung. Bei Streitfällen vermittelt unser Support-Team.
                       </div>

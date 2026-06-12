@@ -81,7 +81,7 @@ const previewLogins: PreviewLogin[] = [
     password: 'demo123',
     target: '/',
     dashboardTarget: '/dashboard?role=shipper',
-    description: 'Firmenkunde mit Transporten, Angeboten, Wallet, Rechnungen und KYB-Dokumenten.',
+    description: 'Firmenkunde mit Transporten, Angeboten, Zahlungsschutz, Rechnungen und KYB-Dokumenten.',
     accent: '#1C7ED6',
     icon: <Building2 className="h-5 w-5" />,
   },
@@ -109,7 +109,7 @@ const previewLogins: PreviewLogin[] = [
     password: 'demo123',
     target: '/',
     dashboardTarget: '/dashboard?role=carrier',
-    description: 'Hauptkonto für Loads, Angebote, Flotte, Fahrer, Wallet, Abrechnung und Teamverwaltung.',
+    description: 'Hauptkonto für Aufträge, Angebote, Flotte, Fahrer, Auszahlungen, Abrechnung und Teamverwaltung.',
     accent: '#00D4FF',
     icon: <Truck className="h-5 w-5" />,
   },
@@ -354,7 +354,7 @@ export default function PreviewPage() {
 
         <section className="grid gap-4 md:grid-cols-3">
           <TrustPreviewCard icon={<ShieldCheck className="h-5 w-5" />} title="Vertrauen" detail="KYC/KYB, Versicherung, Lizenz, Bewertung und Zahlungsabsicherung werden als Trust Score gebuendelt." />
-          <TrustPreviewCard icon={<Wallet className="h-5 w-5" />} title="Zahlung" detail="Wallet-Reservierung, Gebuehrenquote, Rechnung und Payout-Risk-Gate bilden den Geldfluss." />
+          <TrustPreviewCard icon={<Wallet className="h-5 w-5" />} title="Zahlung" detail="Zahlungsschutz, Gebuehrenquote, Rechnung und Payout-Risk-Gate bilden den Geldfluss." />
           <TrustPreviewCard icon={<PackageCheck className="h-5 w-5" />} title="Ablieferung" detail="Mobile Fahreransicht fuehrt Status, GPS, CMR/POD und Support direkt im Auftrag zusammen." />
         </section>
 

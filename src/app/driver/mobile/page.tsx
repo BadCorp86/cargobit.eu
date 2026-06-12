@@ -13,6 +13,7 @@ import {
   MapPin,
   Navigation,
   PackageCheck,
+  RadioTower,
   Route,
   ShieldCheck,
   Upload,
@@ -45,6 +46,10 @@ export default function DriverMobilePage() {
   const [actionPending, setActionPending] = useState<DriverMobileActionId | null>(null);
   const [invoiceHref, setInvoiceHref] = useState<string | null>(null);
   const [settlementNotice, setSettlementNotice] = useState<{ type: 'success' | 'warning'; text: string } | null>(null);
+  const [trackingEnabled, setTrackingEnabled] = useState(false);
+  const [trackingStatus, setTrackingStatus] = useState<'idle' | 'starting' | 'live' | 'error'>('idle');
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [lastTrackingSignal, setLastTrackingSignal] = useState<{ lat: number; lng: number; accuracy?: number; timestamp: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +81,80 @@ export default function DriverMobilePage() {
       cancelled = true;
     };
   }, [fallback, user?.id]);
+
+  useEffect(() => {
+    if (!trackingEnabled) return;
+
+    if (!navigator.geolocation) {
+      queueMicrotask(() => {
+        setTrackingEnabled(false);
+        setTrackingStatus('error');
+        setTrackingError('GPS ist auf diesem Gerät oder Browser nicht verfügbar.');
+      });
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      async (position) => {
+        const signal = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: new Date().toISOString(),
+        };
+
+        if (mission.id.startsWith('mission_demo')) {
+          setLastTrackingSignal(signal);
+          setTrackingStatus('live');
+          setTrackingError(null);
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/executions/${encodeURIComponent(mission.id)}/tracking`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(user?.id ? { 'x-user-id': user.id } : {}),
+              ...(mission.driver?.id ? { 'x-driver-id': mission.driver.id } : {}),
+            },
+            body: JSON.stringify({
+              userId: user?.id,
+              driverId: mission.driver?.id,
+              lat: signal.lat,
+              lng: signal.lng,
+              accuracy: signal.accuracy,
+              speed: position.coords.speed ?? undefined,
+              heading: position.coords.heading ?? undefined,
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(payload.message || 'Tracking-Signal wurde abgelehnt.');
+          }
+
+          setLastTrackingSignal(signal);
+          setTrackingStatus('live');
+          setTrackingError(null);
+        } catch (error) {
+          setTrackingStatus('error');
+          setTrackingError(error instanceof Error ? error.message : 'Tracking konnte nicht gesendet werden.');
+        }
+      },
+      (error) => {
+        setTrackingStatus('error');
+        setTrackingError(error.message || 'GPS-Freigabe wurde abgelehnt.');
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 10000,
+        timeout: 15000,
+      },
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [mission.driver?.id, mission.id, trackingEnabled, user?.id]);
 
   const doneCount = mission.checklist.filter((item) => item.done).length;
   const primaryAction = getPrimaryAction(mission);
@@ -130,6 +209,12 @@ export default function DriverMobilePage() {
     }
   };
 
+  const toggleTracking = () => {
+    setTrackingError(null);
+    setTrackingStatus(trackingEnabled ? 'idle' : 'starting');
+    setTrackingEnabled((enabled) => !enabled);
+  };
+
   return (
     <main className="dark min-h-screen bg-[#06121C] text-white" style={{ colorScheme: 'dark' }}>
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,rgba(0,212,255,0.16),transparent_45%),linear-gradient(180deg,#06121C,#071927_55%,#06121C)]" />
@@ -138,7 +223,7 @@ export default function DriverMobilePage() {
           <Link
             href="/dashboard?role=driver"
             className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.05] text-white/80"
-            aria-label="Zurueck zum Dashboard"
+            aria-label="Zurück zum Dashboard"
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
@@ -184,12 +269,56 @@ export default function DriverMobilePage() {
         </section>
 
         <section className="mt-4 rounded-[22px] border border-white/[0.08] bg-white/[0.04] p-4 shadow-xl shadow-black/20 backdrop-blur-xl">
+          <div className="mb-4 rounded-2xl border border-[#00D4FF]/15 bg-[#00D4FF]/10 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#00D4FF]/15 text-[#00D4FF]">
+                  <RadioTower className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-white/35">Live Tracking</p>
+                  <h3 className="mt-1 text-base font-semibold">
+                    {trackingStatus === 'live'
+                      ? 'GPS aktiv'
+                      : trackingStatus === 'starting'
+                        ? 'GPS wird gestartet'
+                        : trackingStatus === 'error'
+                          ? 'GPS prüfen'
+                          : 'GPS noch aus'}
+                  </h3>
+                  <p className="mt-1 text-xs leading-5 text-white/50">
+                    {lastTrackingSignal
+                      ? `Letztes Signal ${formatTrackingTime(lastTrackingSignal.timestamp)} · Genauigkeit ${Math.round(lastTrackingSignal.accuracy || 0)} m`
+                      : 'Aktiviere Tracking nur während der aktiven Tour.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={toggleTracking}
+                className={cn(
+                  'rounded-full px-4 py-2 text-xs font-bold transition',
+                  trackingEnabled
+                    ? 'bg-[#2ECC71] text-[#06121C] shadow-lg shadow-[#2ECC71]/25'
+                    : 'border border-white/10 bg-white/[0.06] text-white/75',
+                )}
+              >
+                {trackingEnabled ? 'Aktiv' : 'Starten'}
+              </button>
+            </div>
+            {trackingError ? (
+              <p className="mt-3 rounded-xl border border-[#F39C12]/25 bg-[#F39C12]/10 px-3 py-2 text-xs leading-5 text-[#F39C12]">
+                {trackingError}
+              </p>
+            ) : null}
+          </div>
+
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F39C12]/12 text-[#F39C12]">
               <MapPin className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/35">Naechster Schritt</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/35">Nächster Schritt</p>
               <h3 className="mt-1 text-lg font-semibold">{mission.nextStop.label}</h3>
               <p className="mt-1 text-sm text-white/55">{primaryActionLabel}</p>
             </div>
@@ -264,6 +393,13 @@ export default function DriverMobilePage() {
       </div>
     </main>
   );
+}
+
+function formatTrackingTime(value: string) {
+  return new Intl.DateTimeFormat('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
 }
 
 function getPrimaryAction(mission: DriverMission): DriverMobileActionId {

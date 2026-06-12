@@ -370,8 +370,8 @@ export function AuthModal({ open, onOpenChange, defaultTab = 'login' }: AuthModa
                       onChange={(e) => setAcceptTerms(e.target.checked)}
                     />
                     <span className="text-muted-foreground">
-                      Ich stimme den <a href="#" className="text-primary hover:underline">AGB</a> und der{' '}
-                      <a href="#" className="text-primary hover:underline">Datenschutzerklärung</a> zu
+                      Ich stimme den <a href="/agb" className="text-primary hover:underline">AGB</a> und der{' '}
+                      <a href="/datenschutz" className="text-primary hover:underline">Datenschutzerklärung</a> zu
                     </span>
                   </label>
 

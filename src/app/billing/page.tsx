@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -13,12 +13,9 @@ import {
   ReceiptText,
   ShieldCheck,
   Sparkles,
-  Wallet,
 } from 'lucide-react';
 import { getSubscriptionPlanConfig, type SubscriptionPlanConfig } from '@/lib/billing/plans';
 import { useAuthStore } from '@/lib/auth-store';
-
-type BillingCycle = 'monthly' | 'yearly';
 
 interface SubscriptionState extends Partial<SubscriptionPlanConfig> {
   plan: string;
@@ -65,11 +62,10 @@ interface SubscriptionInvoice {
 }
 
 const FALLBACK_PLANS = getSubscriptionPlanConfig();
-const PLAN_ORDER = ['free', 'starter', 'professional', 'enterprise'];
+const PLAN_ORDER = ['free', 'starter'];
 
 export default function BillingPage() {
   const { user, isAuthenticated } = useAuthStore();
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
   const [payload, setPayload] = useState<SubscriptionPayload | null>(null);
   const [invoices, setInvoices] = useState<SubscriptionInvoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -126,20 +122,78 @@ export default function BillingPage() {
     };
   }, [userId]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get('checkout');
+    const sessionId = params.get('session_id');
+
+    if (checkout !== 'mock_success' || !sessionId) return;
+
+    const storageKey = `cargobit_mock_checkout_${sessionId}`;
+    if (window.sessionStorage.getItem(storageKey) === 'done') return;
+
+    let cancelled = false;
+
+    const completeMockCheckout = async () => {
+      setMessage('Lokaler Business-Checkout wird aktiviert...');
+
+      try {
+        const completeResponse = await fetch('/api/subscriptions/mock-complete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': userId,
+          },
+          body: JSON.stringify({ sessionId }),
+        });
+        const completeData = await completeResponse.json();
+
+        if (!completeResponse.ok || !completeData.success) {
+          throw new Error(completeData.message || completeData.error || 'Mock-Checkout konnte nicht abgeschlossen werden');
+        }
+
+        const headers = { 'x-user-id': userId };
+        const [subscriptionResponse, invoicesResponse] = await Promise.all([
+          fetch('/api/subscriptions', { headers }),
+          fetch('/api/subscriptions/invoices', { headers }),
+        ]);
+        const subscriptionData = await subscriptionResponse.json();
+        const invoiceData = await invoicesResponse.json().catch(() => ({ invoices: [] }));
+
+        if (!subscriptionResponse.ok || !subscriptionData.success) {
+          throw new Error(subscriptionData.message || 'Business-Tarif konnte nicht neu geladen werden');
+        }
+
+        if (!cancelled) {
+          window.sessionStorage.setItem(storageKey, 'done');
+          window.history.replaceState(null, '', '/billing');
+          setPayload(subscriptionData);
+          setInvoices(Array.isArray(invoiceData.invoices) ? invoiceData.invoices : []);
+          setMessage('Business-Tarif wurde lokal aktiviert.');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMessage(error instanceof Error ? error.message : 'Mock-Checkout konnte nicht abgeschlossen werden.');
+        }
+      }
+    };
+
+    completeMockCheckout();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
   const plans = payload?.plans || FALLBACK_PLANS;
   const currentPlan = String(payload?.subscription?.plan || 'free').toLowerCase();
   const currentPlanLabel = plans[currentPlan]?.name || 'Free';
   const nextInvoiceDate = payload?.subscription?.currentPeriodEnd
     ? new Date(payload.subscription.currentPeriodEnd).toLocaleDateString('de-DE')
-    : 'Keine aktive Abo-Periode';
+    : 'Keine aktive Business-Periode';
   const hasStripeCustomer = Boolean(payload?.subscription?.stripeCustomerId);
-
-  const yearlySavingText = useMemo(() => {
-    const starter = plans.starter;
-    if (!starter) return 'Jahresrabatt aktiv';
-    const saving = starter.monthlyFee * 12 - starter.yearlyFee;
-    return saving > 0 ? `Jährlich bis zu ${formatCurrency(saving)} sparen` : 'Jahresabrechnung verfügbar';
-  }, [plans]);
 
   const startCheckout = async (plan: string) => {
     setMessage(null);
@@ -152,7 +206,7 @@ export default function BillingPage() {
           'Content-Type': 'application/json',
           'x-user-id': userId,
         },
-        body: JSON.stringify({ plan, billingCycle }),
+        body: JSON.stringify({ plan, billingCycle: 'monthly' }),
       });
       const data = await response.json();
 
@@ -185,14 +239,14 @@ export default function BillingPage() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.message || data.error || 'Abo-Verwaltung konnte nicht geöffnet werden');
+        throw new Error(data.message || data.error || 'Business-Verwaltung konnte nicht geöffnet werden');
       }
 
       if (data.portalUrl) {
         window.location.href = data.portalUrl;
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Abo-Verwaltung konnte nicht geöffnet werden.');
+      setMessage(error instanceof Error ? error.message : 'Business-Verwaltung konnte nicht geöffnet werden.');
     } finally {
       setPortalLoading(false);
     }
@@ -212,21 +266,8 @@ export default function BillingPage() {
             Zurück zum Dashboard
           </Link>
 
-          <div className="inline-flex w-fit rounded-2xl border border-white/[0.08] bg-white/[0.05] p-1">
-            {(['monthly', 'yearly'] as BillingCycle[]).map((cycle) => (
-              <button
-                key={cycle}
-                type="button"
-                onClick={() => setBillingCycle(cycle)}
-                className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
-                  billingCycle === cycle
-                    ? 'bg-[#1C7ED6] text-white shadow-lg shadow-[#1C7ED6]/25'
-                    : 'text-white/55 hover:text-white'
-                }`}
-              >
-                {cycle === 'monthly' ? 'Monatlich' : 'Jährlich'}
-              </button>
-            ))}
+          <div className="inline-flex w-fit rounded-2xl border border-white/[0.08] bg-white/[0.05] px-4 py-2 text-sm font-medium text-white/70">
+            Start mit Provision · Business monatlich
           </div>
         </div>
 
@@ -236,13 +277,13 @@ export default function BillingPage() {
             <div>
               <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#2ECC71]/20 bg-[#2ECC71]/10 px-3 py-1 text-xs font-semibold text-[#8ff0b9]">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                Netto-Preise, MwSt-Ausweis, Stripe Checkout
+                Provision, Zahlungsschutz, Business 89 €
               </div>
               <h1 className="max-w-3xl text-4xl font-semibold tracking-normal text-white sm:text-5xl">
-                Abo und Gebührenzentrale
+                Gebühren und Business-Tarif
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-white/55">
-                Verwalte den CargoBit Plan, sieh die MwSt-Bestandteile vor dem Abschluss und starte den passenden Checkout für dein Unternehmen.
+                CargoBit startet bewusst einfach: kostenloser Einstieg mit Provision oder Business für regelmäßige Aufträge.
               </p>
             </div>
 
@@ -260,7 +301,7 @@ export default function BillingPage() {
               <p className="mt-2 text-sm text-white/45">Nächste Periode: {loading ? 'Wird geprüft' : nextInvoiceDate}</p>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <StatusPill icon={<ReceiptText className="h-4 w-4" />} label="MwSt" value="19%" />
-                <StatusPill icon={<Wallet className="h-4 w-4" />} label="Stripe" value={hasStripeCustomer ? 'Verbunden' : 'Ausstehend'} />
+                <StatusPill icon={<CreditCard className="h-4 w-4" />} label="Stripe" value={hasStripeCustomer ? 'Verbunden' : 'Ausstehend'} />
               </div>
               <button
                 type="button"
@@ -269,7 +310,7 @@ export default function BillingPage() {
                 className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.06] px-4 py-3 text-sm font-semibold text-white/75 transition hover:border-[#00D4FF]/35 hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {portalLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
-                Abo verwalten
+                Business verwalten
               </button>
             </div>
           </div>
@@ -281,15 +322,14 @@ export default function BillingPage() {
           </div>
         )}
 
-        <section className="grid gap-5 lg:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-5 lg:grid-cols-2">
           {PLAN_ORDER.map((planKey) => {
             const plan = plans[planKey];
             if (!plan) return null;
 
             const isCurrent = currentPlan === planKey;
-            const selectedPrice = billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+            const selectedPrice = plan.monthlyPrice;
             const isFree = planKey === 'free';
-            const isEnterprise = planKey === 'enterprise';
 
             return (
               <article
@@ -300,7 +340,7 @@ export default function BillingPage() {
                     : 'border-white/[0.08] bg-white/[0.05] shadow-xl shadow-black/10 hover:border-white/[0.16]'
                 }`}
               >
-                {planKey === 'professional' && (
+                {planKey === 'starter' && (
                   <div className="absolute -top-3 left-5 rounded-full bg-gradient-to-r from-[#1C7ED6] to-[#00D4FF] px-3 py-1 text-xs font-semibold text-white shadow-lg shadow-[#1C7ED6]/25">
                     Empfohlen
                   </div>
@@ -321,12 +361,8 @@ export default function BillingPage() {
                 <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
                 <p className="mt-2 min-h-12 text-sm leading-6 text-white/45">
                   {planKey === 'free'
-                    ? 'Für erste Tests und private Einzelaufträge.'
-                    : planKey === 'starter'
-                      ? 'Für kleine Gewerbe und erste regelmäßige Transporte.'
-                      : planKey === 'professional'
-                        ? 'Für aktive Speditionen, Dispatcher und wachsende Teams.'
-                        : 'Für größere Teams mit individuellem Setup und SLA.'}
+                    ? 'Für private Einzelaufträge, Tests und gelegentliche Frachtanfragen.'
+                    : 'Für kleine Gewerbe, regelmäßige Verlader und Transportunternehmer.'}
                 </p>
 
                 <div className="mt-6">
@@ -335,7 +371,7 @@ export default function BillingPage() {
                       {formatCurrency(selectedPrice.netAmount)}
                     </span>
                     <span className="pb-1 text-sm text-white/40">
-                      / {billingCycle === 'monthly' ? 'Monat' : 'Jahr'}
+                      / Monat
                     </span>
                   </div>
                   <p className="mt-2 text-xs text-white/40">{plan.vatNotice}</p>
@@ -350,7 +386,7 @@ export default function BillingPage() {
 
                 <div className="mt-5 grid grid-cols-2 gap-3 text-xs">
                   <StatusPill icon={<ReceiptText className="h-4 w-4" />} label="Provision" value={`${plan.commissionPercent}%`} />
-                  <StatusPill icon={<Wallet className="h-4 w-4" />} label="Wallet" value={`${plan.walletFeePercent}%`} />
+                  <StatusPill icon={<ShieldCheck className="h-4 w-4" />} label="Zahlungsschutz" value={`${plan.walletFeePercent}%`} />
                 </div>
 
                 <ul className="mt-5 flex-1 space-y-3">
@@ -365,7 +401,7 @@ export default function BillingPage() {
                 <button
                   type="button"
                   disabled={isCurrent || isFree || checkoutPlan === planKey}
-                  onClick={() => isEnterprise ? setMessage('Enterprise wird über Sales vorbereitet: sales@cargobit.de') : startCheckout(planKey)}
+                  onClick={() => startCheckout(planKey)}
                   className={`mt-6 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${
                     isCurrent
                       ? 'cursor-default border border-[#2ECC71]/20 bg-[#2ECC71]/10 text-[#8ff0b9]'
@@ -381,7 +417,7 @@ export default function BillingPage() {
                   ) : (
                     <ArrowRight className="h-4 w-4" />
                   )}
-                  {isCurrent ? 'Aktueller Plan' : isFree ? 'Kostenlos' : isEnterprise ? 'Sales kontaktieren' : 'Checkout starten'}
+                  {isCurrent ? 'Aktueller Plan' : isFree ? 'Kostenlos' : 'Business aktivieren'}
                 </button>
               </article>
             );
@@ -389,15 +425,15 @@ export default function BillingPage() {
         </section>
 
         <section className="grid gap-5 lg:grid-cols-3">
-          <InfoCard title="Rechnung" detail="Beim Abo-Abschluss wird der Netto-Preis im Vordergrund angezeigt. Die Rechnung listet Netto, MwSt und Brutto getrennt." />
-          <InfoCard title="Zahlung" detail="Stripe Checkout unterstützt Karten und SEPA-Lastschrift. Der Webhook aktiviert den Plan erst nach erfolgreicher Bestätigung." />
-          <InfoCard title="Sicherheit" detail="Nur Firmeneigner dürfen produktiv ein Abo abschließen. Lokale Tests nutzen einen Demo-Fallback." />
+          <InfoCard title="Start" detail="Ohne Grundgebühr, dafür mit 14% Provision und 10 Aufträgen pro Monat." />
+          <InfoCard title="Business" detail="89 € netto pro Monat, 30 Aufträge pro Monat, 12% CargoBit-Provision und 2,5% Zahlungsschutz-Gebühr." />
+          <InfoCard title="Zahlung" detail="Stripe verarbeitet Business-Checkout, Zahlungsschutz-Einzahlungen und spätere Auszahlungen." />
         </section>
 
         <section className="rounded-[18px] border border-white/[0.08] bg-white/[0.05] p-5 shadow-xl shadow-black/10">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-white">Abo-Rechnungen</h2>
+              <h2 className="text-xl font-semibold text-white">Business-Rechnungen</h2>
               <p className="mt-1 text-sm text-white/45">Stripe-Rechnungen mit Netto, MwSt, Brutto und Zahlungsstatus.</p>
             </div>
             <span className="w-fit rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-xs text-white/50">
@@ -407,7 +443,7 @@ export default function BillingPage() {
 
           {invoices.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/[0.12] bg-[#06121C]/35 p-6 text-sm text-white/45">
-              Noch keine Abo-Rechnungen vorhanden. Nach dem ersten erfolgreichen Stripe-Abo erscheinen sie hier automatisch.
+              Noch keine Business-Rechnungen vorhanden. Nach dem ersten erfolgreichen Stripe-Checkout erscheinen sie hier automatisch.
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-white/[0.08]">

@@ -62,20 +62,21 @@ const roleAccent: Record<DashboardRole, string> = {
 const roleNav: Record<DashboardRole, Array<{ label: string; href: string; icon: ReactNode }>> = {
   shipper: [
     { label: 'Dashboard', href: '/dashboard?role=shipper', icon: <LayoutDashboard className="h-5 w-5" /> },
-    { label: 'Transporte', href: '/shipper/transports', icon: <Package className="h-5 w-5" /> },
-    { label: 'Angebote', href: '/shipper/offers', icon: <Route className="h-5 w-5" /> },
-    { label: 'Wallet', href: '/shipper/wallet', icon: <Wallet className="h-5 w-5" /> },
-    { label: 'Abo', href: '/billing', icon: <CreditCardIcon /> },
+    { label: 'Transporte', href: '/shipper/jobs', icon: <Package className="h-5 w-5" /> },
+    { label: 'Angebote', href: '/shipper/jobs?view=offers', icon: <Route className="h-5 w-5" /> },
+    { label: 'Zahlungsschutz', href: '/shipper/wallet', icon: <Wallet className="h-5 w-5" /> },
+    { label: 'Business', href: '/billing', icon: <CreditCardIcon /> },
     { label: 'Dokumente', href: '/shipper/documents', icon: <FileText className="h-5 w-5" /> },
   ],
   carrier: [
     { label: 'Dashboard', href: '/dashboard?role=carrier', icon: <LayoutDashboard className="h-5 w-5" /> },
-    { label: 'Loads', href: '/carrier/loads', icon: <Package className="h-5 w-5" /> },
+    { label: 'Verfügbare Aufträge', href: '/carrier/loads', icon: <Package className="h-5 w-5" /> },
+    { label: 'Meine Aufträge', href: '/carrier/jobs', icon: <Route className="h-5 w-5" /> },
     { label: 'Disposition', href: '/dashboard?role=dispatcher', icon: <Target className="h-5 w-5" /> },
     { label: 'Flotte', href: '/carrier/fleet', icon: <Truck className="h-5 w-5" /> },
     { label: 'Fahrer', href: '/carrier/drivers', icon: <UsersRound className="h-5 w-5" /> },
-    { label: 'Wallet', href: '/carrier/wallet', icon: <Wallet className="h-5 w-5" /> },
-    { label: 'Abo', href: '/billing', icon: <CreditCardIcon /> },
+    { label: 'Auszahlungen', href: '/carrier/wallet', icon: <Wallet className="h-5 w-5" /> },
+    { label: 'Business', href: '/billing', icon: <CreditCardIcon /> },
   ],
   driver: [
     { label: 'Dashboard', href: '/dashboard?role=driver', icon: <LayoutDashboard className="h-5 w-5" /> },
@@ -87,7 +88,7 @@ const roleNav: Record<DashboardRole, Array<{ label: string; href: string; icon: 
   ],
   dispatcher: [
     { label: 'Dashboard', href: '/dashboard?role=dispatcher', icon: <LayoutDashboard className="h-5 w-5" /> },
-    { label: 'Matching', href: '/api/dispatcher/suggestions', icon: <Target className="h-5 w-5" /> },
+    { label: 'Matching', href: '/dashboard?role=dispatcher', icon: <Target className="h-5 w-5" /> },
     { label: 'Touren', href: '/carrier/dispatch/tours', icon: <Route className="h-5 w-5" /> },
     { label: 'Flotte', href: '/carrier/fleet', icon: <Truck className="h-5 w-5" /> },
     { label: 'KI Regeln', href: '/ml', icon: <Sparkles className="h-5 w-5" /> },
@@ -478,7 +479,7 @@ function ProductFocusCard({
 }) {
   const roleHeadline: Record<DashboardRole, string> = {
     shipper: 'Erster Transport bis Rechnung',
-    carrier: 'Trust Profil + erste DACH Loads',
+    carrier: 'Trust Profil + erste DACH-Aufträge',
     driver: 'Heute fahren, POD sichern, Auszahlung sehen',
     dispatcher: 'Touren priorisieren und Ausnahmen klaeren',
     support: 'Vertrauen und Risiken aktiv steuern',
@@ -518,7 +519,7 @@ function ProductFocusCard({
             >
               <div className="mb-3 flex items-center justify-between">
                 <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${priorityTone(step.priority)}`}>
-                  {step.priority === 'high' ? 'Jetzt' : step.priority === 'medium' ? 'Naechst' : 'Optional'}
+                  {step.priority === 'high' ? 'Jetzt' : step.priority === 'medium' ? 'Nächstes' : 'Optional'}
                 </span>
                 {step.done ? (
                   <CheckCircle2 className="h-4 w-4 text-[#2ECC71]" />

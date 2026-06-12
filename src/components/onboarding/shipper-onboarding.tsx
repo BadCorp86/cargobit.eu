@@ -232,7 +232,7 @@ export function ShipperOnboarding() {
               </li>
               <li className="flex items-center gap-2">
                 <Check className="w-3 h-3" />
-                Sicherheit - Escrow-Schutz für Zahlungen
+                Sicherheit - Zahlungsschutz für Auftragszahlungen
               </li>
               <li className="flex items-center gap-2">
                 <Check className="w-3 h-3" />

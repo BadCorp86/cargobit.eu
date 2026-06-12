@@ -39,15 +39,23 @@ import {
   Shield,
   ExternalLink,
 } from 'lucide-react';
+import {
+  CARGO_TYPE_CONFIGS,
+  CONTAINER_VOLUME_M3,
+  LIQUID_UNIT_OPTIONS,
+  VEHICLE_TYPE_OPTIONS,
+  getCargoTypeConfig,
+  type CargoTransportType,
+} from '@/lib/cargo-types';
 
 interface TransportFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: () => void;
+  onSubmit: (payload: TransportFormSubmitPayload) => Promise<boolean | void> | boolean | void;
   initialData?: TransportFormInitialData | null;
 }
 
-type TransportType = 'pallet' | 'bulk' | 'liquid' | 'oversize' | 'lowloader' | 'car_transport' | 'cooling' | 'hazmat' | 'container';
+type TransportType = CargoTransportType;
 
 export type TransportFormInitialData = Partial<{
   pickupCity: string;
@@ -66,19 +74,86 @@ export type TransportFormInitialData = Partial<{
   budget: string;
   aiSuggestedPrice: number;
   transportType: TransportType;
+  bulkMaterial: string;
+  bulkVolume: string;
+  bulkDensity: string;
+  liquidProduct: string;
+  liquidAmount: string;
+  liquidAmountUnit: 'liter' | 'm3';
+  liquidContainerType: string;
+  vehicleSubtype: string;
+  vehicleLengthM: string;
+  vehicleWidthM: string;
+  vehicleHeightM: string;
+  vehicleWeightKg: string;
+  carCount: string;
+  carCondition: string;
+  oversizeLength: string;
+  oversizeWidth: string;
+  oversizeHeight: string;
+  lowloaderCargoLength: string;
+  lowloaderCargoWidth: string;
+  lowloaderCargoHeight: string;
+  lowloaderCargoWeight: string;
 }>;
 
-const transportTypes: { value: TransportType; label: string; icon: React.ReactNode }[] = [
-  { value: 'pallet', label: 'Palettentransport', icon: <Package className="w-5 h-5" /> },
-  { value: 'bulk', label: 'Schüttgut', icon: <Scale className="w-5 h-5" /> },
-  { value: 'liquid', label: 'Flüssigkeiten', icon: <Droplets className="w-5 h-5" /> },
-  { value: 'oversize', label: 'Überlänge', icon: <Truck className="w-5 h-5" /> },
-  { value: 'lowloader', label: 'Tieflader', icon: <Truck className="w-5 h-5" /> },
-  { value: 'car_transport', label: 'Autotransport', icon: <Car className="w-5 h-5" /> },
-  { value: 'cooling', label: 'Kühltransport', icon: <Thermometer className="w-5 h-5" /> },
-  { value: 'hazmat', label: 'Gefahrgut', icon: <AlertTriangle className="w-5 h-5" /> },
-  { value: 'container', label: 'Container', icon: <Container className="w-5 h-5" /> },
-];
+export type TransportFormSubmitPayload = {
+  pickupAddress: {
+    street: string;
+    postalCode: string;
+    city: string;
+    country: string;
+  };
+  deliveryAddress: {
+    street: string;
+    postalCode: string;
+    city: string;
+    country: string;
+  };
+  pickupDatetime: string;
+  pickupTimeFrom?: string;
+  pickupTimeTo?: string;
+  deliveryDatetime?: string;
+  deliveryTimeFrom?: string;
+  deliveryTimeTo?: string;
+  description?: string;
+  weightKg: number;
+  volumeM3?: number;
+  transportType: TransportType;
+  cargoDetails: Record<string, unknown>;
+  shipperBudget: number;
+  currency: string;
+  isInternational: boolean;
+  specialRequirements?: string;
+  insuranceReferral?: {
+    requested: boolean;
+    cargoValueEur?: number;
+    pickupCity: string;
+    pickupCountry: string;
+    deliveryCity: string;
+    deliveryCountry: string;
+    consentAccepted: boolean;
+  };
+};
+
+const transportTypeIcons: Record<TransportType, React.ReactNode> = {
+  pallet: <Package className="w-5 h-5" />,
+  bulk: <Scale className="w-5 h-5" />,
+  liquid: <Droplets className="w-5 h-5" />,
+  oversize: <Truck className="w-5 h-5" />,
+  lowloader: <Truck className="w-5 h-5" />,
+  car_transport: <Car className="w-5 h-5" />,
+  cooling: <Thermometer className="w-5 h-5" />,
+  hazmat: <AlertTriangle className="w-5 h-5" />,
+  container: <Container className="w-5 h-5" />,
+};
+
+const transportTypes = CARGO_TYPE_CONFIGS.map((config) => ({
+  value: config.value,
+  label: config.label,
+  description: config.description,
+  icon: transportTypeIcons[config.value],
+}));
 
 interface PricingQuote {
   recommendedPrice: number;
@@ -122,7 +197,7 @@ function formatCurrency(value: number, currency = 'EUR') {
   }).format(value);
 }
 
-function parseNumber(value: string) {
+function parseNumber(value: string | undefined) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
@@ -133,7 +208,63 @@ function calculateVolumeM3(formData: {
   height: string;
   bulkVolume: string;
   liquidAmount: string;
-}) {
+  liquidAmountUnit: 'liter' | 'm3';
+  oversizeLength: string;
+  oversizeWidth: string;
+  oversizeHeight: string;
+  lowloaderCargoLength: string;
+  lowloaderCargoWidth: string;
+  lowloaderCargoHeight: string;
+  vehicleLengthM: string;
+  vehicleWidthM: string;
+  vehicleHeightM: string;
+  carCount: string;
+  containerType: string;
+}, transportType: TransportType) {
+  if (transportType === 'bulk') {
+    return parseNumber(formData.bulkVolume);
+  }
+
+  if (transportType === 'liquid') {
+    const liquidAmount = parseNumber(formData.liquidAmount);
+    if (!liquidAmount) return undefined;
+    return formData.liquidAmountUnit === 'm3'
+      ? liquidAmount
+      : Math.round((liquidAmount / 1000) * 100) / 100;
+  }
+
+  if (transportType === 'car_transport') {
+    const lengthM = parseNumber(formData.vehicleLengthM);
+    const widthM = parseNumber(formData.vehicleWidthM);
+    const heightM = parseNumber(formData.vehicleHeightM);
+    const count = parseNumber(formData.carCount) || 1;
+    if (lengthM && widthM && heightM) {
+      return Math.round((lengthM * widthM * heightM * count) * 100) / 100;
+    }
+  }
+
+  if (transportType === 'oversize') {
+    const lengthM = parseNumber(formData.oversizeLength);
+    const widthM = parseNumber(formData.oversizeWidth);
+    const heightM = parseNumber(formData.oversizeHeight);
+    if (lengthM && widthM && heightM) {
+      return Math.round((lengthM * widthM * heightM) * 100) / 100;
+    }
+  }
+
+  if (transportType === 'lowloader') {
+    const lengthM = parseNumber(formData.lowloaderCargoLength);
+    const widthM = parseNumber(formData.lowloaderCargoWidth);
+    const heightM = parseNumber(formData.lowloaderCargoHeight);
+    if (lengthM && widthM && heightM) {
+      return Math.round((lengthM * widthM * heightM) * 100) / 100;
+    }
+  }
+
+  if (transportType === 'container' && formData.containerType) {
+    return CONTAINER_VOLUME_M3[formData.containerType];
+  }
+
   const lengthCm = parseNumber(formData.length);
   const widthCm = parseNumber(formData.width);
   const heightCm = parseNumber(formData.height);
@@ -142,13 +273,49 @@ function calculateVolumeM3(formData: {
     return Math.round((lengthCm * widthCm * heightCm / 1_000_000) * 100) / 100;
   }
 
-  const bulkVolume = parseNumber(formData.bulkVolume);
-  if (bulkVolume) return bulkVolume;
-
-  const liquidAmount = parseNumber(formData.liquidAmount);
-  if (liquidAmount) return Math.round((liquidAmount / 1000) * 100) / 100;
-
   return undefined;
+}
+
+function calculateWeightKg(formData: {
+  weight: string;
+  containerWeight: string;
+  lowloaderCargoWeight: string;
+  vehicleWeightKg: string;
+  bulkVolume: string;
+  bulkDensity: string;
+  liquidAmount: string;
+  liquidAmountUnit: 'liter' | 'm3';
+}, transportType: TransportType) {
+  if (transportType === 'car_transport') {
+    return parseNumber(formData.vehicleWeightKg) || parseNumber(formData.weight) || 1500;
+  }
+
+  if (transportType === 'container') {
+    return parseNumber(formData.containerWeight) || parseNumber(formData.weight) || 10_000;
+  }
+
+  if (transportType === 'lowloader') {
+    return parseNumber(formData.lowloaderCargoWeight) || parseNumber(formData.weight) || 10_000;
+  }
+
+  if (transportType === 'bulk') {
+    const enteredWeight = parseNumber(formData.weight);
+    const volume = parseNumber(formData.bulkVolume);
+    const density = parseNumber(formData.bulkDensity);
+    if (enteredWeight) return enteredWeight;
+    if (volume && density) return Math.round(volume * density);
+    return 1000;
+  }
+
+  if (transportType === 'liquid') {
+    const enteredWeight = parseNumber(formData.weight);
+    const amount = parseNumber(formData.liquidAmount);
+    if (enteredWeight) return enteredWeight;
+    if (!amount) return 1000;
+    return formData.liquidAmountUnit === 'm3' ? Math.round(amount * 1000) : Math.round(amount);
+  }
+
+  return parseNumber(formData.weight) || 500;
 }
 
 export function TransportForm({ open, onOpenChange, onSubmit, initialData }: TransportFormProps) {
@@ -162,6 +329,7 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
   const [insuranceQuote, setInsuranceQuote] = useState<InsuranceReferralQuote | null>(null);
   const [isInsuranceLoading, setIsInsuranceLoading] = useState(false);
   const [insuranceError, setInsuranceError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -207,6 +375,7 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
     
     liquidProduct: '',
     liquidAmount: '',
+    liquidAmountUnit: 'liter' as 'liter' | 'm3',
     liquidContainerType: '',
     
     oversizeLength: '',
@@ -216,11 +385,18 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
     escortVehicle: false,
     
     lowloaderCargoHeight: '',
+    lowloaderCargoLength: '',
+    lowloaderCargoWidth: '',
     lowloaderCargoWeight: '',
     lowloaderRamp: false,
     
     carCount: '',
     carTypes: '',
+    vehicleSubtype: 'suv',
+    vehicleLengthM: '',
+    vehicleWidthM: '',
+    vehicleHeightM: '',
+    vehicleWeightKg: '',
     carCondition: 'fahrbereit',
     
     coolingMinTemp: '',
@@ -241,20 +417,118 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
   });
 
   const quoteWeightKg = useMemo(() => {
-    return (
-      parseNumber(formData.weight) ||
-      parseNumber(formData.containerWeight) ||
-      parseNumber(formData.lowloaderCargoWeight) ||
-      500
-    );
-  }, [formData.weight, formData.containerWeight, formData.lowloaderCargoWeight]);
+    return calculateWeightKg(formData, transportType);
+  }, [formData, transportType]);
 
-  const quoteVolumeM3 = useMemo(() => calculateVolumeM3(formData), [formData]);
+  const quoteVolumeM3 = useMemo(() => calculateVolumeM3(formData, transportType), [formData, transportType]);
+  const cargoTypeConfig = getCargoTypeConfig(transportType);
 
   const recommendedPrice = pricingQuote?.recommendedPrice || formData.aiSuggestedPrice;
   const pricingCurrency = pricingQuote?.currency || 'EUR';
   const canRequestPricing = Boolean(formData.pickupCity && formData.deliveryCity && quoteWeightKg);
   const canRequestInsurance = Boolean(formData.insuranceRequested && parseNumber(formData.cargoValue));
+  const cargoDetails = useMemo(() => ({
+    transportType,
+    label: cargoTypeConfig.label,
+    measurementMode: cargoTypeConfig.measurementMode,
+    normalized: {
+      weightKg: quoteWeightKg,
+      volumeM3: quoteVolumeM3,
+    },
+    pallet: {
+      count: formData.palletCount,
+      type: formData.palletType,
+      stackable: formData.stackable,
+    },
+    bulk: {
+      material: formData.bulkMaterial,
+      volumeM3: formData.bulkVolume,
+      densityKgM3: formData.bulkDensity,
+    },
+    liquid: {
+      product: formData.liquidProduct,
+      amount: formData.liquidAmount,
+      unit: formData.liquidAmountUnit,
+      containerType: formData.liquidContainerType,
+    },
+    vehicle: {
+      subtype: formData.vehicleSubtype,
+      typeText: formData.carTypes,
+      count: formData.carCount,
+      condition: formData.carCondition,
+      lengthM: formData.vehicleLengthM,
+      widthM: formData.vehicleWidthM,
+      heightM: formData.vehicleHeightM,
+      weightKg: formData.vehicleWeightKg,
+    },
+    oversize: {
+      lengthM: formData.oversizeLength,
+      widthM: formData.oversizeWidth,
+      heightM: formData.oversizeHeight,
+      permitsRequired: formData.oversizePermits,
+      escortVehicle: formData.escortVehicle,
+    },
+    lowloader: {
+      lengthM: formData.lowloaderCargoLength,
+      widthM: formData.lowloaderCargoWidth,
+      heightM: formData.lowloaderCargoHeight,
+      weightKg: formData.lowloaderCargoWeight,
+      rampRequired: formData.lowloaderRamp,
+    },
+    container: {
+      type: formData.containerType,
+      grossWeightKg: formData.containerWeight,
+      seal: formData.containerSeal,
+    },
+    cooling: {
+      minTempC: formData.coolingMinTemp,
+      maxTempC: formData.coolingMaxTemp,
+      preCooled: formData.coolingPreCooled,
+    },
+    hazmat: {
+      unNumber: formData.hazmatUN,
+      class: formData.hazmatClass,
+      packingGroup: formData.hazmatPackingGroup,
+    },
+  }), [cargoTypeConfig.label, cargoTypeConfig.measurementMode, formData, quoteVolumeM3, quoteWeightKg, transportType]);
+  const cargoSummaryLine = useMemo(() => {
+    const weightLabel = `${Math.round(quoteWeightKg).toLocaleString('de-DE')} kg`;
+    const volumeLabel = quoteVolumeM3 ? `${quoteVolumeM3.toLocaleString('de-DE')} m³` : null;
+
+    if (transportType === 'car_transport') {
+      const vehicleLabel = VEHICLE_TYPE_OPTIONS.find((option) => option.value === formData.vehicleSubtype)?.label || 'Fahrzeug';
+      const dimensions = [formData.vehicleLengthM, formData.vehicleWidthM, formData.vehicleHeightM].filter(Boolean).join(' × ');
+      return [vehicleLabel, formData.carCount ? `${formData.carCount} Fahrzeug(e)` : null, dimensions ? `${dimensions} m` : null, weightLabel].filter(Boolean).join(' • ');
+    }
+
+    if (transportType === 'liquid') {
+      const amount = formData.liquidAmount
+        ? `${Number(formData.liquidAmount).toLocaleString('de-DE')} ${formData.liquidAmountUnit === 'm3' ? 'm³' : 'Liter'}`
+        : 'Menge offen';
+      return [formData.liquidProduct || 'Flüssigkeit', amount, volumeLabel, weightLabel].filter(Boolean).join(' • ');
+    }
+
+    if (transportType === 'bulk') {
+      return [formData.bulkMaterial || 'Schüttgut', volumeLabel, formData.bulkDensity ? `${formData.bulkDensity} kg/m³` : null, weightLabel].filter(Boolean).join(' • ');
+    }
+
+    if (transportType === 'container') {
+      return [formData.containerType || 'Container', weightLabel, volumeLabel].filter(Boolean).join(' • ');
+    }
+
+    if (transportType === 'oversize') {
+      const dimensions = [formData.oversizeLength, formData.oversizeWidth, formData.oversizeHeight].filter(Boolean).join(' × ');
+      return [dimensions ? `${dimensions} m` : null, weightLabel, formData.escortVehicle ? 'Begleitfahrzeug' : null].filter(Boolean).join(' • ');
+    }
+
+    if (transportType === 'lowloader') {
+      const dimensions = [formData.lowloaderCargoLength, formData.lowloaderCargoWidth, formData.lowloaderCargoHeight].filter(Boolean).join(' × ');
+      return [dimensions ? `${dimensions} m` : null, weightLabel, formData.lowloaderRamp ? 'Rampe erforderlich' : null].filter(Boolean).join(' • ');
+    }
+
+    const dimensions = [formData.length, formData.width, formData.height].filter(Boolean).join(' × ');
+    return [weightLabel, dimensions ? `${dimensions} cm` : null, volumeLabel].filter(Boolean).join(' • ');
+  }, [formData, quoteVolumeM3, quoteWeightKg, transportType]);
 
   const steps = [
     { number: 1, title: 'Transportart' },
@@ -268,13 +542,84 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
   const handleBack = () => setStep(step - 1);
 
   const handleSubmit = async () => {
+    setSubmitError(null);
+
+    if (!formData.pickupCity || !formData.deliveryCity) {
+      setSubmitError('Bitte Abholort und Zielort eingeben.');
+      setStep(2);
+      return;
+    }
+
+    if (!formData.pickupDate) {
+      setSubmitError('Bitte ein Abholdatum eingeben.');
+      setStep(2);
+      return;
+    }
+
+    if (!recommendedPrice || recommendedPrice <= 0) {
+      setSubmitError('Bitte zuerst einen KI-Preis oder ein Budget berechnen.');
+      setStep(4);
+      return;
+    }
+
+    const pickupDatetime = new Date(`${formData.pickupDate}T${formData.pickupTimeFrom || '08:00'}`).toISOString();
+    const deliveryDatetime = formData.deliveryDate
+      ? new Date(`${formData.deliveryDate}T${formData.deliveryTimeFrom || '17:00'}`).toISOString()
+      : undefined;
+    const shipperBudget = Number(formData.budget) > 0 ? Number(formData.budget) : Math.round(recommendedPrice);
+
+    const payload: TransportFormSubmitPayload = {
+      pickupAddress: {
+        street: formData.pickupAddress || formData.pickupCity,
+        postalCode: formData.pickupPostalCode,
+        city: formData.pickupCity,
+        country: formData.pickupCountry,
+      },
+      deliveryAddress: {
+        street: formData.deliveryAddress || formData.deliveryCity,
+        postalCode: formData.deliveryPostalCode,
+        city: formData.deliveryCity,
+        country: formData.deliveryCountry,
+      },
+      pickupDatetime,
+      pickupTimeFrom: formData.pickupTimeFrom,
+      pickupTimeTo: formData.pickupTimeTo,
+      deliveryDatetime,
+      deliveryTimeFrom: formData.deliveryTimeFrom,
+      deliveryTimeTo: formData.deliveryTimeTo,
+      description: formData.description,
+      weightKg: quoteWeightKg,
+      volumeM3: quoteVolumeM3,
+      transportType,
+      cargoDetails,
+      shipperBudget,
+      currency: pricingCurrency,
+      isInternational: formData.pickupCountry !== formData.deliveryCountry,
+      specialRequirements: cargoSummaryLine,
+      insuranceReferral: formData.insuranceRequested
+        ? {
+            requested: true,
+            cargoValueEur: parseNumber(formData.cargoValue),
+            pickupCity: formData.pickupCity,
+            pickupCountry: formData.pickupCountry,
+            deliveryCity: formData.deliveryCity,
+            deliveryCountry: formData.deliveryCountry,
+            consentAccepted: formData.insuranceConsent,
+          }
+        : undefined,
+    };
+
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsSubmitting(false);
-    onSubmit();
-    // Reset form
-    setStep(1);
+    try {
+      const shouldReset = await onSubmit(payload);
+      if (shouldReset !== false) {
+        setStep(1);
+      }
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Auftrag konnte nicht erstellt werden.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const updateFormData = (field: string, value: string | boolean) => {
@@ -329,6 +674,7 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
             weightKg: quoteWeightKg,
             volumeM3: quoteVolumeM3,
             transportType,
+            cargoDetails,
             isInternational: formData.pickupCountry !== formData.deliveryCountry,
             isHazmat: formData.hazmat || transportType === 'hazmat',
             requiresCooling: transportType === 'cooling',
@@ -358,6 +704,7 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
     };
   }, [
     canRequestPricing,
+    cargoDetails,
     formData.deliveryAddress,
     formData.deliveryCity,
     formData.deliveryCountry,
@@ -693,6 +1040,15 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
       case 'car_transport':
         return (
           <div className="space-y-4">
+            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <div className="font-medium">Fahrzeugtransport</div>
+                <div className="text-muted-foreground">
+                  Wähle den Fahrzeugtyp und trage Maße in Metern ein. Das hilft bei Rampe, Anhänger, Versicherung und Preis.
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Anzahl Fahrzeuge</Label>
@@ -704,11 +1060,67 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
                 />
               </div>
               <div className="space-y-2">
-                <Label>Fahrzeugtypen</Label>
+                <Label>Fahrzeugtyp</Label>
+                <Select value={formData.vehicleSubtype} onValueChange={(v) => updateFormData('vehicleSubtype', v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Auswählen..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VEHICLE_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Modell / Beschreibung optional</Label>
+              <Input
+                value={formData.carTypes}
+                onChange={(e) => updateFormData('carTypes', e.target.value)}
+                placeholder={VEHICLE_TYPE_OPTIONS.find((option) => option.value === formData.vehicleSubtype)?.example || 'z.B. BMW X5'}
+              />
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label>Länge (m)</Label>
                 <Input
-                  value={formData.carTypes}
-                  onChange={(e) => updateFormData('carTypes', e.target.value)}
-                  placeholder="z.B. Pkw, SUV"
+                  type="number"
+                  step="0.1"
+                  value={formData.vehicleLengthM}
+                  onChange={(e) => updateFormData('vehicleLengthM', e.target.value)}
+                  placeholder="4.8"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Breite (m)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={formData.vehicleWidthM}
+                  onChange={(e) => updateFormData('vehicleWidthM', e.target.value)}
+                  placeholder="1.9"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Höhe (m)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={formData.vehicleHeightM}
+                  onChange={(e) => updateFormData('vehicleHeightM', e.target.value)}
+                  placeholder="1.7"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Gewicht (kg)</Label>
+                <Input
+                  type="number"
+                  value={formData.vehicleWeightKg}
+                  onChange={(e) => updateFormData('vehicleWeightKg', e.target.value)}
+                  placeholder="2100"
                 />
               </div>
             </div>
@@ -781,13 +1193,27 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
                 />
               </div>
               <div className="space-y-2">
-                <Label>Menge (Liter)</Label>
-                <Input
-                  type="number"
-                  value={formData.liquidAmount}
-                  onChange={(e) => updateFormData('liquidAmount', e.target.value)}
-                  placeholder="z.B. 25000"
-                />
+                <Label>Menge</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    value={formData.liquidAmount}
+                    onChange={(e) => updateFormData('liquidAmount', e.target.value)}
+                    placeholder="z.B. 25000"
+                  />
+                  <Select value={formData.liquidAmountUnit} onValueChange={(v) => updateFormData('liquidAmountUnit', v)}>
+                    <SelectTrigger className="w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LIQUID_UNIT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
             <div className="space-y-2">
@@ -886,6 +1312,26 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
+                <Label>Ladungslänge (m)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={formData.lowloaderCargoLength}
+                  onChange={(e) => updateFormData('lowloaderCargoLength', e.target.value)}
+                  placeholder="z.B. 8.0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Ladungsbreite (m)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={formData.lowloaderCargoWidth}
+                  onChange={(e) => updateFormData('lowloaderCargoWidth', e.target.value)}
+                  placeholder="z.B. 2.8"
+                />
+              </div>
+              <div className="space-y-2">
                 <Label>Ladungshöhe (m)</Label>
                 <Input
                   type="number"
@@ -981,6 +1427,7 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
                       {type.icon}
                     </div>
                     <div className="text-sm font-medium">{type.label}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{type.description}</div>
                   </button>
                 ))}
               </div>
@@ -1121,6 +1568,13 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
               {/* General cargo info */}
               <div className="space-y-4">
                 <h3 className="font-semibold">Allgemeine Frachtdaten</h3>
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                  <div className="font-medium">{cargoTypeConfig.label}: {cargoTypeConfig.dimensionLabel}</div>
+                  <div className="mt-1 text-muted-foreground">{cargoTypeConfig.example}</div>
+                  <div className="mt-2 text-muted-foreground">
+                    Preisberechnung nutzt aktuell: {cargoSummaryLine || `${quoteWeightKg} kg`}
+                  </div>
+                </div>
                 <div className="space-y-2">
                   <Label>Beschreibung</Label>
                   <Textarea
@@ -1130,44 +1584,46 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
                     rows={3}
                   />
                 </div>
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <Label>Gewicht (kg)</Label>
-                    <Input
-                      type="number"
-                      value={formData.weight}
-                      onChange={(e) => updateFormData('weight', e.target.value)}
-                      placeholder="500"
-                    />
+                {['pallet', 'standard'].includes(cargoTypeConfig.measurementMode) && (
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div className="space-y-2">
+                      <Label>{cargoTypeConfig.weightLabel}</Label>
+                      <Input
+                        type="number"
+                        value={formData.weight}
+                        onChange={(e) => updateFormData('weight', e.target.value)}
+                        placeholder="500"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Länge (cm)</Label>
+                      <Input
+                        type="number"
+                        value={formData.length}
+                        onChange={(e) => updateFormData('length', e.target.value)}
+                        placeholder="120"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Breite (cm)</Label>
+                      <Input
+                        type="number"
+                        value={formData.width}
+                        onChange={(e) => updateFormData('width', e.target.value)}
+                        placeholder="80"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Höhe (cm)</Label>
+                      <Input
+                        type="number"
+                        value={formData.height}
+                        onChange={(e) => updateFormData('height', e.target.value)}
+                        placeholder="100"
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Länge (cm)</Label>
-                    <Input
-                      type="number"
-                      value={formData.length}
-                      onChange={(e) => updateFormData('length', e.target.value)}
-                      placeholder="120"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Breite (cm)</Label>
-                    <Input
-                      type="number"
-                      value={formData.width}
-                      onChange={(e) => updateFormData('width', e.target.value)}
-                      placeholder="80"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Höhe (cm)</Label>
-                    <Input
-                      type="number"
-                      value={formData.height}
-                      onChange={(e) => updateFormData('height', e.target.value)}
-                      placeholder="100"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           )}
@@ -1378,7 +1834,7 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
                   </div>
                   <div className="font-medium">{formData.description || 'Paletten'}</div>
                   <div className="text-sm text-muted-foreground">
-                    {formData.weight || '500'} kg • {formData.length || '120'} × {formData.width || '80'} × {formData.height || '100'} cm
+                    {cargoSummaryLine || `${quoteWeightKg.toLocaleString('de-DE')} kg`}
                   </div>
                 </div>
 
@@ -1414,7 +1870,7 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
                 <Info className="w-4 h-4 text-muted-foreground mt-0.5" />
                 <div className="text-sm text-muted-foreground">
                   Mit dem Erstellen stimmen Sie unseren AGB zu. CargoBit vermittelt den Transport, 
-                  ist aber nicht Vertragspartner. Die Zahlung wird über unser Escrow-System gesichert.
+                  ist aber nicht Vertragspartner. Die Zahlung wird über unseren Zahlungsschutz gesichert.
                 </div>
               </div>
             </div>
@@ -1422,6 +1878,11 @@ export function TransportForm({ open, onOpenChange, onSubmit, initialData }: Tra
         </div>
 
         {/* Footer */}
+        {submitError ? (
+          <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-700">
+            {submitError}
+          </div>
+        ) : null}
         <div className="flex justify-between pt-4 border-t">
           <Button
             variant="outline"

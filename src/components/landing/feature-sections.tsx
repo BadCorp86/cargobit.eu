@@ -117,7 +117,7 @@ export function FeatureSection() {
           {[
             { icon: Zap, title: 'Matching', desc: 'KI-basiertes Matching' },
             { icon: MapPin, title: 'Live Tracking', desc: 'Echtzeit-Ortung' },
-            { icon: Shield, title: 'Sichere Zahlung', desc: 'Escrow-System' },
+            { icon: Shield, title: 'Sichere Zahlung', desc: 'Zahlungsschutz' },
             { icon: FileText, title: 'Dokumente', desc: 'Automatisch generiert' },
             { icon: HeadphonesIcon, title: 'Support', desc: '24/7 verfügbar' },
           ].map((item, idx) => (

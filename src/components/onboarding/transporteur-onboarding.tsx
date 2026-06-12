@@ -60,7 +60,7 @@ interface OnboardingData {
   driverLicense: File | null;
   insurance: File | null;
   
-  // Section 5 - Konto & Wallet
+  // Section 5 - Konto & Zahlungsschutz
   bankIban: string;
   bankHolder: string;
   bankBic: string;
@@ -644,7 +644,7 @@ export function TransporteurOnboarding() {
         <div className="w-16 h-16 rounded-2xl bg-yellow-500/10 flex items-center justify-center mx-auto mb-4">
           <Wallet className="w-8 h-8 text-yellow-500" />
         </div>
-        <h3 className="text-xl font-semibold">Konto & Wallet</h3>
+        <h3 className="text-xl font-semibold">Konto & Zahlungsschutz</h3>
         <p className="text-muted-foreground">Bankverbindung für Auszahlungen</p>
       </div>
 
@@ -689,17 +689,17 @@ export function TransporteurOnboarding() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Euro className="w-5 h-5" />
-              Wallet & Gebühren
+              Zahlungsschutz & Gebühren
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-muted-foreground">Provision</p>
-                <p className="font-semibold">14% (Free Plan)</p>
+                <p className="font-semibold">14% im Start-Modell</p>
               </div>
               <div>
-                <p className="text-muted-foreground">Wallet-Gebühr</p>
+                <p className="text-muted-foreground">Zahlungsschutz-Gebühr</p>
                 <p className="font-semibold">3,5% bei Ein-/Auszahlung</p>
               </div>
             </div>
@@ -712,7 +712,7 @@ export function TransporteurOnboarding() {
                   onCheckedChange={checked => updateData({ acceptWalletFees: checked as boolean })}
                 />
                 <Label htmlFor="acceptWalletFees" className="text-sm leading-tight">
-                  Ich akzeptiere die Wallet-Gebühren (3,5% für Ein- und Auszahlungen)
+                  Ich akzeptiere die Zahlungsschutz-Gebühren (3,5% für Zahlungsabwicklung und Auszahlungen)
                 </Label>
               </div>
 
@@ -734,7 +734,7 @@ export function TransporteurOnboarding() {
 
         <div className="bg-green-50 dark:bg-green-950/30 rounded-lg p-4">
           <p className="text-sm text-green-700 dark:text-green-300">
-            <strong>Ihre Vorteile:</strong> Schnelle Auszahlungen, Escrow-Schutz für alle Aufträge, 
+            <strong>Ihre Vorteile:</strong> Schnelle Auszahlungen, Zahlungsschutz für alle Aufträge,
             transparente Abrechnung in Echtzeit.
           </p>
         </div>

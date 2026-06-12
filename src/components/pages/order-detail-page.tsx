@@ -1,17 +1,23 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { RiskBadge, RiskBar } from '@/components/cargobit/risk-badge';
 import { InsuranceTier } from '@/components/cargobit/insurance-widget';
 import { TransportCard } from '@/components/cargobit/transport-card';
 import { BannerAd } from '@/components/ads/banner-ad';
+import { LiveTrackingCard } from '@/components/tracking/live-tracking-card';
 import { useAuthStore, type UserRole } from '@/lib/auth-store';
 import {
   ArrowLeft,
+  BriefcaseBusiness,
   MapPin,
   Calendar,
   Package,
@@ -143,6 +149,56 @@ interface PayoutReleaseView {
 
 type OrderViewerRole = 'shipper' | 'carrier' | 'driver' | 'dispatcher' | 'admin' | 'support' | 'marketer';
 
+interface JobDetailView {
+  id: string;
+  status: string;
+  dbStatus?: string;
+  pickupAddress: {
+    street: string;
+    postalCode: string;
+    city: string;
+    country: string;
+  };
+  deliveryAddress: {
+    street: string;
+    postalCode: string;
+    city: string;
+    country: string;
+  };
+  pickupDatetime: string;
+  deliveryDatetime?: string;
+  description?: string;
+  weightKg?: number;
+  volumeM3?: number;
+  transportType?: string;
+  cargoDetails?: Record<string, unknown> | null;
+  shipperBudget?: number;
+  agreedPrice?: number;
+  currency?: string;
+  bids?: Array<{
+    id: string;
+    price: number;
+    status: string;
+  }>;
+}
+
+interface BidView {
+  id: string;
+  jobId: string;
+  transporterId: string;
+  transporterName?: string;
+  transporterRating: number;
+  vehicleId: string;
+  vehicleType: string;
+  price: number;
+  currency: string;
+  message?: string;
+  estimatedDuration?: number;
+  status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
+  createdAt: string;
+  validUntil?: string;
+}
+
 function getOrderViewerRole(role?: UserRole): OrderViewerRole {
   switch (role) {
     case 'ADMIN':
@@ -164,12 +220,33 @@ function getOrderViewerRole(role?: UserRole): OrderViewerRole {
   }
 }
 
+function getOrderViewerOverride(value?: string | null): OrderViewerRole | null {
+  const allowed: OrderViewerRole[] = ['shipper', 'carrier', 'driver', 'dispatcher', 'admin', 'support', 'marketer'];
+  return allowed.includes(value as OrderViewerRole) ? value as OrderViewerRole : null;
+}
+
+function canUserRoleSubmitBid(role?: UserRole) {
+  return role === 'CARRIER' || role === 'DISPATCHER' || role === 'DRIVER_SELF_EMPLOYED';
+}
+
 function isInternalViewer(viewer: OrderViewerRole) {
   return viewer === 'admin' || viewer === 'support';
 }
 
 function getWalletHref(viewer: OrderViewerRole) {
   return viewer === 'driver' ? '/driver/earnings' : '/carrier/wallet';
+}
+
+function authRequestHeaders(user: ReturnType<typeof useAuthStore.getState>['user']): Record<string, string> {
+  return user?.id
+    ? {
+        Authorization: `Bearer local-dev-${user.id}`,
+        'x-user-id': user.id,
+        'x-user-email': user.email,
+        'x-user-role': user.role,
+        'x-user-roles': user.role,
+      }
+    : {};
 }
 
 // ========================================
@@ -179,15 +256,19 @@ interface OrderHeaderProps {
   orderId: string;
   status: string;
   risk: 'green' | 'yellow' | 'red';
+  backHref: string;
+  backLabel?: string;
 }
 
-function OrderHeader({ orderId, status, risk }: OrderHeaderProps) {
+function OrderHeader({ orderId, status, risk, backHref, backLabel = 'Zurück' }: OrderHeaderProps) {
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" className="gap-2">
-          <ArrowLeft className="w-4 h-4" />
-          Zurück
+        <Button asChild variant="ghost" size="sm" className="gap-2 text-white hover:bg-white/10 hover:text-white">
+          <a href={backHref}>
+            <ArrowLeft className="w-4 h-4" />
+            {backLabel}
+          </a>
         </Button>
         <div>
           <div className="flex items-center gap-3">
@@ -204,7 +285,14 @@ function OrderHeader({ orderId, status, risk }: OrderHeaderProps) {
 // ========================================
 // Order Info
 // ========================================
-function OrderInfo() {
+function OrderInfo({ job }: { job?: JobDetailView | null }) {
+  const pickup = job?.pickupAddress;
+  const delivery = job?.deliveryAddress;
+  const cargoSummary = getCargoSummary(job);
+  const transportType = formatTransportType(job?.transportType);
+  const price = job?.agreedPrice || job?.shipperBudget || 850;
+  const currency = job?.currency || 'EUR';
+
   return (
     <Card>
       <CardHeader>
@@ -218,14 +306,18 @@ function OrderInfo() {
         <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
           <div className="flex-1">
             <div className="text-sm text-muted-foreground">Abholort</div>
-            <div className="text-lg font-semibold">Berlin, Deutschland</div>
-            <div className="text-sm text-muted-foreground">Musterstraße 123, 10115</div>
+            <div className="text-lg font-semibold">{pickup ? `${pickup.city}, ${pickup.country}` : 'Berlin, Deutschland'}</div>
+            <div className="text-sm text-muted-foreground">
+              {pickup ? [pickup.street, pickup.postalCode].filter(Boolean).join(', ') : 'Musterstraße 123, 10115'}
+            </div>
           </div>
           <ArrowRight className="w-6 h-6 text-muted-foreground" />
           <div className="flex-1 text-right">
             <div className="text-sm text-muted-foreground">Zielort</div>
-            <div className="text-lg font-semibold">München, Deutschland</div>
-            <div className="text-sm text-muted-foreground">Beispielweg 456, 80331</div>
+            <div className="text-lg font-semibold">{delivery ? `${delivery.city}, ${delivery.country}` : 'München, Deutschland'}</div>
+            <div className="text-sm text-muted-foreground">
+              {delivery ? [delivery.street, delivery.postalCode].filter(Boolean).join(', ') : 'Beispielweg 456, 80331'}
+            </div>
           </div>
         </div>
 
@@ -235,28 +327,28 @@ function OrderInfo() {
             <div className="text-sm text-muted-foreground">Abholdatum</div>
             <div className="font-medium flex items-center gap-2">
               <Calendar className="w-4 h-4" />
-              15.04.2024
+              {job?.pickupDatetime ? formatDate(job.pickupDatetime) : '15.04.2024'}
             </div>
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Lieferdatum</div>
             <div className="font-medium flex items-center gap-2">
               <Calendar className="w-4 h-4" />
-              16.04.2024
+              {job?.deliveryDatetime ? formatDate(job.deliveryDatetime) : '16.04.2024'}
             </div>
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Frachtart</div>
             <div className="font-medium flex items-center gap-2">
               <Package className="w-4 h-4" />
-              Paletten
+              {transportType}
             </div>
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Gewicht</div>
             <div className="font-medium flex items-center gap-2">
               <Truck className="w-4 h-4" />
-              2.500 kg
+              {job?.weightKg ? `${job.weightKg.toLocaleString('de-DE')} kg` : '2.500 kg'}
             </div>
           </div>
         </div>
@@ -267,22 +359,26 @@ function OrderInfo() {
         <div>
           <div className="text-sm text-muted-foreground mb-2">Frachtbeschreibung</div>
           <p className="text-sm">
-            10 Europaletten mit Elektronik-Komponenten. Empfindliche Ware, trocken lagern.
-            Stapelbar bis max. 3 Lagen. Wert ca. 45.000 €.
+            {job?.description || '10 Europaletten mit Elektronik-Komponenten. Empfindliche Ware, trocken lagern. Stapelbar bis max. 3 Lagen. Wert ca. 45.000 €.'}
           </p>
+          {cargoSummary ? (
+            <div className="mt-3 rounded-lg border border-primary/15 bg-primary/5 p-3 text-sm text-muted-foreground">
+              {cargoSummary}
+            </div>
+          ) : null}
         </div>
 
         {/* Price */}
         <div className="flex items-center justify-between p-4 bg-primary/5 rounded-lg">
           <div>
             <div className="text-sm text-muted-foreground">Transportpreis</div>
-            <div className="text-2xl font-bold">850,00 €</div>
+            <div className="text-2xl font-bold">{formatMoney(price, currency)}</div>
           </div>
           <div className="text-right">
             <div className="text-sm text-muted-foreground">Zahlungsart</div>
             <div className="font-medium flex items-center gap-2">
               <CreditCard className="w-4 h-4" />
-              Escrow
+              Zahlungsschutz
             </div>
           </div>
         </div>
@@ -496,6 +592,17 @@ function OrderCashFlow({
   const canManualRelease = viewer === 'admin';
   const canOpenOwnWallet = viewer === 'carrier' || viewer === 'dispatcher';
   const showInternalData = isInternalViewer(viewer);
+  const requestHeaders = React.useMemo<Record<string, string>>(() => {
+    if (!userId) return {};
+
+    return {
+      'x-user-id': userId,
+      ...(userRole ? {
+        'x-user-role': userRole,
+        'x-user-roles': userRole,
+      } : {}),
+    };
+  }, [userId, userRole]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -507,7 +614,9 @@ function OrderCashFlow({
         const [lifecycleResponse, invoiceResponse, releaseResponse] = await Promise.all([
           fetch(`/api/orders/lifecycle?orderId=${encodeURIComponent(orderId)}`),
           fetch(`/api/orders/${encodeURIComponent(orderId)}/invoice?amount=850`),
-          fetch(`/api/orders/${encodeURIComponent(orderId)}/payout/release?amount=850`),
+          fetch(`/api/orders/${encodeURIComponent(orderId)}/payout/release?amount=850`, {
+            headers: requestHeaders,
+          }),
         ]);
         const lifecyclePayload = await lifecycleResponse.json();
         const invoicePayload = await invoiceResponse.json();
@@ -546,7 +655,7 @@ function OrderCashFlow({
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [orderId, requestHeaders]);
 
   const activeStage = lifecycle.find((stage) => stage.status === 'active') || lifecycle.find((stage) => stage.status === 'next');
 
@@ -612,7 +721,7 @@ function OrderCashFlow({
     } catch {
       setPayoutRelease({
         success: false,
-        message: 'Wallet-Freigabe konnte lokal nicht ausgefuehrt werden.',
+        message: 'Zahlungsfreigabe konnte lokal nicht ausgeführt werden.',
       });
     } finally {
       setReleasing(false);
@@ -633,7 +742,7 @@ function OrderCashFlow({
             </CardDescription>
           </div>
           <Badge className={source === 'database' ? 'bg-[#2ECC71] text-[#06121C]' : 'bg-[#00D4FF]/15 text-[#00D4FF]'}>
-            {showInternalData ? (source === 'database' ? 'Live Daten' : 'Demo/Fallback') : 'Wallet geschützt'}
+            {showInternalData ? (source === 'database' ? 'Live Daten' : 'Demo/Fallback') : 'Zahlungsschutz aktiv'}
           </Badge>
         </div>
       </CardHeader>
@@ -696,7 +805,7 @@ function OrderCashFlow({
                     <Button asChild className="bg-white text-[#06121C] hover:bg-white/85">
                       <a href={getWalletHref(viewer)}>
                         <Wallet className="h-4 w-4" />
-                        Eigenes Wallet öffnen
+                        Auszahlungen öffnen
                       </a>
                     </Button>
                   ) : null}
@@ -761,10 +870,10 @@ function PayoutReleasePanel({
   const currency = payoutRelease.release?.currency || payoutRelease.wallet?.currency || 'EUR';
   const showInternalData = isInternalViewer(viewer);
   const title = isReleased
-    ? 'Wallet-Guthaben freigegeben'
+    ? 'Auftragszahlung freigegeben'
     : releaseStatus === 'ready'
       ? 'Automatische Freigabe vorbereitet'
-      : 'Wallet-Freigabe blockiert';
+      : 'Zahlungsfreigabe blockiert';
 
   return (
     <div className={`mt-4 rounded-2xl border p-4 text-sm ${
@@ -779,7 +888,7 @@ function PayoutReleasePanel({
           </p>
           <p className="mt-1 text-white/55">
             {isReleased
-              ? `${formatMoney(payoutRelease.release?.settlement.carrierWalletCredit || 0, currency)} wurden dem Transporteur-Wallet gutgeschrieben.`
+              ? `${formatMoney(payoutRelease.release?.settlement.carrierWalletCredit || 0, currency)} wurden zur Auszahlung freigegeben.`
               : releaseStatus === 'ready'
                 ? 'Die automatische Freigabe erfolgt nach POD, Rechnung und abgelaufener 24-Werktagsstunden-Frist.'
               : payoutRelease.message || payoutRelease.release?.blockedReasons.join(' ')}
@@ -787,7 +896,7 @@ function PayoutReleasePanel({
         </div>
         {payoutRelease.wallet ? (
           <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-right">
-            <p className="text-xs text-white/40">Wallet Saldo</p>
+            <p className="text-xs text-white/40">Freigegeben</p>
             <p className="font-semibold text-white">{formatMoney(payoutRelease.wallet.balance, payoutRelease.wallet.currency)}</p>
           </div>
         ) : null}
@@ -810,7 +919,7 @@ function PayoutReleasePanel({
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             {viewer === 'carrier' || viewer === 'dispatcher' || showInternalData ? (
               <PayoutMetric
-                label="Transporteur Wallet"
+                label="Transporteur-Auszahlung"
                 value={formatMoney(payoutRelease.release.settlement.carrierWalletCredit, currency)}
               />
             ) : null}
@@ -834,7 +943,7 @@ function PayoutReleasePanel({
             </p>
           ) : (
             <p className="mt-3 text-xs leading-5 text-white/45">
-              Bankauszahlung ist ausschliesslich im eigenen Wallet-Bereich moeglich.
+              Bankauszahlung ist ausschließlich im eigenen Auszahlungsbereich möglich.
             </p>
           )}
         </>
@@ -930,7 +1039,7 @@ function InvoiceSummary({ invoice }: { invoice: InvoiceDraftView | null }) {
           <span className="text-lg font-bold text-[#2ECC71]">{formatMoney(invoice.totals.gross, invoice.currency)}</span>
         </div>
         <p className="mt-2 text-xs leading-5 text-white/50">
-          Wallet geschützt · Auszahlung nach POD · Risk Gate aktiv
+          Zahlungsschutz aktiv · Auszahlung nach POD · Risk Gate aktiv
         </p>
       </div>
     </div>
@@ -982,6 +1091,516 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatTransportType(type?: string) {
+  const labels: Record<string, string> = {
+    PALLET: 'Paletten',
+    BULK: 'Schüttgut',
+    LIQUID: 'Flüssigkeiten',
+    OVERSIZE: 'Übergröße',
+    LOWLOADER: 'Tieflader',
+    CAR_TRANSPORT: 'Fahrzeugtransport',
+    COOLING: 'Kühltransport',
+    HAZMAT: 'Gefahrgut',
+    CONTAINER: 'Container',
+    pallet: 'Paletten',
+    bulk: 'Schüttgut',
+    liquid: 'Flüssigkeiten',
+    oversize: 'Übergröße',
+    lowloader: 'Tieflader',
+    car_transport: 'Fahrzeugtransport',
+    cooling: 'Kühltransport',
+    hazmat: 'Gefahrgut',
+    container: 'Container',
+  };
+  return type ? labels[type] || type : 'Paletten';
+}
+
+function formatStatus(status?: string, dbStatus?: string) {
+  const value = dbStatus || status;
+  const labels: Record<string, string> = {
+    CREATED: 'Entwurf',
+    PUBLISHED: 'Veröffentlicht',
+    ASSIGNED: 'Zugewiesen',
+    IN_TRANSIT: 'Unterwegs',
+    PICKUP_DONE: 'Abgeholt',
+    DELIVERY_DONE: 'Geliefert',
+    COMPLETED: 'Abgeschlossen',
+    CANCELLED: 'Storniert',
+    open: 'Offen',
+    matched: 'Veröffentlicht',
+    booked: 'Zugewiesen',
+    in_progress: 'Unterwegs',
+    completed: 'Abgeschlossen',
+    canceled: 'Storniert',
+  };
+  return value ? labels[value] || value : 'Offen';
+}
+
+function getCargoSummary(job?: JobDetailView | null) {
+  if (!job) return null;
+  const details = job.cargoDetails || {};
+  const directSummary = typeof details.summary === 'string' ? details.summary : null;
+  const normalized = details.normalized && typeof details.normalized === 'object'
+    ? details.normalized as { volumeM3?: number; weightKg?: number }
+    : null;
+  const parts = [
+    directSummary,
+    job.volumeM3 ? `${job.volumeM3.toLocaleString('de-DE')} m³` : normalized?.volumeM3 ? `${normalized.volumeM3.toLocaleString('de-DE')} m³` : null,
+    job.bids?.length ? `${job.bids.length} Angebot(e)` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' • ') : null;
+}
+
+function isDemoOrderId(orderId: string) {
+  return orderId.startsWith('mission_demo') || orderId.startsWith('demo') || orderId.startsWith('TR-');
+}
+
+function WalletTopupNotice({
+  orderId,
+  job,
+  user,
+  onPublished,
+}: {
+  orderId: string;
+  job?: JobDetailView | null;
+  user: ReturnType<typeof useAuthStore.getState>['user'];
+  onPublished?: () => void;
+}) {
+  const [publishing, setPublishing] = React.useState(false);
+  const [message, setMessage] = React.useState<string | null>(null);
+
+  if (!job || job.dbStatus !== 'CREATED') return null;
+
+  const reservedAmount = job.shipperBudget || job.agreedPrice || 0;
+  const walletHref = `/shipper/wallet?amount=${encodeURIComponent(String(Math.ceil(reservedAmount)))}&returnTo=${encodeURIComponent(`/orders/${orderId}`)}`;
+
+  const publishJob = async () => {
+    if (!user?.id) {
+      setMessage('Bitte als Auftraggeber anmelden, um den Auftrag zu veröffentlichen.');
+      return;
+    }
+
+    setPublishing(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(orderId)}/publish`, {
+        method: 'POST',
+        headers: authRequestHeaders(user),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Auftrag konnte nicht veröffentlicht werden.');
+
+      setMessage('Auftrag wurde veröffentlicht und ist jetzt im Marketplace sichtbar.');
+      onPublished?.();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Auftrag konnte nicht veröffentlicht werden.');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  return (
+    <Card className="border-[#F39C12]/25 bg-[#F39C12]/10 text-white shadow-lg shadow-[#F39C12]/10">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Wallet className="h-5 w-5 text-[#F39C12]" />
+          Auftrag als Entwurf gespeichert
+        </CardTitle>
+        <CardDescription className="text-white/65">
+          Der Auftrag geht erst online, wenn die auftragsbezogene Zahlung für KI-Preis und Gebühren vorbereitet werden kann.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-white/55">Aktuell geplanter Zahlungsschutz-Betrag</p>
+            <p className="text-2xl font-bold">{formatMoney(reservedAmount, job.currency || 'EUR')}</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button asChild className="bg-[#F39C12] text-[#06121C] hover:bg-[#d8890f]">
+              <a href={walletHref}>Zahlung vorbereiten</a>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={publishJob}
+              disabled={publishing}
+              className="border-white/15 bg-white/[0.04] text-white hover:bg-white/10"
+            >
+              {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Auftrag veröffentlichen
+            </Button>
+          </div>
+        </div>
+        {message ? (
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-white/65">
+            {message}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function OrderDataError({ message }: { message: string }) {
+  return (
+    <Card className="border-[#E74C3C]/25 bg-[#E74C3C]/10 text-white">
+      <CardContent className="flex items-start gap-3 p-4">
+        <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#E74C3C]" />
+        <div>
+          <p className="font-medium">Auftragsdaten konnten nicht geladen werden.</p>
+          <p className="mt-1 text-sm text-white/60">{message}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OrderBidsPanel({
+  orderId,
+  job,
+  viewer,
+  user,
+  onJobChanged,
+  panelRef,
+}: {
+  orderId: string;
+  job?: JobDetailView | null;
+  viewer: OrderViewerRole;
+  user: ReturnType<typeof useAuthStore.getState>['user'];
+  onJobChanged?: () => void;
+  panelRef?: React.RefObject<HTMLDivElement | null>;
+}) {
+  const [bids, setBids] = React.useState<BidView[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [acceptingBidId, setAcceptingBidId] = React.useState<string | null>(null);
+  const [price, setPrice] = React.useState(() => String(Math.round((job?.shipperBudget || 850) * 0.95)));
+  const [estimatedDuration, setEstimatedDuration] = React.useState('480');
+  const [validUntilHours, setValidUntilHours] = React.useState('24');
+  const [message, setMessage] = React.useState('Ich kann den Transport zuverlässig übernehmen.');
+  const [feedback, setFeedback] = React.useState<string | null>(null);
+  const [submittedBidId, setSubmittedBidId] = React.useState<string | null>(null);
+  const isDemoOrder = isDemoOrderId(orderId);
+  const canSubmitBid = viewer === 'carrier' || viewer === 'dispatcher' || viewer === 'driver';
+  const userCanSubmitBid = canUserRoleSubmitBid(user?.role);
+  const showBidForm = canSubmitBid && (!user?.id || userCanSubmitBid);
+  const canAcceptBid = viewer === 'shipper';
+  const minimumPrice = job?.shipperBudget ? Math.round(job.shipperBudget * 0.8 * 100) / 100 : null;
+  const jobOpenForBids = !isDemoOrder && (!job || job.dbStatus === 'PUBLISHED');
+  const parsedPrice = Number(price.replace(',', '.'));
+  const priceIsValid = Number.isFinite(parsedPrice) && parsedPrice > 0;
+  const bidBlockedReason = isDemoOrder
+    ? 'Dieser Demo-Auftrag ist nicht buchbar. Angebote können nur auf echte veröffentlichte Aufträge abgegeben werden.'
+    : !jobOpenForBids
+      ? 'Dieser Auftrag ist aktuell nicht für Angebote geöffnet.'
+      : !user?.id
+        ? 'Bitte als Transporteur, Dispatcher oder selbstständiger Fahrer anmelden.'
+        : !userCanSubmitBid
+          ? 'Ihr aktuelles Konto darf keine Transportangebote abgeben.'
+          : !priceIsValid
+            ? 'Bitte einen gültigen Angebotspreis eintragen.'
+            : minimumPrice && parsedPrice < minimumPrice
+              ? `Das Angebot liegt unter der Anti-Dumping-Grenze von ${formatMoney(minimumPrice, job?.currency || 'EUR')}.`
+              : null;
+
+  const loadBids = React.useCallback(async () => {
+    if (!user?.id || isDemoOrderId(orderId)) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(orderId)}/bids`, {
+        headers: authRequestHeaders(user),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Angebote konnten nicht geladen werden.');
+      setBids(payload.bids || []);
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Angebote konnten nicht geladen werden.');
+    } finally {
+      setLoading(false);
+    }
+  }, [orderId, user]);
+
+  React.useEffect(() => {
+    void loadBids();
+  }, [loadBids]);
+
+  React.useEffect(() => {
+    if (job?.shipperBudget) {
+      setPrice(String(Math.round(job.shipperBudget * 0.95)));
+    }
+  }, [job?.shipperBudget]);
+
+  const submitBid = async () => {
+    if (!user?.id) {
+      setFeedback('Bitte anmelden, um ein Angebot abzugeben.');
+      return;
+    }
+
+    if (!userCanSubmitBid) {
+      setFeedback('Bitte als Transporteur, Dispatcher oder selbstständiger Fahrer anmelden, um ein Angebot abzugeben.');
+      return;
+    }
+
+    if (isDemoOrder) {
+      setFeedback('Dieser Demo-Auftrag ist nicht buchbar. Öffne einen echten veröffentlichten Auftrag aus dem Marketplace.');
+      return;
+    }
+
+    if (!priceIsValid) {
+      setFeedback('Bitte einen gültigen Angebotspreis eintragen.');
+      return;
+    }
+
+    if (minimumPrice && parsedPrice < minimumPrice) {
+      setFeedback(`Das Angebot liegt unter der Anti-Dumping-Grenze von ${formatMoney(minimumPrice, job?.currency || 'EUR')}.`);
+      return;
+    }
+
+    setSubmitting(true);
+    setFeedback(null);
+    setSubmittedBidId(null);
+
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(orderId)}/bids`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authRequestHeaders(user),
+        },
+        body: JSON.stringify({
+          price: parsedPrice,
+          message,
+          estimatedDuration: Number(estimatedDuration) || undefined,
+          validUntilHours: Number(validUntilHours) || 24,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || payload.error || 'Angebot konnte nicht abgegeben werden.');
+
+      setBids(payload.bids || []);
+      setSubmittedBidId(payload.bidId || null);
+      setFeedback('Angebot wurde abgegeben.');
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Angebot konnte nicht abgegeben werden.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const acceptBid = async (bidId: string) => {
+    if (!user?.id) return;
+
+    setAcceptingBidId(bidId);
+    setFeedback(null);
+
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(orderId)}/accept_bid`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authRequestHeaders(user),
+        },
+        body: JSON.stringify({ bid_id: bidId }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || payload.error || 'Angebot konnte nicht angenommen werden.');
+
+      setFeedback('Angebot wurde angenommen. Der Auftrag ist jetzt zugewiesen.');
+      await loadBids();
+      onJobChanged?.();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Angebot konnte nicht angenommen werden.');
+    } finally {
+      setAcceptingBidId(null);
+    }
+  };
+
+  return (
+    <Card ref={panelRef} className="border-white/10 bg-[#071927] text-white">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Send className="h-5 w-5 text-[#00D4FF]" />
+          Angebote
+        </CardTitle>
+        <CardDescription className="text-white/55">
+          Transporteure können den KI-Preis unterbieten, solange die Untergrenze gegen unrealistische Dumping-Angebote eingehalten wird.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {minimumPrice ? (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
+            KI-/Budgetpreis: <span className="font-semibold text-white">{formatMoney(job?.shipperBudget || 0, job?.currency || 'EUR')}</span>
+            {' · '}
+            Untergrenze: <span className="font-semibold text-[#F39C12]">{formatMoney(minimumPrice, job?.currency || 'EUR')}</span>
+            <span className="mt-1 block text-xs text-white/40">
+              Angebote darunter werden blockiert, damit keine unseriösen Preise in den Auftrag gelangen.
+            </span>
+          </div>
+        ) : null}
+
+        {isDemoOrder ? (
+          <div className="rounded-2xl border border-[#F39C12]/25 bg-[#F39C12]/10 p-4 text-sm text-[#F8D99A]">
+            Dieser Demo-Auftrag dient nur zur Ansicht des Ablaufs. Für echte Angebote muss der Auftrag aus
+            `/carrier/loads` kommen und den Status „Veröffentlicht“ haben.
+          </div>
+        ) : null}
+
+        {canSubmitBid && user?.id && !userCanSubmitBid ? (
+          <div className="rounded-2xl border border-[#F39C12]/25 bg-[#F39C12]/10 p-4 text-sm text-[#F8D99A]">
+            Sie sehen diese Seite in der Transporteur-Ansicht. Angebote abgeben können aber nur angemeldete
+            Transporteure, Dispatcher oder selbstständige Fahrer.
+          </div>
+        ) : null}
+
+        {showBidForm ? (
+          <div className="rounded-2xl border border-[#00D4FF]/20 bg-[#00D4FF]/10 p-4">
+            {!user?.id ? (
+              <div className="mb-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-white/60">
+                Zum Abgeben eines Angebots bitte als Transporteur, Dispatcher oder selbstständiger Fahrer anmelden.
+              </div>
+            ) : null}
+            <div className="grid gap-3 lg:grid-cols-[160px_160px_160px_1fr]">
+              <div className="space-y-2">
+                <Label htmlFor="bidPrice" className="text-white/70">Angebotspreis</Label>
+                <Input
+                  id="bidPrice"
+                  inputMode="decimal"
+                  value={price}
+                  onChange={(event) => setPrice(event.target.value)}
+                  disabled={!jobOpenForBids}
+                  className="border-white/10 bg-black/20 text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bidDuration" className="text-white/70">Dauer in Minuten</Label>
+                <Input
+                  id="bidDuration"
+                  inputMode="numeric"
+                  value={estimatedDuration}
+                  onChange={(event) => setEstimatedDuration(event.target.value)}
+                  disabled={!jobOpenForBids}
+                  className="border-white/10 bg-black/20 text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bidValidity" className="text-white/70">Gültigkeit in Stunden</Label>
+                <Input
+                  id="bidValidity"
+                  inputMode="numeric"
+                  value={validUntilHours}
+                  onChange={(event) => setValidUntilHours(event.target.value)}
+                  disabled={!jobOpenForBids}
+                  className="border-white/10 bg-black/20 text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bidMessage" className="text-white/70">Nachricht</Label>
+                <Textarea
+                  id="bidMessage"
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  disabled={!jobOpenForBids}
+                  className="min-h-20 border-white/10 bg-black/20 text-white"
+                />
+              </div>
+            </div>
+            {bidBlockedReason ? (
+              <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-white/60">
+                {bidBlockedReason}
+              </div>
+            ) : null}
+            <Button
+              type="button"
+              onClick={submitBid}
+              disabled={!jobOpenForBids || submitting || Boolean(bidBlockedReason)}
+              className="mt-4 bg-[#00D4FF] text-[#06121C] hover:bg-[#35DFFF]"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Angebot abgeben
+            </Button>
+          </div>
+        ) : null}
+
+        <div className="space-y-3">
+          {loading ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/55">
+              <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+              Angebote werden geladen
+            </div>
+          ) : bids.length ? (
+            bids.map((bid) => (
+              <div key={bid.id} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold">{bid.transporterName || 'Transporteur'}</p>
+                    <Badge className={bid.status === 'accepted' ? 'bg-[#2ECC71]/15 text-[#2ECC71]' : 'bg-white/10 text-white/70'}>
+                      {formatBidStatus(bid.status)}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-white/45">
+                    {bid.vehicleType} · Bewertung {bid.transporterRating.toFixed(1)} · {bid.message || 'Keine Nachricht'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <p className="text-xl font-bold">{formatMoney(bid.price, bid.currency)}</p>
+                  {canAcceptBid && bid.status === 'pending' ? (
+                    <Button
+                      type="button"
+                      onClick={() => acceptBid(bid.id)}
+                      disabled={acceptingBidId === bid.id}
+                      className="bg-[#2ECC71] text-[#06121C] hover:bg-[#27b765]"
+                    >
+                      {acceptingBidId === bid.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                      Annehmen
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/55">
+              Noch keine Angebote vorhanden.
+            </div>
+          )}
+        </div>
+
+        {feedback ? (
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-white/60">
+            {feedback}
+            {submittedBidId ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button asChild size="sm" className="bg-[#00D4FF] text-[#06121C] hover:bg-[#35DFFF]">
+                  <a href="/carrier/jobs?view=offers">
+                    Meine Angebote ansehen
+                  </a>
+                </Button>
+                <Button asChild size="sm" variant="outline" className="border-white/15 bg-white/[0.04] text-white hover:bg-white/10 hover:text-white">
+                  <a href="/carrier/loads">
+                    Weitere Aufträge suchen
+                  </a>
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function formatBidStatus(status: BidView['status']) {
+  const labels: Record<BidView['status'], string> = {
+    pending: 'Offen',
+    accepted: 'Angenommen',
+    rejected: 'Abgelehnt',
+    withdrawn: 'Zurückgezogen',
+  };
+  return labels[status];
+}
+
 // ========================================
 // Similar Orders
 // ========================================
@@ -1012,6 +1631,46 @@ function SimilarOrders() {
   );
 }
 
+function CarrierOrderSidebar({ onBidClick }: { onBidClick?: () => void }) {
+  return (
+    <Card className="border-white/10 bg-[#071927] text-white">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Truck className="h-5 w-5 text-[#00D4FF]" />
+          Transporteur-Aktion
+        </CardTitle>
+        <CardDescription className="text-white/55">
+          Prüfe Route, Untergrenze und Zahlungsschutz. Danach kannst du direkt ein Angebot abgeben.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Button type="button" className="w-full bg-[#00D4FF] text-[#06121C] hover:bg-[#35DFFF]" onClick={onBidClick}>
+          <Send className="h-4 w-4" />
+          Zum Angebot
+        </Button>
+        <Button asChild variant="outline" className="w-full border-white/15 bg-white/[0.04] text-white hover:bg-white/10 hover:text-white">
+          <a href="/carrier/jobs">
+            <BriefcaseBusiness className="h-4 w-4" />
+            Meine Aufträge
+          </a>
+        </Button>
+        <Button asChild variant="outline" className="w-full border-white/15 bg-white/[0.04] text-white hover:bg-white/10 hover:text-white">
+          <a href="/carrier/loads">
+            <ArrowLeft className="h-4 w-4" />
+            Weitere Aufträge
+          </a>
+        </Button>
+        <Button asChild variant="outline" className="w-full border-white/15 bg-white/[0.04] text-white hover:bg-white/10 hover:text-white">
+          <a href="/carrier/wallet">
+            <Wallet className="h-4 w-4" />
+            Wallet öffnen
+          </a>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ========================================
 // Footer Actions
 // ========================================
@@ -1019,7 +1678,7 @@ function DriverOrderView({ orderId }: { orderId: string }) {
   return (
     <main className="dark min-h-screen bg-[#06121C] py-6 text-white" style={{ colorScheme: 'dark' }}>
       <div className="mx-auto flex max-w-xl flex-col gap-5 px-4">
-        <OrderHeader orderId={orderId} status="Tour aktiv" risk="green" />
+        <OrderHeader orderId={orderId} status="Tour aktiv" risk="green" backHref="/driver/mobile" backLabel="Zur Fahreransicht" />
         <Card className="border-white/10 bg-[#071927] text-white">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1035,7 +1694,7 @@ function DriverOrderView({ orderId }: { orderId: string }) {
               <p className="text-xs uppercase tracking-[0.18em] text-white/35">Nächste Aktion</p>
               <p className="mt-2 text-lg font-semibold">POD / eCMR erfassen</p>
               <p className="mt-2 text-sm leading-6 text-white/55">
-                Lieferung bestaetigen, Fotos hochladen und digitale Signatur erfassen.
+                Lieferung bestätigen, Fotos hochladen und digitale Signatur erfassen.
               </p>
             </div>
             <Button asChild className="w-full bg-[#1C7ED6] text-white hover:bg-[#166BBB]">
@@ -1048,7 +1707,13 @@ function DriverOrderView({ orderId }: { orderId: string }) {
   );
 }
 
-function FooterActions({ viewer }: { viewer: OrderViewerRole }) {
+function FooterActions({
+  viewer,
+  onBidClick,
+}: {
+  viewer: OrderViewerRole;
+  onBidClick?: () => void;
+}) {
   const canAcceptOrder = viewer === 'carrier' || viewer === 'dispatcher';
   const canReportIssue = viewer === 'shipper';
   const canReview = isInternalViewer(viewer);
@@ -1077,7 +1742,7 @@ function FooterActions({ viewer }: { viewer: OrderViewerRole }) {
               Kontakt
             </Button>
             {canAcceptOrder ? (
-              <Button className="gap-2">
+              <Button className="gap-2" onClick={onBidClick}>
                 <CheckCircle2 className="w-4 h-4" />
                 Angebot abgeben
               </Button>
@@ -1110,7 +1775,84 @@ interface OrderDetailPageProps {
 
 export default function OrderDetailPage({ orderId = 'TR-12345' }: OrderDetailPageProps) {
   const user = useAuthStore((state) => state.user);
-  const viewer = getOrderViewerRole(user?.role);
+  const searchParams = useSearchParams();
+  const viewer = getOrderViewerOverride(searchParams.get('viewer')) || getOrderViewerRole(user?.role);
+  const [job, setJob] = React.useState<JobDetailView | null>(null);
+  const [jobLoading, setJobLoading] = React.useState(false);
+  const [jobError, setJobError] = React.useState<string | null>(null);
+  const [jobReloadKey, setJobReloadKey] = React.useState(0);
+  const bidsPanelRef = React.useRef<HTMLDivElement | null>(null);
+
+  const scrollToBids = React.useCallback(() => {
+    bidsPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const backTarget = React.useMemo(() => {
+    if (viewer === 'carrier' || viewer === 'dispatcher') {
+      return { href: '/carrier/loads', label: 'Zurück zu Aufträgen' };
+    }
+    if (viewer === 'driver') {
+      return { href: '/driver/mobile', label: 'Zur Fahreransicht' };
+    }
+    if (viewer === 'admin' || viewer === 'support') {
+      return { href: '/admin/jobs', label: 'Zur Admin-Auftragsliste' };
+    }
+    return { href: '/dashboard', label: 'Zurück zum Dashboard' };
+  }, [viewer]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadJob() {
+      await Promise.resolve();
+
+      if (!user?.id || isDemoOrderId(orderId)) {
+        if (!cancelled) {
+          setJob(null);
+          setJobError(null);
+          setJobLoading(false);
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setJobLoading(true);
+        setJobError(null);
+      }
+
+      try {
+        const response = await fetch(`/api/jobs/${encodeURIComponent(orderId)}`, {
+          headers: {
+            'x-user-id': user.id,
+            'x-user-email': user.email,
+            'x-user-role': user.role,
+          },
+        });
+        const payload = await response.json();
+
+        if (cancelled) return;
+
+        if (!response.ok || !payload.job) {
+          throw new Error(payload.error || 'Auftrag nicht gefunden oder Zugriff verweigert.');
+        }
+
+        setJob(payload.job);
+      } catch (error) {
+        if (!cancelled) {
+          setJob(null);
+          setJobError(error instanceof Error ? error.message : 'Auftrag konnte nicht geladen werden.');
+        }
+      } finally {
+        if (!cancelled) setJobLoading(false);
+      }
+    }
+
+    void loadJob();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [jobReloadKey, orderId, user?.email, user?.id, user?.role]);
 
   if (viewer === 'driver') {
     return <DriverOrderView orderId={orderId} />;
@@ -1120,15 +1862,44 @@ export default function OrderDetailPage({ orderId = 'TR-12345' }: OrderDetailPag
     <main className="dark min-h-screen bg-[#06121C] py-8 text-white" style={{ colorScheme: 'dark' }}>
       <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4">
         {/* Header */}
-        <OrderHeader orderId={orderId} status="Offen" risk="green" />
+        <OrderHeader
+          orderId={orderId}
+          status={jobLoading ? 'Wird geladen' : formatStatus(job?.status, job?.dbStatus)}
+          risk="green"
+          backHref={backTarget.href}
+          backLabel={backTarget.label}
+        />
 
         <OrderCashFlow orderId={orderId} viewer={viewer} userId={user?.id} userRole={user?.role} />
+
+        {jobError ? <OrderDataError message={jobError} /> : null}
+        <WalletTopupNotice
+          orderId={orderId}
+          job={job}
+          user={user}
+          onPublished={() => setJobReloadKey((value) => value + 1)}
+        />
+
+        <LiveTrackingCard
+          transportId={orderId}
+          userId={user?.id}
+          userRole={user?.role}
+          internalView={isInternalViewer(viewer)}
+        />
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Main Info */}
           <div className="lg:col-span-2 flex flex-col gap-6">
-            <OrderInfo />
+            <OrderInfo job={job} />
+            <OrderBidsPanel
+              orderId={orderId}
+              job={job}
+              viewer={viewer}
+              user={user}
+              onJobChanged={() => setJobReloadKey((value) => value + 1)}
+              panelRef={bidsPanelRef}
+            />
             {(viewer === 'admin' || viewer === 'support' || viewer === 'shipper') ? <RiskSection /> : null}
             {(viewer === 'admin' || viewer === 'support' || viewer === 'shipper') ? <InsuranceBox /> : null}
           </div>
@@ -1136,12 +1907,16 @@ export default function OrderDetailPage({ orderId = 'TR-12345' }: OrderDetailPag
           {/* Right Column - Sidebar */}
           <aside className="lg:col-span-1 flex flex-col gap-4">
             <BannerAd slot="order-detail-sidebar" />
-            <SimilarOrders />
+            {viewer === 'carrier' || viewer === 'dispatcher' ? (
+              <CarrierOrderSidebar onBidClick={scrollToBids} />
+            ) : (
+              <SimilarOrders />
+            )}
           </aside>
         </div>
 
         {/* Footer Actions */}
-        <FooterActions viewer={viewer} />
+        <FooterActions viewer={viewer} onBidClick={scrollToBids} />
       </div>
     </main>
   );

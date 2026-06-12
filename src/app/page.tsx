@@ -12,7 +12,6 @@ import {
   Package,
   Globe,
   Shield,
-  Wallet,
   Users,
   Star,
   ArrowRight,
@@ -40,29 +39,51 @@ import {
 import { useAuthStore } from '@/lib/auth-store';
 import { AuthModal } from '@/components/auth/auth-modal';
 import { Dashboard } from '@/components/dashboard/dashboard';
-import { TransportForm, type TransportFormInitialData } from '@/components/transport/transport-form';
+import { TransportForm, type TransportFormInitialData, type TransportFormSubmitPayload } from '@/components/transport/transport-form';
 import { PartnerPortal } from '@/components/partner/partner-portal';
 import { TransporteurOnboarding } from '@/components/onboarding/transporteur-onboarding';
 import { ShipperOnboarding } from '@/components/onboarding/shipper-onboarding';
 import { getSubscriptionPlanConfig } from '@/lib/billing/plans';
+import {
+  CARGO_TYPE_CONFIGS,
+  CARGO_TYPE_LABELS,
+  CONTAINER_VOLUME_M3,
+  LIQUID_UNIT_OPTIONS,
+  VEHICLE_TYPE_OPTIONS,
+  getCargoTypeConfig,
+  type CargoTransportType,
+} from '@/lib/cargo-types';
 
 const PUBLIC_PRICING_PLANS = getSubscriptionPlanConfig();
-const PUBLIC_PRICING_ORDER = ['free', 'starter', 'professional', 'enterprise'] as const;
+const PUBLIC_PRICING_ORDER = ['free', 'starter'] as const;
 const PUBLIC_PLAN_DESCRIPTIONS: Record<(typeof PUBLIC_PRICING_ORDER)[number], string> = {
-  free: 'Kostenlos testen mit begrenzter Fahrtenanzahl und höheren Nutzungsgebühren.',
-  starter: 'Für kleine Gewerbe, selbstständige Transporteure und regelmäßige Einzelaufträge.',
-  professional: 'Für aktive Speditionen, Dispatcher und Teams mit höherem Transportvolumen.',
-  enterprise: 'Für größere Unternehmen, Partner-Integrationen und individuelle Prozessanforderungen.',
+  free: 'Für private Einzelaufträge, Tests und gelegentliche Frachtanfragen ohne Grundgebühr.',
+  starter: 'Für kleine Gewerbe, regelmäßige Verlader, Transporteure und Speditionen mit planbarem Volumen.',
 };
 
 type QuickQuoteForm = {
   pickupCity: string;
   deliveryCity: string;
-  transportType: 'pallet' | 'oversize' | 'cooling' | 'hazmat' | 'car_transport' | 'container' | 'lowloader';
+  transportType: CargoTransportType;
   weightKg: string;
   lengthCm: string;
   widthCm: string;
   heightCm: string;
+  bulkMaterial: string;
+  bulkVolumeM3: string;
+  bulkDensityKgM3: string;
+  liquidProduct: string;
+  liquidAmount: string;
+  liquidAmountUnit: 'liter' | 'm3';
+  liquidContainerType: string;
+  vehicleSubtype: string;
+  vehicleLengthM: string;
+  vehicleWidthM: string;
+  vehicleHeightM: string;
+  vehicleWeightKg: string;
+  vehicleCount: string;
+  vehicleCondition: string;
+  containerType: string;
   cargoValueEur: string;
 };
 
@@ -80,20 +101,12 @@ type QuickQuoteResult = {
   };
 };
 
-const SPECIAL_TRANSPORT_LABELS: Record<QuickQuoteForm['transportType'], string> = {
-  pallet: 'Paletten / Standardfracht',
-  oversize: 'Übergröße',
-  cooling: 'Kühltransport',
-  hazmat: 'Gefahrgut',
-  car_transport: 'Fahrzeugtransport',
-  container: 'Container',
-  lowloader: 'Tieflader',
-};
+const SPECIAL_TRANSPORT_LABELS = CARGO_TYPE_LABELS;
 
 const FEEDBACK_CATEGORIES = [
   'Funktion fehlt',
   'Bedienbarkeit',
-  'Preis & Wallet',
+  'Preis & Zahlungsschutz',
   'Transportprozess',
   'Verifizierung',
   'Sonstiges',
@@ -123,14 +136,14 @@ const SEO_FAQS = [
       'Transporteure und Speditionen können Angebote abgeben und den empfohlenen Preis unterbieten, solange das Angebot plausibel bleibt und nicht unter die Anti-Dumping- beziehungsweise Mindestpreislogik fällt.',
   },
   {
-    question: 'Wie funktioniert die Wallet-Zahlung?',
+    question: 'Wie funktioniert der Zahlungsschutz?',
     answer:
-      'Der Verlader lädt das Wallet auf und CargoBit reserviert den Betrag für den Auftrag. Nach Lieferung, POD/eCMR und Risikoprüfung wird die Auszahlung an den Transporteur freigegeben.',
+      'Der Verlader bereitet die Zahlung für einen konkreten Auftrag vor. CargoBit reserviert den Betrag auftragsbezogen. Nach Lieferung, POD/eCMR und Risikoprüfung wird die Auszahlung an den Transporteur freigegeben.',
   },
   {
     question: 'Wann wird ein Auftrag veröffentlicht?',
     answer:
-      'Ein Auftrag wird veröffentlicht, wenn die wichtigsten Frachtdaten, der KI-Preis beziehungsweise das Budget und die notwendige Wallet-Reservierung vorliegen.',
+      'Ein Auftrag wird veröffentlicht, wenn die wichtigsten Frachtdaten, der KI-Preis beziehungsweise das Budget und die notwendige Zahlungsreservierung vorliegen.',
   },
   {
     question: 'Wie werden Transporteure geprüft?',
@@ -157,12 +170,12 @@ const STRUCTURED_DATA = [
     operatingSystem: 'Web',
     url: 'https://cargobit.eu',
     description:
-      'Digitale Logistikplattform mit KI-Preisrechner, Transportauftrag, Wallet, Verifizierung, Versicherung und Angebotsprozess.',
+      'Digitale Logistikplattform mit KI-Preisrechner, Transportauftrag, Zahlungsschutz, Verifizierung, Versicherung und Angebotsprozess.',
     offers: {
       '@type': 'Offer',
       priceCurrency: 'EUR',
       price: '0',
-      description: 'Kostenloser Einstieg mit optionalen Abo-Paketen.',
+      description: 'Kostenloser Einstieg mit Provision oder Business-Tarif für 89 EUR netto pro Monat.',
     },
   },
   {
@@ -201,12 +214,27 @@ export default function Home() {
   const [showShipperOnboarding, setShowShipperOnboarding] = useState(false);
   const [quickQuoteForm, setQuickQuoteForm] = useState<QuickQuoteForm>({
     pickupCity: 'Hamburg',
-    deliveryCity: 'Muenchen',
+    deliveryCity: 'München',
     transportType: 'pallet',
     weightKg: '500',
     lengthCm: '',
     widthCm: '',
     heightCm: '',
+    bulkMaterial: '',
+    bulkVolumeM3: '',
+    bulkDensityKgM3: '',
+    liquidProduct: '',
+    liquidAmount: '',
+    liquidAmountUnit: 'liter',
+    liquidContainerType: 'ibc',
+    vehicleSubtype: 'suv',
+    vehicleLengthM: '',
+    vehicleWidthM: '',
+    vehicleHeightM: '',
+    vehicleWeightKg: '',
+    vehicleCount: '1',
+    vehicleCondition: 'fahrbereit',
+    containerType: '40ft',
     cargoValueEur: '',
   });
   const [quickQuoteResult, setQuickQuoteResult] = useState<QuickQuoteResult | null>(null);
@@ -251,19 +279,97 @@ export default function Home() {
     setShowTransportForm(true);
   };
 
-  const handleTransportSubmit = () => {
+  const handleTransportSubmit = async (payload: TransportFormSubmitPayload) => {
+    if (!user) {
+      setAuthTab('login');
+      setShowAuthModal(true);
+      toast.error('Bitte anmelden, um den Auftrag zu veröffentlichen.');
+      return false;
+    }
+
+    const response = await fetch('/api/jobs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': user.id,
+        'x-user-email': user.email,
+        'x-user-role': user.role,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || 'Auftrag konnte nicht erstellt werden.');
+    }
+
+    if (data.actionRequired === 'WALLET_TOPUP_REQUIRED') {
+      toast.warning('Auftrag als Entwurf gespeichert', {
+        description: data.message || 'Bitte Zahlung vorbereiten, damit der Auftrag online gehen kann.',
+      });
+      setShowTransportForm(false);
+      setPendingTransportData(null);
+      if (data.jobId) {
+        window.location.href = `/orders/${data.jobId}`;
+      }
+      return true;
+    }
+
+    if (data.actionRequired === 'PRICE_REQUIRED') {
+      toast.warning('Preis fehlt', {
+        description: data.message || 'Bitte KI-Preis oder Budget prüfen.',
+      });
+      return false;
+    }
+
     setShowTransportForm(false);
     setPendingTransportData(null);
-    toast.success('Transport erfolgreich erstellt!', {
-      description: 'Ihr Transport wurde veröffentlicht. Sie erhalten Benachrichtigungen über neue Angebote.'
+    toast.success('Auftrag veröffentlicht', {
+      description: 'Ihr Auftrag wurde erstellt. Transporteure können jetzt Angebote abgeben.',
     });
+
+    if (data.jobId) {
+      window.location.href = `/orders/${data.jobId}`;
+    }
+
+    return true;
   };
 
   const updateQuickQuote = (field: keyof QuickQuoteForm, value: string) => {
     setQuickQuoteForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const quickQuoteNumber = (value: string) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  };
+
   const quickQuoteVolumeM3 = () => {
+    if (quickQuoteForm.transportType === 'bulk') {
+      return quickQuoteNumber(quickQuoteForm.bulkVolumeM3);
+    }
+
+    if (quickQuoteForm.transportType === 'liquid') {
+      const amount = quickQuoteNumber(quickQuoteForm.liquidAmount);
+      if (!amount) return undefined;
+      return quickQuoteForm.liquidAmountUnit === 'm3'
+        ? amount
+        : Math.round((amount / 1000) * 100) / 100;
+    }
+
+    if (['car_transport', 'oversize', 'lowloader'].includes(quickQuoteForm.transportType)) {
+      const length = quickQuoteNumber(quickQuoteForm.vehicleLengthM);
+      const width = quickQuoteNumber(quickQuoteForm.vehicleWidthM);
+      const height = quickQuoteNumber(quickQuoteForm.vehicleHeightM);
+      const count = quickQuoteForm.transportType === 'car_transport' ? quickQuoteNumber(quickQuoteForm.vehicleCount) || 1 : 1;
+      if (!length || !width || !height) return undefined;
+      return Math.round((length * width * height * count) * 100) / 100;
+    }
+
+    if (quickQuoteForm.transportType === 'container') {
+      return CONTAINER_VOLUME_M3[quickQuoteForm.containerType];
+    }
+
     const length = Number(quickQuoteForm.lengthCm);
     const width = Number(quickQuoteForm.widthCm);
     const height = Number(quickQuoteForm.heightCm);
@@ -272,26 +378,108 @@ export default function Home() {
     return Math.round((length * width * height / 1_000_000) * 100) / 100;
   };
 
+  const quickQuoteWeightKg = () => {
+    if (quickQuoteForm.transportType === 'car_transport') {
+      return quickQuoteNumber(quickQuoteForm.vehicleWeightKg) || quickQuoteNumber(quickQuoteForm.weightKg) || 1500;
+    }
+
+    if (['oversize', 'lowloader'].includes(quickQuoteForm.transportType)) {
+      return quickQuoteNumber(quickQuoteForm.vehicleWeightKg) || quickQuoteNumber(quickQuoteForm.weightKg) || 10_000;
+    }
+
+    if (quickQuoteForm.transportType === 'bulk') {
+      const enteredWeight = quickQuoteNumber(quickQuoteForm.weightKg);
+      const volume = quickQuoteNumber(quickQuoteForm.bulkVolumeM3);
+      const density = quickQuoteNumber(quickQuoteForm.bulkDensityKgM3);
+      if (enteredWeight) return enteredWeight;
+      if (volume && density) return Math.round(volume * density);
+      return 1000;
+    }
+
+    if (quickQuoteForm.transportType === 'liquid') {
+      const enteredWeight = quickQuoteNumber(quickQuoteForm.weightKg);
+      const amount = quickQuoteNumber(quickQuoteForm.liquidAmount);
+      if (enteredWeight) return enteredWeight;
+      if (!amount) return 1000;
+      return quickQuoteForm.liquidAmountUnit === 'm3' ? Math.round(amount * 1000) : Math.round(amount);
+    }
+
+    return quickQuoteNumber(quickQuoteForm.weightKg) || 500;
+  };
+
+  const quickQuoteSummary = () => {
+    const config = getCargoTypeConfig(quickQuoteForm.transportType);
+    const weight = `${quickQuoteWeightKg().toLocaleString('de-DE')} kg`;
+    const volume = quickQuoteVolumeM3();
+    const volumeLabel = volume ? `${volume.toLocaleString('de-DE')} m³` : null;
+
+    if (quickQuoteForm.transportType === 'car_transport') {
+      const vehicleLabel = VEHICLE_TYPE_OPTIONS.find((option) => option.value === quickQuoteForm.vehicleSubtype)?.label || 'Fahrzeug';
+      const dimensions = [quickQuoteForm.vehicleLengthM, quickQuoteForm.vehicleWidthM, quickQuoteForm.vehicleHeightM].filter(Boolean).join(' × ');
+      return [vehicleLabel, dimensions ? `${dimensions} m` : null, weight].filter(Boolean).join(' • ') || config.example;
+    }
+
+    if (['oversize', 'lowloader'].includes(quickQuoteForm.transportType)) {
+      const dimensions = [quickQuoteForm.vehicleLengthM, quickQuoteForm.vehicleWidthM, quickQuoteForm.vehicleHeightM].filter(Boolean).join(' × ');
+      return [config.shortLabel, dimensions ? `${dimensions} m` : null, weight].filter(Boolean).join(' • ') || config.example;
+    }
+
+    if (quickQuoteForm.transportType === 'liquid') {
+      const amount = quickQuoteForm.liquidAmount
+        ? `${Number(quickQuoteForm.liquidAmount).toLocaleString('de-DE')} ${quickQuoteForm.liquidAmountUnit === 'm3' ? 'm³' : 'Liter'}`
+        : null;
+      return [quickQuoteForm.liquidProduct || 'Flüssigkeit', amount, volumeLabel, weight].filter(Boolean).join(' • ') || config.example;
+    }
+
+    if (quickQuoteForm.transportType === 'bulk') {
+      return [quickQuoteForm.bulkMaterial || 'Schüttgut', volumeLabel, quickQuoteForm.bulkDensityKgM3 ? `${quickQuoteForm.bulkDensityKgM3} kg/m³` : null, weight].filter(Boolean).join(' • ') || config.example;
+    }
+
+    return [config.shortLabel, weight, volumeLabel].filter(Boolean).join(' • ');
+  };
+
   const buildTransportInitialData = (quote?: QuickQuoteResult | null): TransportFormInitialData => ({
     pickupCity: quickQuoteForm.pickupCity,
     pickupCountry: 'Deutschland',
     deliveryCity: quickQuoteForm.deliveryCity,
     deliveryCountry: 'Deutschland',
     description: `${SPECIAL_TRANSPORT_LABELS[quickQuoteForm.transportType]} über CargoBit Preisrechner`,
-    weight: quickQuoteForm.weightKg,
+    weight: String(quickQuoteWeightKg()),
     length: quickQuoteForm.lengthCm,
     width: quickQuoteForm.widthCm,
     height: quickQuoteForm.heightCm,
     cargoValue: quickQuoteForm.cargoValueEur,
     hazmat: quickQuoteForm.transportType === 'hazmat',
     transportType: quickQuoteForm.transportType,
+    bulkMaterial: quickQuoteForm.bulkMaterial,
+    bulkVolume: quickQuoteForm.bulkVolumeM3,
+    bulkDensity: quickQuoteForm.bulkDensityKgM3,
+    liquidProduct: quickQuoteForm.liquidProduct,
+    liquidAmount: quickQuoteForm.liquidAmount,
+    liquidAmountUnit: quickQuoteForm.liquidAmountUnit,
+    liquidContainerType: quickQuoteForm.liquidContainerType,
+    vehicleSubtype: quickQuoteForm.vehicleSubtype,
+    vehicleLengthM: quickQuoteForm.vehicleLengthM,
+    vehicleWidthM: quickQuoteForm.vehicleWidthM,
+    vehicleHeightM: quickQuoteForm.vehicleHeightM,
+    vehicleWeightKg: quickQuoteForm.vehicleWeightKg,
+    carCount: quickQuoteForm.vehicleCount,
+    carCondition: quickQuoteForm.vehicleCondition,
+    oversizeLength: quickQuoteForm.transportType === 'oversize' ? quickQuoteForm.vehicleLengthM : '',
+    oversizeWidth: quickQuoteForm.transportType === 'oversize' ? quickQuoteForm.vehicleWidthM : '',
+    oversizeHeight: quickQuoteForm.transportType === 'oversize' ? quickQuoteForm.vehicleHeightM : '',
+    lowloaderCargoLength: quickQuoteForm.transportType === 'lowloader' ? quickQuoteForm.vehicleLengthM : '',
+    lowloaderCargoWidth: quickQuoteForm.transportType === 'lowloader' ? quickQuoteForm.vehicleWidthM : '',
+    lowloaderCargoHeight: quickQuoteForm.transportType === 'lowloader' ? quickQuoteForm.vehicleHeightM : '',
+    lowloaderCargoWeight: quickQuoteForm.transportType === 'lowloader' ? quickQuoteForm.vehicleWeightKg : '',
     budget: quote?.recommendedPrice ? String(Math.round(quote.recommendedPrice)) : '',
     aiSuggestedPrice: quote?.recommendedPrice ? Math.round(quote.recommendedPrice) : undefined,
   });
 
   const calculateQuickQuote = async () => {
-    if (!quickQuoteForm.pickupCity || !quickQuoteForm.deliveryCity || !quickQuoteForm.weightKg) {
-      setQuickQuoteError('Bitte Abholort, Zielort und Gewicht eingeben.');
+    const normalizedWeightKg = quickQuoteWeightKg();
+    if (!quickQuoteForm.pickupCity || !quickQuoteForm.deliveryCity || !normalizedWeightKg) {
+      setQuickQuoteError('Bitte Abholort, Zielort und passende Frachtdaten eingeben.');
       return;
     }
 
@@ -311,9 +499,14 @@ export default function Home() {
             city: quickQuoteForm.deliveryCity,
             country: 'Deutschland',
           },
-          weightKg: Number(quickQuoteForm.weightKg),
+          weightKg: normalizedWeightKg,
           volumeM3: quickQuoteVolumeM3(),
           transportType: quickQuoteForm.transportType,
+          cargoDetails: {
+            transportType: quickQuoteForm.transportType,
+            summary: quickQuoteSummary(),
+            measurementMode: getCargoTypeConfig(quickQuoteForm.transportType).measurementMode,
+          },
           isHazmat: quickQuoteForm.transportType === 'hazmat',
           requiresCooling: quickQuoteForm.transportType === 'cooling',
           riskLevel: quickQuoteForm.transportType === 'hazmat' ? 'yellow' : 'green',
@@ -344,6 +537,211 @@ export default function Home() {
 
     setAuthTab('register');
     setShowAuthModal(true);
+  };
+
+  const renderQuickQuoteCargoFields = () => {
+    const config = getCargoTypeConfig(quickQuoteForm.transportType);
+    const inputClass = 'h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#00D4FF]/60';
+    const compactInputClass = 'h-12 rounded-xl border border-white/10 bg-[#06121C]/70 px-3 text-white outline-none transition focus:border-[#00D4FF]/60';
+
+    if (quickQuoteForm.transportType === 'car_transport') {
+      return (
+        <>
+          <label className="space-y-2">
+            <span className="text-sm text-gray-300">Fahrzeugtyp</span>
+            <select
+              value={quickQuoteForm.vehicleSubtype}
+              onChange={(event) => updateQuickQuote('vehicleSubtype', event.target.value)}
+              className={inputClass}
+            >
+              {VEHICLE_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm text-gray-300">Anzahl / Zustand</span>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                value={quickQuoteForm.vehicleCount}
+                onChange={(event) => updateQuickQuote('vehicleCount', event.target.value)}
+                className={compactInputClass}
+                placeholder="1"
+              />
+              <select
+                value={quickQuoteForm.vehicleCondition}
+                onChange={(event) => updateQuickQuote('vehicleCondition', event.target.value)}
+                className={compactInputClass}
+              >
+                <option value="fahrbereit">Fahrbereit</option>
+                <option value="nicht_fahrbereit">Nicht fahrbereit</option>
+              </select>
+            </div>
+          </label>
+          {renderMeterDimensionFields('Fahrzeugmaße und Gewicht')}
+        </>
+      );
+    }
+
+    if (['oversize', 'lowloader'].includes(quickQuoteForm.transportType)) {
+      return renderMeterDimensionFields(config.dimensionLabel);
+    }
+
+    if (quickQuoteForm.transportType === 'liquid') {
+      return (
+        <>
+          <label className="space-y-2">
+            <span className="text-sm text-gray-300">Produkt</span>
+            <input
+              value={quickQuoteForm.liquidProduct}
+              onChange={(event) => updateQuickQuote('liquidProduct', event.target.value)}
+              className={inputClass}
+              placeholder="z.B. Wasser, Öl, Chemikalie"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm text-gray-300">Menge</span>
+            <div className="grid grid-cols-[1fr_112px] gap-2">
+              <input
+                type="number"
+                value={quickQuoteForm.liquidAmount}
+                onChange={(event) => updateQuickQuote('liquidAmount', event.target.value)}
+                className={compactInputClass}
+                placeholder="25000"
+              />
+              <select
+                value={quickQuoteForm.liquidAmountUnit}
+                onChange={(event) => updateQuickQuote('liquidAmountUnit', event.target.value)}
+                className={compactInputClass}
+              >
+                {LIQUID_UNIT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm text-gray-300">Behälterart</span>
+            <select
+              value={quickQuoteForm.liquidContainerType}
+              onChange={(event) => updateQuickQuote('liquidContainerType', event.target.value)}
+              className={inputClass}
+            >
+              <option value="tankauflieger">Tankauflieger</option>
+              <option value="ibc">IBC</option>
+              <option value="fass">Fass</option>
+              <option value="tankcontainer">Tankcontainer</option>
+            </select>
+          </label>
+        </>
+      );
+    }
+
+    if (quickQuoteForm.transportType === 'bulk') {
+      return (
+        <>
+          <label className="space-y-2">
+            <span className="text-sm text-gray-300">Material</span>
+            <input
+              value={quickQuoteForm.bulkMaterial}
+              onChange={(event) => updateQuickQuote('bulkMaterial', event.target.value)}
+              className={inputClass}
+              placeholder="z.B. Sand, Kies, Getreide"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm text-gray-300">Volumen / Dichte</span>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                value={quickQuoteForm.bulkVolumeM3}
+                onChange={(event) => updateQuickQuote('bulkVolumeM3', event.target.value)}
+                className={compactInputClass}
+                placeholder="m³"
+              />
+              <input
+                type="number"
+                value={quickQuoteForm.bulkDensityKgM3}
+                onChange={(event) => updateQuickQuote('bulkDensityKgM3', event.target.value)}
+                className={compactInputClass}
+                placeholder="kg/m³"
+              />
+            </div>
+          </label>
+        </>
+      );
+    }
+
+    if (quickQuoteForm.transportType === 'container') {
+      return (
+        <>
+          <label className="space-y-2">
+            <span className="text-sm text-gray-300">Containertyp</span>
+            <select
+              value={quickQuoteForm.containerType}
+              onChange={(event) => updateQuickQuote('containerType', event.target.value)}
+              className={inputClass}
+            >
+              <option value="20ft">20ft Standard</option>
+              <option value="40ft">40ft Standard</option>
+              <option value="45ft">45ft Standard</option>
+              <option value="reefer">Kühlcontainer</option>
+              <option value="tank">Tankcontainer</option>
+              <option value="open_top">Open Top</option>
+            </select>
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm text-gray-300">Bruttogewicht (kg)</span>
+            <input
+              type="number"
+              value={quickQuoteForm.weightKg}
+              onChange={(event) => updateQuickQuote('weightKg', event.target.value)}
+              className={inputClass}
+              placeholder="z.B. 24000"
+            />
+          </label>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <label className="space-y-2">
+          <span className="text-sm text-gray-300">{config.weightLabel}</span>
+          <input
+            type="number"
+            value={quickQuoteForm.weightKg}
+            onChange={(event) => updateQuickQuote('weightKg', event.target.value)}
+            className={inputClass}
+            placeholder="500 kg"
+          />
+        </label>
+        <label className="space-y-2">
+          <span className="text-sm text-gray-300">Maße optional (cm)</span>
+          <div className="grid grid-cols-3 gap-2">
+            <input type="number" value={quickQuoteForm.lengthCm} onChange={(event) => updateQuickQuote('lengthCm', event.target.value)} className={compactInputClass} placeholder="L" />
+            <input type="number" value={quickQuoteForm.widthCm} onChange={(event) => updateQuickQuote('widthCm', event.target.value)} className={compactInputClass} placeholder="B" />
+            <input type="number" value={quickQuoteForm.heightCm} onChange={(event) => updateQuickQuote('heightCm', event.target.value)} className={compactInputClass} placeholder="H" />
+          </div>
+        </label>
+      </>
+    );
+  };
+
+  const renderMeterDimensionFields = (label: string) => {
+    const compactInputClass = 'h-12 rounded-xl border border-white/10 bg-[#06121C]/70 px-3 text-white outline-none transition focus:border-[#00D4FF]/60';
+    return (
+      <label className="space-y-2 sm:col-span-2">
+        <span className="text-sm text-gray-300">{label}</span>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <input type="number" step="0.1" value={quickQuoteForm.vehicleLengthM} onChange={(event) => updateQuickQuote('vehicleLengthM', event.target.value)} className={compactInputClass} placeholder="Länge m" />
+          <input type="number" step="0.1" value={quickQuoteForm.vehicleWidthM} onChange={(event) => updateQuickQuote('vehicleWidthM', event.target.value)} className={compactInputClass} placeholder="Breite m" />
+          <input type="number" step="0.1" value={quickQuoteForm.vehicleHeightM} onChange={(event) => updateQuickQuote('vehicleHeightM', event.target.value)} className={compactInputClass} placeholder="Höhe m" />
+          <input type="number" value={quickQuoteForm.vehicleWeightKg} onChange={(event) => updateQuickQuote('vehicleWeightKg', event.target.value)} className={compactInputClass} placeholder="Gewicht kg" />
+        </div>
+      </label>
+    );
   };
 
   const updateFeedbackForm = (field: keyof FeedbackForm, value: string) => {
@@ -501,8 +899,8 @@ export default function Home() {
                 <button onClick={() => scrollToSection('preise')} className="text-gray-300 hover:text-[#00D4FF] transition-colors font-medium">
                   Preise
                 </button>
-                <button onClick={() => scrollToSection('wallet')} className="text-gray-300 hover:text-[#00D4FF] transition-colors font-medium">
-                  Wallet
+                <button onClick={() => scrollToSection('features')} className="text-gray-300 hover:text-[#00D4FF] transition-colors font-medium">
+                  Zahlungsschutz
                 </button>
                 <button onClick={() => scrollToSection('support')} className="text-gray-300 hover:text-[#00D4FF] transition-colors font-medium">
                   Support
@@ -576,8 +974,8 @@ export default function Home() {
                 <button onClick={() => scrollToSection('preise')} className="block w-full text-left py-2 text-gray-300 hover:text-[#00D4FF] transition-colors">
                   Preise
                 </button>
-                <button onClick={() => scrollToSection('wallet')} className="block w-full text-left py-2 text-gray-300 hover:text-[#00D4FF] transition-colors">
-                  Wallet
+                <button onClick={() => scrollToSection('features')} className="block w-full text-left py-2 text-gray-300 hover:text-[#00D4FF] transition-colors">
+                  Zahlungsschutz
                 </button>
                 <button onClick={() => scrollToSection('support')} className="block w-full text-left py-2 text-gray-300 hover:text-[#00D4FF] transition-colors">
                   Support
@@ -752,7 +1150,7 @@ export default function Home() {
                 <div className="mt-8 grid gap-4 sm:grid-cols-2">
                   {[
                     ['1', 'Preis berechnen', 'KI-Schätzung für Route, Fracht, Maut, Fahrzeit und Risiko.'],
-                    ['2', 'Anmelden', 'Daten übernehmen und den Auftrag mit Wallet-Schutz vorbereiten.'],
+                    ['2', 'Anmelden', 'Daten übernehmen und den Auftrag mit Zahlungsschutz vorbereiten.'],
                     ['3', 'Angebote erhalten', 'Transporteure können annehmen oder günstiger bieten.'],
                     ['4', 'Sicher abwickeln', 'POD, Rechnung, Auszahlung und Trust Gate bleiben nachvollziehbar.'],
                   ].map(([number, title, detail]) => (
@@ -794,7 +1192,7 @@ export default function Home() {
                       value={quickQuoteForm.deliveryCity}
                       onChange={(event) => updateQuickQuote('deliveryCity', event.target.value)}
                       className="h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#00D4FF]/60"
-                      placeholder="z.B. Muenchen"
+                      placeholder="z.B. München"
                     />
                   </label>
                   <label className="space-y-2">
@@ -804,47 +1202,12 @@ export default function Home() {
                       onChange={(event) => updateQuickQuote('transportType', event.target.value)}
                       className="h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#00D4FF]/60"
                     >
-                      {Object.entries(SPECIAL_TRANSPORT_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
+                      {CARGO_TYPE_CONFIGS.map((config) => (
+                        <option key={config.value} value={config.value}>{config.shortLabel}</option>
                       ))}
                     </select>
                   </label>
-                  <label className="space-y-2">
-                    <span className="text-sm text-gray-300">Gewicht</span>
-                    <input
-                      type="number"
-                      value={quickQuoteForm.weightKg}
-                      onChange={(event) => updateQuickQuote('weightKg', event.target.value)}
-                      className="h-12 w-full rounded-xl border border-white/10 bg-[#06121C]/70 px-4 text-white outline-none transition focus:border-[#00D4FF]/60"
-                      placeholder="500 kg"
-                    />
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-sm text-gray-300">Masse optional</span>
-                    <div className="grid grid-cols-3 gap-2">
-                      <input
-                        type="number"
-                        value={quickQuoteForm.lengthCm}
-                        onChange={(event) => updateQuickQuote('lengthCm', event.target.value)}
-                        className="h-12 rounded-xl border border-white/10 bg-[#06121C]/70 px-3 text-white outline-none transition focus:border-[#00D4FF]/60"
-                        placeholder="L"
-                      />
-                      <input
-                        type="number"
-                        value={quickQuoteForm.widthCm}
-                        onChange={(event) => updateQuickQuote('widthCm', event.target.value)}
-                        className="h-12 rounded-xl border border-white/10 bg-[#06121C]/70 px-3 text-white outline-none transition focus:border-[#00D4FF]/60"
-                        placeholder="B"
-                      />
-                      <input
-                        type="number"
-                        value={quickQuoteForm.heightCm}
-                        onChange={(event) => updateQuickQuote('heightCm', event.target.value)}
-                        className="h-12 rounded-xl border border-white/10 bg-[#06121C]/70 px-3 text-white outline-none transition focus:border-[#00D4FF]/60"
-                        placeholder="H"
-                      />
-                    </div>
-                  </label>
+                  {renderQuickQuoteCargoFields()}
                   <label className="space-y-2">
                     <span className="text-sm text-gray-300">Warenwert optional</span>
                     <input
@@ -855,6 +1218,13 @@ export default function Home() {
                       placeholder="z.B. 12000 EUR"
                     />
                   </label>
+                </div>
+                <div className="mt-4 rounded-xl border border-[#00D4FF]/15 bg-[#00D4FF]/5 p-3 text-sm text-gray-300">
+                  <span className="font-medium text-white">{getCargoTypeConfig(quickQuoteForm.transportType).label}:</span>{' '}
+                  {quickQuoteSummary()}
+                  <div className="mt-1 text-xs text-gray-500">
+                    {getCargoTypeConfig(quickQuoteForm.transportType).example}
+                  </div>
                 </div>
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -1118,7 +1488,7 @@ export default function Home() {
                   </div>
                   <h3 className="text-lg font-semibold text-white mb-2">Sichere Zahlung</h3>
                   <p className="text-sm text-gray-400 mb-4">
-                    Sichere Wallet, einfache Zahlungen und schnelle Auszahlungen.
+                    Auftragsbezogener Zahlungsschutz, einfache Zahlungen und schnelle Auszahlungen.
                   </p>
                   <Button variant="ghost" size="sm" className="text-[#00D4FF] hover:text-[#00D4FF]/80">
                     Mehr erfahren →
@@ -1170,21 +1540,21 @@ export default function Home() {
                   PREISE & LEISTUNGEN
                 </Badge>
                 <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-                  Klare Pakete für Verlader, Transporteure und Speditionen.
+                  Einfach starten: Provision oder Business.
                 </h2>
                 <p className="text-lg text-gray-400 max-w-3xl">
-                  Die Abo-Preise stehen bewusst im Vordergrund. Mehrwertsteuer wird beim Abschluss und in der Rechnung separat ausgewiesen.
+                  CargoBit startet mit einem schlanken Gebührenmodell: ohne Grundgebühr für gelegentliche Aufträge oder Business für regelmäßiges Transportvolumen.
                 </p>
               </div>
               <div className="rounded-2xl border border-[#00D4FF]/20 bg-[#00D4FF]/10 px-5 py-4 text-sm text-cyan-100">
-                Netto-Preise zzgl. gesetzlicher MwSt.
+                Business 89 € netto/Monat zzgl. MwSt.
               </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-6 lg:grid-cols-2">
               {PUBLIC_PRICING_ORDER.map((planKey) => {
                 const plan = PUBLIC_PRICING_PLANS[planKey];
-                const isRecommended = planKey === 'professional';
+                const isRecommended = planKey === 'starter';
                 const isFree = planKey === 'free';
 
                 return (
@@ -1203,7 +1573,7 @@ export default function Home() {
                     )}
                     <CardContent className="p-6">
                       <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1C7ED6]/20 text-[#00D4FF]">
-                        {isFree ? <Package className="h-6 w-6" /> : planKey === 'enterprise' ? <Shield className="h-6 w-6" /> : <Wallet className="h-6 w-6" />}
+                        {isFree ? <Package className="h-6 w-6" /> : <Shield className="h-6 w-6" />}
                       </div>
                       <h3 className="text-2xl font-bold text-white">{plan.name}</h3>
                       <p className="mt-3 min-h-16 text-sm leading-6 text-gray-400">
@@ -1219,11 +1589,11 @@ export default function Home() {
                         </div>
                         {isFree ? (
                           <p className="mt-2 text-sm text-gray-400">
-                            10 Transporte/Monat zum Kennenlernen
+                            10 Aufträge pro Monat
                           </p>
                         ) : (
                           <p className="mt-2 text-sm text-gray-400">
-                            oder {formatCurrency(plan.yearlyFee)} jährlich
+                            30 Aufträge pro Monat
                           </p>
                         )}
                         <p className="mt-3 text-xs text-cyan-200">
@@ -1239,7 +1609,7 @@ export default function Home() {
                           <p className="mt-1 text-lg font-semibold text-white">{plan.commissionPercent}%</p>
                         </div>
                         <div className="rounded-xl border border-[#1C7ED6]/20 bg-[#06121C]/40 p-3">
-                          <p className="text-xs text-gray-500">Wallet-Gebühr</p>
+                          <p className="text-xs text-gray-500">Zahlungsschutz-Gebühr</p>
                           <p className="mt-1 text-lg font-semibold text-white">{plan.walletFeePercent}%</p>
                         </div>
                       </div>
@@ -1261,7 +1631,7 @@ export default function Home() {
                         }`}
                         onClick={() => { setAuthTab('register'); setShowAuthModal(true); }}
                       >
-                        {isFree ? 'Kostenlos starten' : 'Paket auswählen'}
+                        {isFree ? 'Kostenlos starten' : 'Business starten'}
                         <ArrowRight className="h-4 w-4" />
                       </Button>
                     </CardContent>
@@ -1271,7 +1641,7 @@ export default function Home() {
             </div>
 
             <div className="mt-8 rounded-2xl border border-[#1C7ED6]/20 bg-[#0B3C5D]/40 p-5 text-sm text-gray-300">
-              Der kostenlose Testzugang ist auf 10 Transporte pro Monat begrenzt und nutzt 14% Provision sowie 3,5% Wallet-Gebühr. Beim produktiven Abo-Abschluss werden Netto, MwSt. und Brutto auf der Rechnung einzeln ausgewiesen.
+              Start ist auf 10 Aufträge pro Monat begrenzt und nutzt 14% Provision sowie 3,5% Zahlungsschutz-Gebühr. Business kostet 89 € netto pro Monat, enthält 30 Aufträge pro Monat und nutzt 12% CargoBit-Provision sowie 2,5% Zahlungsschutz-Gebühr.
             </div>
           </div>
         </section>
@@ -1289,7 +1659,7 @@ export default function Home() {
               <p className="text-lg leading-8 text-gray-400">
                 CargoBit ist für Menschen und Unternehmen gedacht, die Fracht transportieren lassen möchten,
                 aber noch keinen realistischen Preis kennen. Die Plattform verbindet Preisberechnung, Auftrag,
-                Matching, Wallet-Zahlung, Verifizierung, Versicherung und digitale Transportabwicklung.
+                Matching, Zahlungsschutz, Verifizierung, Versicherung und digitale Transportabwicklung.
               </p>
             </div>
 
@@ -1297,7 +1667,7 @@ export default function Home() {
               {[
                 {
                   title: 'Für Verlader',
-                  text: 'Transportpreis berechnen, Frachtauftrag erstellen, Angebote vergleichen und Zahlung per Wallet absichern.',
+                  text: 'Transportpreis berechnen, Frachtauftrag erstellen, Angebote vergleichen und Zahlung auftragsbezogen absichern.',
                 },
                 {
                   title: 'Für Privatpersonen',
@@ -1333,7 +1703,7 @@ export default function Home() {
               </h2>
               <p className="text-lg leading-8 text-gray-400">
                 Diese Fragen beantworten wir schon vor der Auftragserstellung: mit KI-Preisempfehlung,
-                Angebotsprozess, Trust Score und transparenter Wallet-Abwicklung.
+                Angebotsprozess, Trust Score und transparenter Zahlungsschutz-Abwicklung.
               </p>
             </div>
 
@@ -1526,7 +1896,7 @@ export default function Home() {
                 <ul className="space-y-2">
                   <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Matching</a></li>
                   <li><a href="#preise" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Preise</a></li>
-                  <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Wallet</a></li>
+                  <li><a href="/zahlungsschutz" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Zahlungsschutz</a></li>
                   <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Live Tracking</a></li>
                   <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Dokumente</a></li>
                 </ul>
@@ -1548,10 +1918,12 @@ export default function Home() {
               <div>
                 <h4 className="font-semibold text-white mb-4">Rechtliches</h4>
                 <ul className="space-y-2">
-                  <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">AGB</a></li>
-                  <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Datenschutz</a></li>
-                  <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Impressum</a></li>
-                  <li><a href="#" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Cookies</a></li>
+                  <li><a href="/agb" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">AGB</a></li>
+                  <li><a href="/datenschutz" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Datenschutz</a></li>
+                  <li><a href="/impressum" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Impressum</a></li>
+                  <li><a href="/widerruf" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Widerruf</a></li>
+                  <li><a href="/vermittlung-haftung" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Vermittlung & Haftung</a></li>
+                  <li><a href="/versicherung-partner" className="text-sm text-gray-400 hover:text-[#00D4FF] transition-colors">Versicherung & Partner</a></li>
                 </ul>
               </div>
 
