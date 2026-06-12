@@ -11,6 +11,7 @@ import {
   performHybridSecurityCheck,
 } from '@/lib/hybrid-security';
 import { logAuditEvent } from '@/lib/permissions';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 // ============================================
 // INTERFACES
@@ -56,15 +57,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Get auth context from request headers
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json<ErrorResponse>({
-        error: 'UnauthorizedError',
-        message: 'Authentifizierung erforderlich',
-        code: 'AUTH_REQUIRED',
-      }, { status: 401 });
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response as NextResponse<ErrorResponse>;
+    const userId = auth.user!.id;
 
     // Build security context
     const user = await db.user.findUnique({
@@ -262,7 +257,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (shipperWallet && offer.price) {
-      // Create escrow transaction
+      // Create Zahlungsschutz transaction
       await db.walletTransaction.create({
         data: {
           walletId: shipperWallet.id,
@@ -270,7 +265,7 @@ export async function POST(request: NextRequest) {
           amount: offer.price,
           currency: offer.currency,
           relatedTransportId: offer.transportId,
-          description: `Escrow für Transport ${offer.transportId}`,
+          description: `Zahlungsschutz für Transport ${offer.transportId}`,
         },
       });
 

@@ -152,7 +152,7 @@ function enrichLifecycle(lifecycle: LifecycleStage[], transport: any): Lifecycle
         ...stage,
         status: pod && stage.status !== 'done' ? 'active' : stage.status,
         description: transport.commissions?.length
-          ? 'Gebühren und Wallet-Abrechnung wurden für die Rechnung vorbereitet.'
+          ? 'Gebühren und Zahlungsschutz-Abrechnung wurden für die Rechnung vorbereitet.'
           : stage.description,
       };
     }

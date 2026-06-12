@@ -1,12 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createInsuranceReferralQuote } from '@/lib/insurance/referral';
+import { getOptionalRequestUser, requestUserHasAnyRole } from '@/lib/request-user-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const requestedByUserId = request.headers.get('x-user-id') || body.requestedByUserId || null;
+    const requestUser = await getOptionalRequestUser(request);
+    const bodyUserId = body.requestedByUserId ? String(body.requestedByUserId) : null;
+    const canActForOtherUser = requestUser ? requestUserHasAnyRole(requestUser, ['ADMIN', 'SUPPORT']) : false;
+
+    if (body.persistLead && !requestUser) {
+      return NextResponse.json(
+        {
+          error: 'AUTH_REQUIRED',
+          message: 'Bitte anmelden, damit die Versicherungsanfrage gespeichert werden kann.',
+        },
+        { status: 401 },
+      );
+    }
+
+    if (bodyUserId && requestUser && bodyUserId !== requestUser.id && !canActForOtherUser) {
+      return NextResponse.json(
+        {
+          error: 'FORBIDDEN',
+          message: 'Sie dürfen keine Versicherungsanfrage für ein fremdes Konto erstellen.',
+        },
+        { status: 403 },
+      );
+    }
+
+    const requestedByUserId = requestUser?.id || bodyUserId || null;
 
     const quote = await createInsuranceReferralQuote({
       transportId: body.transportId,

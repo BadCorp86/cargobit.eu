@@ -29,7 +29,7 @@ export default async function AdminStripeReadinessPage() {
   const productionReady = report.ready && databaseReport.ready && operationsReport.ready;
 
   return (
-    <DashboardLayout title="Stripe Setup" subtitle="Checkout, Abo-Preise, Webhooks, Automatisierung und Rechnungsbereitschaft">
+    <DashboardLayout title="Stripe Setup" subtitle="Checkout, Business-Preis, Webhooks, Automatisierung und Rechnungsbereitschaft">
       <div className="space-y-6">
         <section className="relative overflow-hidden rounded-[18px] border border-white/[0.08] bg-white/[0.05] p-6 shadow-2xl shadow-black/20">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,212,255,0.18),transparent_34%),linear-gradient(135deg,rgba(28,126,214,0.14),transparent_42%)]" />
@@ -41,7 +41,7 @@ export default async function AdminStripeReadinessPage() {
               </div>
               <h2 className="text-3xl font-semibold tracking-tight text-white">Stripe Zahlungszentrale</h2>
               <p className="mt-2 max-w-xl text-sm leading-6 text-white/55">
-                Hier sieht der Admin, ob Stripe Checkout, Abo-Preise, Webhook-Secrets, Datenbank-Schema, Cron-Jobs und Rechnungsversand richtig vorbereitet sind.
+                Hier sieht der Admin, ob Stripe Checkout, Business-Preis, Webhook-Secrets, Datenbank-Schema, Cron-Jobs und Rechnungsversand richtig vorbereitet sind.
               </p>
             </div>
 
@@ -208,7 +208,7 @@ function DatabaseReadinessPanel({ report }: { report: DatabaseReadinessReport })
           <div>
             <h3 className="font-semibold text-white">Produktions-Datenbank</h3>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-white/45">
-              Diese Prüfung erkennt, ob Prisma die Tabellen und Felder für Stripe-Abos, Rechnungen, E-Mail-Versand und Webhook-Idempotenz wirklich nutzen kann.
+              Diese Prüfung erkennt, ob Prisma die Tabellen und Felder für Business-Tarif, Rechnungen, E-Mail-Versand und Webhook-Idempotenz wirklich nutzen kann.
             </p>
           </div>
         </div>

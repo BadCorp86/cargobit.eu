@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
 import { buildDriverMissionFromAssignment } from '@/lib/driver-mobile';
 import { getFallbackDriverMission } from '@/lib/product-operating-model';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const userId = searchParams.get('userId') || request.headers.get('x-user-id');
-  const driverId = searchParams.get('driverId');
+  const requestUser = await getOptionalRequestUser(request);
+  const userId = requestUser?.id;
+  const driverId = process.env.NODE_ENV !== 'production' ? searchParams.get('driverId') : null;
 
   if (!userId && !driverId) {
     return NextResponse.json({
@@ -42,7 +44,7 @@ export async function GET(request: NextRequest) {
         mission: {
           ...getFallbackDriverMission(),
           title: 'Kein aktiver Auftrag',
-          subtitle: 'Du bist verfügbar für passende DACH/Benelux Loads.',
+          subtitle: 'Du bist verfügbar für passende DACH/Benelux-Aufträge.',
           status: driver.isAvailable ? 'AVAILABLE' : 'OFFLINE',
           progress: 0,
         },

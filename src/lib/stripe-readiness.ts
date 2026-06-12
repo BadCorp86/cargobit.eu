@@ -55,12 +55,7 @@ const PAYOUT_EVENTS = [
 ];
 
 const PRICE_KEYS = [
-  ['STRIPE_PRICE_STARTER_MONTHLY', 'Starter monatlich'],
-  ['STRIPE_PRICE_STARTER_YEARLY', 'Starter jährlich'],
-  ['STRIPE_PRICE_PROFESSIONAL_MONTHLY', 'Professional monatlich'],
-  ['STRIPE_PRICE_PROFESSIONAL_YEARLY', 'Professional jährlich'],
-  ['STRIPE_PRICE_ENTERPRISE_MONTHLY', 'Enterprise monatlich'],
-  ['STRIPE_PRICE_ENTERPRISE_YEARLY', 'Enterprise jährlich'],
+  ['STRIPE_PRICE_BUSINESS_MONTHLY', 'Business monatlich'],
 ] as const;
 
 export function getStripeReadiness(): StripeReadinessReport {
@@ -78,7 +73,7 @@ export function getStripeReadiness(): StripeReadinessReport {
     {
       id: 'webhooks',
       title: 'Webhooks',
-      description: 'Stripe meldet erfolgreiche Abos, Rechnungen, Wallet-Zahlungen und Payouts zurück.',
+      description: 'Stripe meldet erfolgreiche Business-Zahlungen, Rechnungen, Zahlungsschutz-Buchungen und Payouts zurück.',
       items: [
         createWebhookItem(
           'STRIPE_SUBSCRIPTION_WEBHOOK_SECRET',
@@ -96,8 +91,8 @@ export function getStripeReadiness(): StripeReadinessReport {
     },
     {
       id: 'prices',
-      title: 'Abo Price IDs',
-      description: 'Preis-IDs aus Stripe für Starter, Professional und Enterprise.',
+      title: 'Business Price ID',
+      description: 'Stripe Price ID für den Business-Tarif mit 89 € netto pro Monat.',
       items: PRICE_KEYS.map(([key, label]) => (
         createEnvItem(key, label, 'Stripe Price ID aus dem Product Catalog.', true, 'price_')
       )),
@@ -129,7 +124,7 @@ export function getStripeReadiness(): StripeReadinessReport {
     warnings,
     webhookEndpoints: [
       {
-        label: 'Subscriptions, invoices, wallet topups',
+        label: 'Business, invoices, Zahlungsschutz',
         path: '/api/stripe/webhook',
         events: SUBSCRIPTION_EVENTS,
         secretEnv: process.env.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET ? 'STRIPE_SUBSCRIPTION_WEBHOOK_SECRET' : 'STRIPE_WEBHOOK_SECRET',

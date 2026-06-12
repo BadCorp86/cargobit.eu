@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processRefund, calculateRefundAmounts, type RefundRequest } from '@/services/refund.service';
 import { prisma } from '@/lib/db';
+import { requireRequestUser, requestUserHasAnyRole } from '@/lib/request-user-auth';
 
 const PLATFORM_FEE_PERCENT = 3.5;
 
@@ -18,6 +19,15 @@ const PLATFORM_FEE_PERCENT = 3.5;
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    if (!requestUserHasAnyRole(auth.user!, ['ADMIN', 'SUPPORT'])) {
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'Refunds dürfen nur durch Admin oder Support ausgelöst werden.' },
+        { status: 403 },
+      );
+    }
+
     const body = await request.json();
     
     // Validate request
@@ -43,9 +53,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // TODO: Get userId from auth context
-    // For now, use header or default
-    const initiatedBy = request.headers.get('x-user-id') || 'system';
+    const initiatedBy = auth.user!.id;
     
     // Process refund
     const result = await processRefund({

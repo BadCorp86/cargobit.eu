@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { db } from '@/lib/db';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,9 @@ function getPublicAppUrl(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const userId = request.headers.get('x-user-id') || 'demo-user';
+  const auth = await requireRequestUser(request);
+  if (auth.response) return auth.response;
+  const userId = auth.user!.id;
   const appUrl = getPublicAppUrl(request);
 
   try {
@@ -38,7 +41,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: 'PermissionError',
-          message: 'Nur Firmeneigner oder Firmenadmins können das Abo verwalten.',
+          message: 'Nur Firmeneigner oder Firmenadmins können den Business-Tarif verwalten.',
           code: 'NOT_COMPANY_ADMIN',
         },
         { status: 403 },
@@ -116,7 +119,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'InternalServerError',
-        message: 'Abo-Verwaltung konnte nicht geöffnet werden.',
+        message: 'Business-Verwaltung konnte nicht geöffnet werden.',
         code: 'PORTAL_SESSION_FAILED',
       },
       { status: 500 },

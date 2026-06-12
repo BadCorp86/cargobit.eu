@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withAdminAuth } from '@/lib/admin-rbac';
 import { disputeService, type DisputeAction } from '@/services/dispute.service';
 
 // ============================================
@@ -18,17 +19,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const userId = request.headers.get('x-user-id');
-    const userRole = request.headers.get('x-user-role');
-    
-    if (!userId || userRole !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Admin access required' },
-        { status: 403 }
-      );
-    }
-    
+  return withAdminAuth(request, async (admin) => {
     const { id: disputeId } = await params;
     const body = await request.json();
     
@@ -47,7 +38,7 @@ export async function POST(
     }
     
     // Python: resolve_dispute(...)
-    const result = await disputeService.resolveDispute(disputeId, userId, {
+    const result = await disputeService.resolveDispute(disputeId, admin.id, {
       action,
       resolution,
       refundAmountCents,
@@ -65,14 +56,14 @@ export async function POST(
       status: result.status,
       dispute_id: disputeId,
     });
-    
-  } catch (error: any) {
-    console.error('[API] POST /disputes/[id]/resolve error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to resolve dispute' },
-      { status: 500 }
-    );
-  }
+  }, ['ADMIN', 'SUPPORT']);
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  return POST(request, context);
 }
 
 // ============================================
@@ -83,25 +74,26 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id: disputeId } = await params;
-    
-    const dispute = await disputeService.getDisputeById(disputeId);
-    
-    if (!dispute) {
+  return withAdminAuth(request, async () => {
+    try {
+      const { id: disputeId } = await params;
+
+      const dispute = await disputeService.getDisputeById(disputeId);
+
+      if (!dispute) {
+        return NextResponse.json(
+          { error: 'Dispute not found' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json(dispute);
+    } catch (error: any) {
+      console.error('[API] GET /disputes/[id] error:', error);
       return NextResponse.json(
-        { error: 'Dispute not found' },
-        { status: 404 }
+        { error: error.message || 'Failed to get dispute' },
+        { status: 500 }
       );
     }
-    
-    return NextResponse.json(dispute);
-    
-  } catch (error: any) {
-    console.error('[API] GET /disputes/[id] error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to get dispute' },
-      { status: 500 }
-    );
-  }
+  }, ['ADMIN', 'SUPPORT']);
 }

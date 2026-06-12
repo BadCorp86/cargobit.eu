@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { requireRequestUser } from '@/lib/request-user-auth';
 import {
   getOrCreatePlatformWallet,
   getOrCreateWallet,
@@ -44,15 +45,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Python: user_id: str = Depends(get_current_user_id)
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
+    const userId = auth.user.id;
     
     const { id: jobId } = await params;
     
@@ -325,7 +321,7 @@ export async function PATCH(
       return NextResponse.json(
         {
           error: error.code,
-          message: 'Wallet-Aufladung erforderlich, um dieses Angebot anzunehmen.',
+          message: 'Zusätzlicher Zahlungsschutz erforderlich, um dieses Angebot anzunehmen.',
           wallet: error.details,
         },
         { status: error.status },

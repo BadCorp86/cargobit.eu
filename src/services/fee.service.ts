@@ -110,17 +110,20 @@ export async function resolveBillingPlan(
       return getBillingPlan('FREE');
     }
 
+    const planKey = normalizeBillingPlan(companyPlan.plan.name);
+    const fallbackPlan = getBillingPlan(planKey);
+
     return {
-      key: normalizeBillingPlan(companyPlan.plan.name),
-      name: String(companyPlan.plan.name),
-      monthlyFee: companyPlan.plan.monthlyFee,
-      yearlyFee: companyPlan.plan.yearlyFee || 0,
+      key: planKey,
+      name: fallbackPlan.name,
+      monthlyFee: fallbackPlan.monthlyFee,
+      yearlyFee: fallbackPlan.yearlyFee,
       pricesExcludeVat: true,
       vatNotice: 'zzgl. gesetzlicher MwSt.',
-      commissionPercent: companyPlan.plan.commissionPercent,
-      walletFeePercent: companyPlan.plan.walletFeePercent,
-      maxTransportsMonthly: safeMaxTransports(companyPlan.plan.featuresJson, normalizeBillingPlan(companyPlan.plan.name)),
-      features: safeJsonFeatures(companyPlan.plan.featuresJson),
+      commissionPercent: fallbackPlan.commissionPercent,
+      walletFeePercent: fallbackPlan.walletFeePercent,
+      maxTransportsMonthly: fallbackPlan.maxTransportsMonthly,
+      features: fallbackPlan.features,
     };
   } catch (error) {
     console.error('[Fees] Failed to resolve billing plan, using FREE fallback:', error);
@@ -173,33 +176,4 @@ async function resolveUserCompanyId(userId: string): Promise<string | null> {
   });
 
   return companyUser?.companyId || null;
-}
-
-function safeJsonFeatures(featuresJson?: string | null): string[] {
-  if (!featuresJson) return getBillingPlan('FREE').features;
-
-  try {
-    const parsed = JSON.parse(featuresJson);
-    if (Array.isArray(parsed?.features)) return parsed.features.map(String);
-    if (typeof parsed?.support === 'string') {
-      return Object.entries(parsed).map(([key, value]) => `${key}: ${String(value)}`);
-    }
-  } catch {
-  }
-
-  return getBillingPlan('FREE').features;
-}
-
-function safeMaxTransports(featuresJson: string | null | undefined, planName: BillingPlanKey): number {
-  try {
-    const parsed = featuresJson ? JSON.parse(featuresJson) : null;
-    const maxTransports = Number(parsed?.maxTransports);
-
-    if (Number.isFinite(maxTransports)) {
-      return maxTransports;
-    }
-  } catch {
-  }
-
-  return getBillingPlan(planName).maxTransportsMonthly;
 }

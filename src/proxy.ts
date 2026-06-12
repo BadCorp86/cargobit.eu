@@ -38,6 +38,7 @@ const ROUTE_PROTECTION: Record<string, RouteConfig> = {
   '/api/user/profile': { requiresAuth: true, riskLevel: 'LOW' },
   
   // Transport routes
+  '/api/transports/[id]/tracking': { requiresAuth: false, riskLevel: 'MEDIUM' },
   '/api/transports': { requiresAuth: true, riskLevel: 'MEDIUM' },
   '/api/transports/[id]': { requiresAuth: true, riskLevel: 'MEDIUM' },
   '/api/transports/[id]/assign': { requiresAuth: true, requiredRoles: ['DISPATCHER', 'ADMIN'], riskLevel: 'HIGH' },
@@ -46,6 +47,8 @@ const ROUTE_PROTECTION: Record<string, RouteConfig> = {
   // Wallet routes
   '/api/wallet': { requiresAuth: true, riskLevel: 'HIGH' },
   '/api/wallet/payout': { requiresAuth: true, riskLevel: 'HIGH', rateLimit: { requests: 5, windowMs: 3600000 } },
+  '/api/wallet/payout-methods': { requiresAuth: true, riskLevel: 'HIGH', rateLimit: { requests: 5, windowMs: 3600000 } },
+  '/api/wallet/payout-stripe': { requiresAuth: true, riskLevel: 'HIGH' },
   '/api/wallet/deposit': { requiresAuth: true, riskLevel: 'MEDIUM' },
   
   // Admin routes
@@ -118,7 +121,10 @@ function matchRoute(pathname: string, pattern: string): boolean {
 }
 
 function getRouteConfig(pathname: string): RouteConfig | null {
-  for (const [pattern, config] of Object.entries(ROUTE_PROTECTION)) {
+  const routes = Object.entries(ROUTE_PROTECTION)
+    .sort(([left], [right]) => right.length - left.length);
+
+  for (const [pattern, config] of routes) {
     if (matchRoute(pathname, pattern)) {
       return config;
     }
@@ -151,7 +157,7 @@ export async function proxy(request: NextRequest) {
     
     response.headers.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGINS || '*');
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Id, X-Session-Token');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Id, X-User-Role, X-User-Roles, X-Driver-Id, X-Session-Token');
     response.headers.set('Access-Control-Max-Age', '86400');
     
     // Handle preflight
@@ -194,9 +200,16 @@ export async function proxy(request: NextRequest) {
 
   // Authentication check
   if (config.requiresAuth) {
+    const devHeaderUserId = process.env.NODE_ENV !== 'production'
+      ? request.headers.get('x-user-id')
+      : null;
     const sessionToken = request.headers.get('authorization')?.replace('Bearer ', '') ||
                          request.cookies.get('session_token')?.value ||
-                         request.cookies.get('admin_session')?.value;
+                         request.cookies.get('user_session')?.value ||
+                         request.cookies.get('cargobit_session')?.value ||
+                         request.cookies.get('session')?.value ||
+                         request.cookies.get('admin_session')?.value ||
+                         devHeaderUserId;
 
     if (!sessionToken) {
       return NextResponse.json(
@@ -220,23 +233,9 @@ export async function proxy(request: NextRequest) {
       return response;
     }
 
-    // Validate session (would normally check against database)
-    // For now, we trust the token header in development
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        {
-          error: 'UnauthorizedError',
-          message: 'Ungültige Sitzung',
-          code: 'INVALID_SESSION',
-        },
-        { status: 401 }
-      );
-    }
-
-    // Role check
-    if (config.requiredRoles && config.requiredRoles.length > 0) {
+    // Role check is only header-based in local development. API route handlers
+    // perform real session + role validation before returning protected data.
+    if (process.env.NODE_ENV !== 'production' && config.requiredRoles && config.requiredRoles.length > 0) {
       const userRoles = request.headers.get('x-user-roles')?.split(',') || [];
       const hasRole = config.requiredRoles.some(role => userRoles.includes(role));
 
@@ -294,7 +293,9 @@ export const config = {
 // ============================================
 
 export function getAuthUser(request: NextRequest): { userId: string; roles: string[] } | null {
-  const userId = request.headers.get('x-user-id');
+  const userId = process.env.NODE_ENV !== 'production'
+    ? request.headers.get('x-user-id')
+    : null;
   const roles = request.headers.get('x-user-roles')?.split(',') || [];
 
   if (!userId) return null;

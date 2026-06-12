@@ -55,14 +55,14 @@ export function createOrderInvoiceDraft(input: {
       vatRate,
     }),
     createLineItem({
-      label: 'CargoBit Plattformgebuehr',
-      description: `${quote.commissionPercent}% Provision fuer Matching, Trust und Abwicklung`,
+      label: 'CargoBit Plattformgebühr',
+      description: `${quote.commissionPercent}% Provision für Matching, Trust und Abwicklung`,
       amount: quote.commissionAmount,
       vatRate,
     }),
     createLineItem({
       label: 'Wallet-/Zahlungsschutz',
-      description: `${quote.walletFeePercent}% fuer Zahlungsabsicherung und Settlement`,
+      description: `${quote.walletFeePercent}% für Zahlungsabsicherung und Settlement`,
       amount: quote.walletFeeAmount,
       vatRate,
     }),

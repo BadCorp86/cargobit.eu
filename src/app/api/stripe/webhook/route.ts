@@ -23,6 +23,7 @@ interface StripeObject {
   object?: string;
   amount?: number;
   amount_paid?: number;
+  amount_total?: number;
   amount_due?: number;
   subtotal?: number;
   total?: number;
@@ -30,6 +31,7 @@ interface StripeObject {
   number?: string;
   currency?: string;
   status?: string;
+  payment_status?: string;
   customer?: string;
   subscription?: string | { id: string };
   current_period_end?: number;
@@ -284,6 +286,11 @@ async function dispatchStripeEvent(event: StripeWebhookEvent): Promise<WebhookAc
 async function handleCheckoutSessionCompleted(event: StripeWebhookEvent): Promise<WebhookActionResult> {
   const session = event.data.object;
   const metadata = session.metadata || {};
+
+  if (metadata.type === 'wallet_topup') {
+    return handleWalletTopupCheckoutCompleted(event);
+  }
+
   const userId = metadata.userId || session.client_reference_id;
   const companyId = metadata.companyId;
   const plan = metadata.plan;
@@ -321,6 +328,129 @@ async function handleCheckoutSessionCompleted(event: StripeWebhookEvent): Promis
     userId: activation.userId,
     companyId: activation.companyId,
     plan: activation.plan,
+  };
+}
+
+async function handleWalletTopupCheckoutCompleted(event: StripeWebhookEvent): Promise<WebhookActionResult> {
+  const session = event.data.object;
+  const metadata = session.metadata || {};
+  const userId = metadata.userId || session.client_reference_id;
+  const metadataWalletId = metadata.walletId;
+  const amountCents = Number(metadata.amountCents || session.amount_total || session.amount_paid || session.total || 0);
+
+  if (session.payment_status && session.payment_status !== 'paid') {
+    return {
+      success: true,
+      action: 'wallet_topup_checkout_not_paid',
+      message: `Wallet topup checkout ignored because payment_status is ${session.payment_status}`,
+      userId,
+    };
+  }
+
+  if (!userId || !amountCents || amountCents < 1) {
+    return {
+      success: true,
+      action: 'wallet_topup_checkout_missing_metadata',
+      message: 'Checkout session completed without usable CargoBit wallet topup metadata',
+    };
+  }
+
+  const currency = String(session.currency || 'EUR').toUpperCase();
+  const amount = amountCents / 100;
+  let wallet = await db.wallet.findFirst({
+    where: metadataWalletId
+      ? { id: metadataWalletId, ownerUserId: userId }
+      : { ownerUserId: userId },
+  });
+
+  if (!wallet) {
+    if (metadataWalletId) {
+      return {
+        success: false,
+        action: 'wallet_topup_wallet_mismatch',
+        message: 'Checkout wallet metadata does not belong to the CargoBit user.',
+        userId,
+      };
+    }
+
+    wallet = await db.wallet.create({
+      data: {
+        ownerUserId: userId,
+        balance: 0,
+        reservedBalance: 0,
+        currency,
+        status: 'ACTIVE',
+      },
+    });
+  }
+
+  const existingTransaction = await db.walletTransaction.findFirst({
+    where: {
+      walletId: wallet.id,
+      reference: session.id,
+      type: 'DEPOSIT',
+    },
+  });
+
+  let credited = false;
+  if (!existingTransaction?.processedAt) {
+    await db.$transaction(async (tx) => {
+      if (existingTransaction) {
+        await tx.walletTransaction.update({
+          where: { id: existingTransaction.id },
+          data: {
+            amount,
+            currency,
+            description: 'Zahlungsschutz-Aufladung via Stripe Checkout',
+            processedAt: new Date(),
+          },
+        });
+      } else {
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: 'DEPOSIT',
+            amount,
+            currency,
+            description: 'Zahlungsschutz-Aufladung via Stripe Checkout',
+            reference: session.id,
+            processedAt: new Date(),
+          },
+        });
+      }
+
+      await tx.wallet.update({
+        where: { id: wallet.id },
+        data: {
+          balance: { increment: amount },
+          totalDeposited: { increment: amount },
+        },
+      });
+    });
+
+    credited = true;
+  }
+
+  if (credited) {
+    await db.notification.create({
+      data: {
+        userId,
+        type: 'WALLET_TOPUP',
+        title: 'Zahlungsschutz aufgeladen',
+        message: `Ihr Zahlungsschutz-Konto wurde um ${formatMoney(amount, currency)} aufgeladen.`,
+        data: JSON.stringify({
+          checkoutSessionId: session.id,
+          eventId: event.id,
+        }),
+      },
+    });
+  }
+
+  return {
+    success: true,
+    action: credited ? 'wallet_topup_checkout_credited' : 'wallet_topup_checkout_duplicate',
+    message: 'Wallet topup checkout processed',
+    userId,
   };
 }
 
@@ -409,8 +539,8 @@ async function handleSubscriptionDeleted(event: StripeWebhookEvent): Promise<Web
       data: {
         userId,
         type: 'SUBSCRIPTION_CANCELLED',
-        title: 'Abonnement beendet',
-        message: 'Ihr CargoBit Abonnement wurde beendet. Ihr Konto nutzt wieder den Free Plan.',
+        title: 'Business-Tarif beendet',
+        message: 'Ihr CargoBit Business-Tarif wurde beendet. Ihr Konto nutzt wieder das Start-Modell.',
         data: JSON.stringify({
           companyId: resolvedCompanyId,
           stripeSubscriptionId: subscription.id,
@@ -460,8 +590,8 @@ async function handleInvoicePaymentSucceeded(event: StripeWebhookEvent): Promise
       data: {
         userId,
         type: 'SUBSCRIPTION_PAYMENT_SUCCEEDED',
-        title: 'Abo-Zahlung erfolgreich',
-        message: `Ihre Abo-Zahlung über ${formatMoney((invoice.amount_paid || invoice.amount || 0) / 100, invoice.currency || 'EUR')} wurde verarbeitet.`,
+        title: 'Business-Zahlung erfolgreich',
+        message: `Ihre Business-Zahlung über ${formatMoney((invoice.amount_paid || invoice.amount || 0) / 100, invoice.currency || 'EUR')} wurde verarbeitet.`,
         data: JSON.stringify({
           invoiceId: invoice.id,
           subscriptionId: invoice.subscription,
@@ -514,8 +644,8 @@ async function handleInvoicePaymentFailed(event: StripeWebhookEvent): Promise<We
       data: {
         userId,
         type: 'SUBSCRIPTION_PAYMENT_FAILED',
-        title: 'Abo-Zahlung fehlgeschlagen',
-        message: 'Ihre Abo-Zahlung konnte nicht verarbeitet werden. Bitte prüfen Sie Ihre Zahlungsmethode.',
+        title: 'Business-Zahlung fehlgeschlagen',
+        message: 'Ihre Business-Zahlung konnte nicht verarbeitet werden. Bitte prüfen Sie Ihre Zahlungsmethode.',
         data: JSON.stringify({
           invoiceId: invoice.id,
           subscriptionId: invoice.subscription,
@@ -576,7 +706,7 @@ async function handlePaymentIntentSucceeded(event: StripeWebhookEvent): Promise<
           type: 'DEPOSIT',
           amount: paymentIntent.amount! / 100,
           currency: String(paymentIntent.currency || 'EUR').toUpperCase(),
-          description: 'Wallet-Aufladung via Stripe',
+          description: 'Zahlungsschutz-Aufladung via Stripe',
           reference: paymentIntent.id,
           processedAt: new Date(),
         },
@@ -596,8 +726,8 @@ async function handlePaymentIntentSucceeded(event: StripeWebhookEvent): Promise<
     data: {
       userId: metadata.userId,
       type: 'WALLET_TOPUP',
-      title: 'Wallet aufgeladen',
-      message: `Ihr Wallet wurde um ${formatMoney(paymentIntent.amount / 100, paymentIntent.currency || 'EUR')} aufgeladen.`,
+      title: 'Zahlungsschutz aufgeladen',
+      message: `Ihr Zahlungsschutz-Konto wurde um ${formatMoney(paymentIntent.amount / 100, paymentIntent.currency || 'EUR')} aufgeladen.`,
       data: JSON.stringify({
         paymentIntentId: paymentIntent.id,
         eventId: event.id,
@@ -745,8 +875,8 @@ async function activateCompanyPlan(input: {
       data: {
         userId: input.userId,
         type: 'SUBSCRIPTION_ACTIVATED',
-        title: 'Abonnement aktiviert',
-        message: `Ihr CargoBit ${planDefinition.name} Abo ist aktiv bis ${formatDate(input.validTo)}.`,
+        title: 'Business-Tarif aktiviert',
+        message: `Ihr CargoBit ${planDefinition.name} Tarif ist aktiv bis ${formatDate(input.validTo)}.`,
         data: JSON.stringify({
           companyId,
           plan: planKey,
@@ -964,21 +1094,21 @@ async function sendSubscriptionInvoiceEmail(
   const tax = storedInvoice?.tax ?? centsToMoney(invoice.tax ?? 0);
   const total = storedInvoice?.total ?? centsToMoney(invoice.total ?? invoice.amount_paid ?? 0);
   const documentUrl = storedInvoice?.hostedInvoiceUrl || storedInvoice?.invoicePdfUrl || invoice.hosted_invoice_url || invoice.invoice_pdf;
-  const subject = `CargoBit Abo-Rechnung ${invoiceNumber}`;
+  const subject = `CargoBit Business-Rechnung ${invoiceNumber}`;
   const name = [recipient.firstName, recipient.lastName].filter(Boolean).join(' ');
   const salutation = name ? `Hallo ${name}` : 'Hallo';
   const documentButton = documentUrl
-    ? `<p style="margin:28px 0"><a href="${documentUrl}" style="display:inline-block;background:#1C7ED6;color:#ffffff;padding:13px 18px;border-radius:10px;text-decoration:none;font-weight:700">Rechnung oeffnen</a></p>`
+    ? `<p style="margin:28px 0"><a href="${documentUrl}" style="display:inline-block;background:#1C7ED6;color:#ffffff;padding:13px 18px;border-radius:10px;text-decoration:none;font-weight:700">Rechnung öffnen</a></p>`
     : '';
 
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;max-width:680px;margin:auto;background:#06121C;color:#EAF7FF;padding:28px;border-radius:18px">
       <div style="border-bottom:1px solid rgba(255,255,255,.12);padding-bottom:18px;margin-bottom:22px">
         <div style="color:#00D4FF;font-size:13px;letter-spacing:.08em;text-transform:uppercase">CargoBit Billing</div>
-        <h1 style="margin:8px 0 0;font-size:26px">Ihre Abo-Rechnung ist bereit</h1>
+        <h1 style="margin:8px 0 0;font-size:26px">Ihre Business-Rechnung ist bereit</h1>
       </div>
       <p style="color:#C7D7E4">${salutation},</p>
-      <p style="color:#C7D7E4">die Zahlung für Ihre CargoBit Subscription wurde verarbeitet. Die Rechnung <strong>${invoiceNumber}</strong> wurde automatisch erstellt.</p>
+      <p style="color:#C7D7E4">die Zahlung für Ihren CargoBit Business-Tarif wurde verarbeitet. Die Rechnung <strong>${invoiceNumber}</strong> wurde automatisch erstellt.</p>
       <table style="width:100%;border-collapse:collapse;margin:24px 0;background:rgba(255,255,255,.05);border-radius:14px;overflow:hidden">
         <tr><td style="padding:14px 16px;color:#9EB2C2">Netto</td><td style="padding:14px 16px;text-align:right;font-weight:700">${formatMoney(subtotal, currency)}</td></tr>
         <tr><td style="padding:14px 16px;color:#9EB2C2;border-top:1px solid rgba(255,255,255,.08)">MwSt.</td><td style="padding:14px 16px;text-align:right;font-weight:700;border-top:1px solid rgba(255,255,255,.08)">${formatMoney(tax, currency)}</td></tr>
@@ -988,7 +1118,7 @@ async function sendSubscriptionInvoiceEmail(
       <p style="color:#7F94A6;font-size:13px">Diese E-Mail wurde automatisch erstellt. Die vollstaendige Rechnung bleibt im CargoBit Billing-Bereich abrufbar.</p>
     </div>
   `;
-  const text = `${salutation}, Ihre CargoBit Abo-Rechnung ${invoiceNumber} wurde erstellt. Netto: ${formatMoney(subtotal, currency)}, MwSt.: ${formatMoney(tax, currency)}, Brutto: ${formatMoney(total, currency)}.${documentUrl ? ` Rechnung: ${documentUrl}` : ''}`;
+  const text = `${salutation}, Ihre CargoBit Business-Rechnung ${invoiceNumber} wurde erstellt. Netto: ${formatMoney(subtotal, currency)}, MwSt.: ${formatMoney(tax, currency)}, Brutto: ${formatMoney(total, currency)}.${documentUrl ? ` Rechnung: ${documentUrl}` : ''}`;
   const result = await sendTransactionalEmail({
     to: {
       email: recipient.email,

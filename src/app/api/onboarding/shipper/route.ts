@@ -30,7 +30,6 @@ export async function POST(request: NextRequest) {
       vatNumber,
       verificationDocuments = [],
     } = body;
-    const userId = request.headers.get('x-user-id');
     let company: Awaited<ReturnType<typeof db.company.findFirst>> = null;
 
     // Validation
@@ -145,7 +144,7 @@ export async function POST(request: NextRequest) {
         type: 'ONBOARDING_SUBMITTED',
         title: 'Willkommen bei CargoBit!',
         message: isBusiness 
-          ? 'Ihr Unternehmenskonto wurde erstellt. Laden Sie Ihr Wallet-Guthaben auf, um Transporte zu beauftragen.'
+          ? 'Ihr Unternehmenskonto wurde erstellt. Bereiten Sie den Zahlungsschutz vor, um Transporte zu beauftragen.'
           : 'Ihr Konto wurde erstellt. Sie können jetzt Transporte beauftragen.',
       },
     });

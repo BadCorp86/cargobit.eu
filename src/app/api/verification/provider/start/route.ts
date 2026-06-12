@@ -8,6 +8,7 @@ import type {
   VerificationProviderStartInput,
 } from '@/services/verification/providers/types';
 import type { VerificationRole } from '@/services/verification-workflow.service';
+import { requireRequestUser, requestUserHasAnyRole } from '@/lib/request-user-auth';
 
 const VALID_ROLES: VerificationRole[] = [
   'SHIPPER_PRIVATE',
@@ -39,10 +40,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
     const role = normalizeRole(body.role);
-    const userId = body.userId || request.headers.get('x-user-id');
+    const requestedUserId = body.userId || auth.user!.id;
+    const canActForOtherUser = requestUserHasAnyRole(auth.user!, ['ADMIN', 'SUPPORT']);
 
-    if (!role || !userId) {
+    if (!role || !requestedUserId) {
       return NextResponse.json(
         {
           success: false,
@@ -53,9 +57,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (requestedUserId !== auth.user!.id && !canActForOtherUser) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'FORBIDDEN',
+          message: 'Sie dürfen Verifizierungen nur für Ihr eigenes Konto starten.',
+        },
+        { status: 403 },
+      );
+    }
+
     const result = await startVerificationProvider({
       provider: normalizeProvider(body.provider),
-      userId,
+      userId: requestedUserId,
       role,
       country: body.country || 'DE',
       companyId: body.companyId,

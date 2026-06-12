@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { bidsService } from '@/services/bids.service';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 // ============================================
 // GET /api/bids/[id] - Get bid details
@@ -16,14 +17,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
     
     const { id } = await params;
     
@@ -62,7 +58,7 @@ export async function GET(
     
     // Verify access (shipper or transporter)
     const isShipper = offer.transport.shipperUserId === userId;
-    const isTransporter = offer.driverId === userId;
+    const isTransporter = offer.driver.userId === userId;
     
     if (!isShipper && !isTransporter) {
       return NextResponse.json(
@@ -127,22 +123,17 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
     
     const { id } = await params;
     const body = await request.json();
-    const action = body.action; // 'accept', 'reject', 'withdraw'
+    const action = body.action; // 'accept', 'reject', 'withdraw', 'update'
     
     if (!action) {
       return NextResponse.json(
-        { error: 'Missing required field: action (accept, reject, withdraw)' },
+        { error: 'Missing required field: action (accept, reject, withdraw, update)' },
         { status: 400 }
       );
     }
@@ -166,16 +157,78 @@ export async function PATCH(
         const result = await bidsService.withdrawBid(id, userId);
         return NextResponse.json(result);
       }
+
+      case 'update': {
+        const price = Number(body.price);
+        const result = await bidsService.updateBid({
+          bidId: id,
+          userId,
+          price,
+          message: body.message,
+          estimatedDuration: body.estimatedDuration ? Number(body.estimatedDuration) : undefined,
+          validUntilHours: body.validUntilHours ? Number(body.validUntilHours) : undefined,
+        });
+        return NextResponse.json(result);
+      }
       
       default:
         return NextResponse.json(
-          { error: `Invalid action: ${action}. Valid: accept, reject, withdraw` },
+          { error: `Invalid action: ${action}. Valid: accept, reject, withdraw, update` },
           { status: 400 }
         );
     }
     
   } catch (error: any) {
     console.error('[API] PATCH /bids/[id] error:', error);
+
+    if (error?.message === 'Not authorized') {
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'Sie haben keinen Zugriff auf dieses Angebot.' },
+        { status: 403 },
+      );
+    }
+
+    if (error?.message === 'Bid not found') {
+      return NextResponse.json(
+        { error: 'NotFound', message: 'Angebot nicht gefunden.' },
+        { status: 404 },
+      );
+    }
+
+    if (typeof error?.message === 'string' && error.message.startsWith('Bid is already')) {
+      return NextResponse.json(
+        { error: 'BidNotPending', message: 'Dieses Angebot ist nicht mehr offen und kann nicht geändert werden.' },
+        { status: 409 },
+      );
+    }
+
+    if (error?.message === 'Invalid bid price') {
+      return NextResponse.json(
+        { error: 'ValidationError', message: 'Ein gültiger Angebotspreis ist erforderlich.' },
+        { status: 400 },
+      );
+    }
+
+    if (typeof error?.message === 'string' && error.message.startsWith('Bid below minimum:')) {
+      const [, minimumPrice, currency] = error.message.split(':');
+      return NextResponse.json(
+        {
+          error: 'BID_BELOW_MINIMUM',
+          message: `Das Angebot liegt unter der Anti-Dumping-Grenze von ${Number(minimumPrice).toFixed(2)} ${currency}.`,
+          minimumPrice: Number(minimumPrice),
+          currency,
+        },
+        { status: 400 },
+      );
+    }
+
+    if (error?.message === 'Job is not open for bids') {
+      return NextResponse.json(
+        { error: 'JobNotOpen', message: 'Dieser Auftrag ist aktuell nicht für Angebote geöffnet.' },
+        { status: 400 },
+      );
+    }
+
     return NextResponse.json(
       { error: error.message || 'Failed to update bid' },
       { status: 500 }

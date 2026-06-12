@@ -8,7 +8,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { payoutService } from '@/services/payout.service';
+import { getOptionalAdmin } from '@/lib/request-admin-auth';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
+import { getOrderPayoutReadiness } from '@/services/order-payout-release.service';
 
 // ============================================
 // TYPES
@@ -18,7 +20,6 @@ interface CompleteJobRequest {
   delivery_photo_url?: string;
   pod_signature_url?: string;
   notes?: string;
-  trigger_payout?: boolean;  // Default: true
 }
 
 // ============================================
@@ -30,9 +31,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
+    const requestUser = await getOptionalRequestUser(request);
+    const userId = requestUser?.id || null;
+    const admin = await getOptionalAdmin(request);
+
+    if (!userId && !admin) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -59,11 +62,13 @@ export async function POST(
     }
     
     // Check authorization
-    const driver = await prisma.driver.findFirst({
-      where: { userId },
-    });
+    const driver = userId
+      ? await prisma.driver.findFirst({
+          where: { userId },
+        })
+      : null;
     
-    const isAdmin = request.headers.get('x-user-role') === 'ADMIN';
+    const isAdmin = admin?.role === 'ADMIN';
     const isAssignedDriver = driver && transport.assignment?.driverId === driver.id;
     
     if (!isAdmin && !isAssignedDriver) {
@@ -99,7 +104,7 @@ export async function POST(
         data: {
           transportId: jobId,
           status: 'COMPLETED',
-          changedBy: userId,
+          changedBy: userId || admin!.id,
           note: body.notes || 'Job completed',
         },
       });
@@ -112,7 +117,7 @@ export async function POST(
             type: 'foto_delivery',
             name: 'Delivery Photo',
             fileUrl: body.delivery_photo_url,
-            createdBy: userId,
+            createdBy: userId || admin!.id,
           },
         });
       }
@@ -126,7 +131,7 @@ export async function POST(
             fileUrl: body.pod_signature_url,
             isSigned: true,
             signedAt: new Date(),
-            createdBy: userId,
+            createdBy: userId || admin!.id,
           },
         });
       }
@@ -144,16 +149,7 @@ export async function POST(
       return updatedJob;
     });
     
-    // Trigger automatic payout (default: true)
-    let payoutResult = null;
-    
-    if (body.trigger_payout !== false && transport.assignment?.driverId) {
-      const connectStatus = await payoutService.getConnectStatus(transport.assignment.driverId);
-      
-      if (connectStatus.payoutsEnabled) {
-        payoutResult = await payoutService.processPayoutForJob(jobId);
-      }
-    }
+    const payoutReadiness = await getOrderPayoutReadiness({ orderId: jobId });
     
     // Notify shipper
     await prisma.notification.create({
@@ -173,14 +169,15 @@ export async function POST(
       completed_at: result.completedAt!.toISOString(),
     };
     
-    if (payoutResult) {
-      response.payout = {
-        success: payoutResult.success,
-        reference: payoutResult.payoutReference,
-        amount: payoutResult.netAmount,
-        error: payoutResult.error,
-      };
-    }
+    response.settlement = payoutReadiness
+      ? {
+          status: payoutReadiness.release.status,
+          releaseEligibleAt: payoutReadiness.releaseEligibleAt,
+          blockers: payoutReadiness.blockers,
+          message:
+            'Wallet-Freigabe erfolgt automatisch nach POD, 24-Werktagsstunden und ohne offene Fälle.',
+        }
+      : undefined;
     
     return NextResponse.json(response);
     

@@ -29,7 +29,7 @@ export async function getDatabaseReadiness(): Promise<DatabaseReadinessReport> {
   checks.push({
     id: 'database_url',
     label: 'DATABASE_URL',
-    description: 'Produktive Datenbankverbindung fuer Prisma, Stripe Webhooks, Abos und Rechnungen.',
+    description: 'Produktive Datenbankverbindung fuer Prisma, Stripe Webhooks, Business-Tarif und Rechnungen.',
     required: true,
     status: getDatabaseUrlStatus(databaseUrl),
     maskedValue: isMeaningfulDatabaseUrl(databaseUrl) ? maskDatabaseUrl(databaseUrl) : undefined,
@@ -65,7 +65,7 @@ export async function getDatabaseReadiness(): Promise<DatabaseReadinessReport> {
     checks.push(await runDatabaseCheck({
       id: 'company_plan_stripe_fields',
       label: 'CompanyPlan Stripe Felder',
-      description: 'Abo-Status, Subscription ID, Checkout Session, Billing Cycle und letzte Invoice koennen gespeichert werden.',
+      description: 'Business-Status, Subscription ID, Checkout Session, Billing Cycle und letzte Invoice koennen gespeichert werden.',
       required: true,
       query: async () => {
         await db.companyPlan.findFirst({
@@ -87,7 +87,7 @@ export async function getDatabaseReadiness(): Promise<DatabaseReadinessReport> {
     checks.push(await runDatabaseCheck({
       id: 'subscription_invoice_table',
       label: 'SubscriptionInvoice',
-      description: 'Stripe Abo-Rechnungen koennen inklusive Netto, MwSt, Brutto, PDF-Link und Zahlungsstatus gespeichert werden.',
+      description: 'Stripe Business-Rechnungen koennen inklusive Netto, MwSt, Brutto, PDF-Link und Zahlungsstatus gespeichert werden.',
       required: true,
       query: async () => {
         await db.subscriptionInvoice.findFirst({

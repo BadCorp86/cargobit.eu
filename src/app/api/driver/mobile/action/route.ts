@@ -8,6 +8,8 @@ import {
   type DriverMobileActionId,
 } from '@/lib/driver-mobile';
 import { issueOrderInvoice } from '@/lib/order-settlement';
+import { getOptionalAdmin } from '@/lib/request-admin-auth';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
 
 const validActions: DriverMobileActionId[] = [
   'confirm_pickup',
@@ -18,11 +20,21 @@ const validActions: DriverMobileActionId[] = [
   'contact_support',
 ];
 
+const allowedActionStatuses: Record<DriverMobileActionId, string[]> = {
+  confirm_pickup: ['ASSIGNED'],
+  send_status: ['ASSIGNED', 'PICKUP_DONE', 'IN_TRANSIT'],
+  confirm_delivery: ['PICKUP_DONE', 'IN_TRANSIT'],
+  submit_pod: ['DELIVERY_DONE'],
+  upload_photo: ['ASSIGNED', 'PICKUP_DONE', 'IN_TRANSIT', 'DELIVERY_DONE'],
+  contact_support: ['ASSIGNED', 'PICKUP_DONE', 'IN_TRANSIT', 'DELIVERY_DONE', 'COMPLETED'],
+};
+
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const action = body.action as DriverMobileActionId;
   const missionId = body.missionId || body.transportId;
-  const userId = body.userId || request.headers.get('x-user-id');
+  const requestUser = await getOptionalRequestUser(request);
+  const userId = requestUser?.id;
 
   if (!action || !validActions.includes(action)) {
     return NextResponse.json(
@@ -42,9 +54,11 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  if (!userId) {
+  const admin = await getOptionalAdmin(request);
+
+  if (!userId && !admin) {
     return NextResponse.json(
-      { error: 'UNAUTHORIZED', message: 'x-user-id is required for real transport actions' },
+      { error: 'UNAUTHORIZED', message: 'Login required for real transport actions' },
       { status: 401 },
     );
   }
@@ -73,14 +87,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const driver = await prisma.driver.findFirst({ where: { userId } });
-    const isAdmin = request.headers.get('x-user-role') === 'ADMIN';
+    const driver = userId ? await prisma.driver.findFirst({ where: { userId } }) : null;
+    const isAdmin = admin?.role === 'ADMIN';
     const isAssignedDriver = driver?.id === transport.assignment.driverId;
 
     if (!isAdmin && !isAssignedDriver) {
       return NextResponse.json(
         { error: 'FORBIDDEN', message: 'Only the assigned driver or admin can update this tour' },
         { status: 403 },
+      );
+    }
+
+    const allowedStatuses = allowedActionStatuses[action] || [];
+    if (!allowedStatuses.includes(transport.status)) {
+      return NextResponse.json(
+        {
+          error: 'INVALID_DRIVER_ACTION_STATUS',
+          message: getInvalidActionMessage(action, transport.status),
+          currentStatus: transport.status,
+          allowedStatuses,
+        },
+        { status: 400 },
       );
     }
 
@@ -114,7 +141,7 @@ export async function POST(request: NextRequest) {
         data: {
           transportId: transport.id,
           status: nextStatus as any,
-          changedBy: userId,
+          changedBy: userId || admin!.id,
           note,
         },
       });
@@ -128,6 +155,7 @@ export async function POST(request: NextRequest) {
             longitude: Number(body.location.longitude),
             speed: body.location.speed ? Number(body.location.speed) : undefined,
             heading: body.location.heading ? Number(body.location.heading) : undefined,
+            accuracy: body.location.accuracy ? Number(body.location.accuracy) : undefined,
           },
         });
       }
@@ -143,7 +171,7 @@ export async function POST(request: NextRequest) {
             mimeType: 'image/jpeg',
             isSigned: action === 'submit_pod',
             signedAt: action === 'submit_pod' ? timestamp : undefined,
-            createdBy: userId,
+            createdBy: userId || admin!.id,
           },
         });
       }
@@ -174,7 +202,7 @@ export async function POST(request: NextRequest) {
         issuedInvoice = await issueOrderInvoice({
           orderId: transport.id,
           amount: transport.agreedPrice || transport.shipperBudget || 850,
-          actorId: userId,
+          actorId: userId || admin!.id,
           sendEmail: true,
           allowFallback: false,
         });
@@ -212,4 +240,20 @@ export async function POST(request: NextRequest) {
       orderDetailHref: `/orders/${missionId || 'mission_demo_hh_muc'}?focus=invoice`,
     });
   }
+}
+
+function getInvalidActionMessage(action: DriverMobileActionId, status: string) {
+  if (action === 'submit_pod') {
+    return 'POD/eCMR kann erst nach bestätigter Lieferung erfasst werden.';
+  }
+
+  if (action === 'confirm_delivery') {
+    return 'Lieferung kann erst nach Abholung oder unterwegs-Status bestätigt werden.';
+  }
+
+  if (action === 'confirm_pickup') {
+    return 'Abholung kann nur bei einem zugewiesenen Auftrag bestätigt werden.';
+  }
+
+  return `Diese Fahreraktion ist im aktuellen Status ${status} nicht möglich.`;
 }

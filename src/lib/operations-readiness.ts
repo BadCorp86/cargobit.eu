@@ -38,7 +38,7 @@ const CRON_JOBS: OperationsCronJob[] = [
     label: 'Payout Processing',
     path: '/api/cron/payouts/run',
     schedule: '30 4 * * *',
-    description: 'Tägliche Verarbeitung und Prüfung von Wallet-Auszahlungen.',
+    description: 'Tägliche Verarbeitung und Prüfung von Auszahlungen.',
   },
 ];
 
@@ -47,14 +47,14 @@ export function getOperationsReadiness(): OperationsReadinessReport {
     createSecretCheck(
       'CRON_SECRET',
       'Cron Secret',
-      'Schützt Vercel Cron Routen vor unbefugtem manuellen Auslösen.',
+      'Schützt Cron- und Worker-Routen vor unbefugtem manuellen Auslösen.',
       true,
       24,
     ),
     {
       id: 'vercel_cron_jobs',
-      label: 'Vercel Cron Jobs',
-      description: 'vercel.json enthält geplante Jobs für Reconciliation und Payout-Verarbeitung.',
+      label: 'Geplante Jobs',
+      description: 'Reconciliation und Payout-Verarbeitung müssen auf dem Zielserver geplant werden, z. B. per systemd timer, cron oder Vercel Cron im Testbetrieb.',
       required: true,
       status: CRON_JOBS.length >= 2 ? 'ready' : 'missing',
       detail: CRON_JOBS.length >= 2 ? undefined : 'Mindestens Reconciliation und Payout Cron müssen registriert sein.',
@@ -62,7 +62,7 @@ export function getOperationsReadiness(): OperationsReadinessReport {
     {
       id: 'runtime_environment',
       label: 'Runtime Umgebung',
-      description: 'In Production werden fehlende Cron-Secrets hart blockiert; lokal bleibt Testbetrieb möglich.',
+      description: 'In Production werden fehlende Cron-Secrets hart blockiert; lokal und in Testumgebungen bleibt Testbetrieb möglich.',
       required: false,
       status: process.env.NODE_ENV === 'production' ? 'ready' : 'warning',
       detail: process.env.NODE_ENV === 'production' ? undefined : 'Aktuell läuft die App nicht im Production-Modus.',

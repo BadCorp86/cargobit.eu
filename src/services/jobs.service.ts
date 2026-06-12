@@ -15,10 +15,12 @@
  * ```
  */
 
+import { TransportType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { matchTransportersForJob, type JobRequirements } from './matching-ml.service';
 import { broadcastJobStatus, notifyUser, broadcastNewBid } from './redis-publisher.service';
 import { reserveTransportBudget } from './wallet-reservation.service';
+import { mapService } from './map.service';
 
 // ============================================
 // TYPES
@@ -37,13 +39,15 @@ export interface CreateJobInput {
   shipperCompanyId?: string;
   
   // Pickup
-  pickupAddressId: string;
+  pickupAddressId?: string;
+  pickupAddress?: JobAddressInput;
   pickupDatetime: Date;
   pickupTimeFrom?: string;
   pickupTimeTo?: string;
   
   // Delivery
-  deliveryAddressId: string;
+  deliveryAddressId?: string;
+  deliveryAddress?: JobAddressInput;
   deliveryDatetime?: Date;
   deliveryTimeFrom?: string;
   deliveryTimeTo?: string;
@@ -53,6 +57,7 @@ export interface CreateJobInput {
   weightKg?: number;
   volumeM3?: number;
   transportType: string;
+  cargoDetails?: Record<string, unknown> | null;
   
   // Pricing
   shipperBudget?: number;
@@ -66,6 +71,18 @@ export interface CreateJobInput {
   vehicleRequirements?: Record<string, unknown>;
   driverRequirements?: Record<string, unknown>;
   specialRequirements?: string;
+}
+
+export interface JobAddressInput {
+  street?: string;
+  streetNumber?: string;
+  postalCode?: string;
+  city: string;
+  state?: string;
+  country: string;
+  label?: string;
+  contactName?: string;
+  contactPhone?: string;
 }
 
 export interface JobWithDetails {
@@ -95,10 +112,15 @@ export interface JobWithDetails {
   // Cargo
   description?: string;
   weightKg?: number;
+  volumeM3?: number;
+  transportType?: string;
+  cargoDetails?: Record<string, unknown> | null;
   
   // Pricing
   shipperBudget?: number;
   agreedPrice?: number;
+  currency?: string;
+  dbStatus?: string;
   
   // Matching
   matchedTransporters?: Array<{
@@ -133,57 +155,137 @@ export interface JobWithDetails {
 
 export async function createJob(input: CreateJobInput): Promise<{ jobId: string; status: string }> {
   console.log('[Jobs] Creating new job for shipper:', input.shipperUserId);
-  
-  // Create transport record
-  const transport = await prisma.transport.create({
-    data: {
-      shipperUserId: input.shipperUserId,
-      shipperCompanyId: input.shipperCompanyId,
-      pickupAddressId: input.pickupAddressId,
-      deliveryAddressId: input.deliveryAddressId,
-      pickupDatetime: input.pickupDatetime,
-      pickupTimeFrom: input.pickupTimeFrom,
-      pickupTimeTo: input.pickupTimeTo,
-      deliveryDatetime: input.deliveryDatetime,
-      deliveryTimeFrom: input.deliveryTimeFrom,
-      deliveryTimeTo: input.deliveryTimeTo,
-      description: input.description,
-      transportType: input.transportType as any,
-      shipperBudget: input.shipperBudget,
-      currency: input.currency ?? 'EUR',
-      isInternational: input.isInternational ?? false,
-      transitCountries: input.transitCountries ? JSON.stringify(input.transitCountries) : null,
-      status: 'CREATED',
-    },
-  });
-  
-  // Create transport details if provided
-  if (input.weightKg || input.vehicleRequirements || input.driverRequirements) {
-    await prisma.transportDetail.create({
+
+  if (!input.pickupAddressId && !input.pickupAddress) {
+    throw new Error('Pickup address missing');
+  }
+
+  if (!input.deliveryAddressId && !input.deliveryAddress) {
+    throw new Error('Delivery address missing');
+  }
+
+  const [pickupGeo, deliveryGeo] = await Promise.all([
+    input.pickupAddress && !input.pickupAddressId ? geocodeAddress(input.pickupAddress) : null,
+    input.deliveryAddress && !input.deliveryAddressId ? geocodeAddress(input.deliveryAddress) : null,
+  ]);
+
+  const transport = await prisma.$transaction(async (tx) => {
+    const pickupAddressId = input.pickupAddressId ?? (await tx.address.create({
+      data: addressCreateData(input.pickupAddress!, input.shipperUserId, input.shipperCompanyId, pickupGeo),
+    })).id;
+
+    const deliveryAddressId = input.deliveryAddressId ?? (await tx.address.create({
+      data: addressCreateData(input.deliveryAddress!, input.shipperUserId, input.shipperCompanyId, deliveryGeo),
+    })).id;
+
+    const createdTransport = await tx.transport.create({
       data: {
-        transportId: transport.id,
-        weightKg: input.weightKg,
-        volumeM3: input.volumeM3,
-        vehicleRequirements: input.vehicleRequirements ? JSON.stringify(input.vehicleRequirements) : null,
-        driverRequirements: input.driverRequirements ? JSON.stringify(input.driverRequirements) : null,
-        specialRequirements: input.specialRequirements,
-        detailsJson: JSON.stringify({}),
+        shipperUserId: input.shipperUserId,
+        shipperCompanyId: input.shipperCompanyId,
+        pickupAddressId,
+        deliveryAddressId,
+        pickupDatetime: input.pickupDatetime,
+        pickupTimeFrom: input.pickupTimeFrom,
+        pickupTimeTo: input.pickupTimeTo,
+        deliveryDatetime: input.deliveryDatetime,
+        deliveryTimeFrom: input.deliveryTimeFrom,
+        deliveryTimeTo: input.deliveryTimeTo,
+        description: input.description,
+        transportType: normalizeTransportType(input.transportType),
+        shipperBudget: input.shipperBudget,
+        currency: input.currency ?? 'EUR',
+        isInternational: input.isInternational ?? input.pickupAddress?.country !== input.deliveryAddress?.country,
+        transitCountries: input.transitCountries ? JSON.stringify(input.transitCountries) : null,
+        status: 'CREATED',
       },
     });
-  }
-  
-  // Create status history
-  await prisma.transportStatusHistory.create({
-    data: {
-      transportId: transport.id,
-      status: 'CREATED',
-      note: 'Job created',
-    },
+
+    if (input.weightKg || input.volumeM3 || input.cargoDetails || input.vehicleRequirements || input.driverRequirements) {
+      await tx.transportDetail.create({
+        data: {
+          transportId: createdTransport.id,
+          weightKg: input.weightKg,
+          volumeM3: input.volumeM3,
+          vehicleRequirements: input.vehicleRequirements ? JSON.stringify(input.vehicleRequirements) : null,
+          driverRequirements: input.driverRequirements ? JSON.stringify(input.driverRequirements) : null,
+          specialRequirements: input.specialRequirements,
+          isHazmat: normalizeTransportType(input.transportType) === 'HAZMAT',
+          detailsJson: JSON.stringify(input.cargoDetails ?? {}),
+        },
+      });
+    }
+
+    await tx.transportStatusHistory.create({
+      data: {
+        transportId: createdTransport.id,
+        status: 'CREATED',
+        note: 'Job created',
+      },
+    });
+
+    return createdTransport;
   });
   
   return {
     jobId: transport.id,
     status: 'draft',
+  };
+}
+
+function normalizeTransportType(type: string): TransportType {
+  const mapping: Record<string, TransportType> = {
+    pallet: 'PALLET',
+    bulk: 'BULK',
+    liquid: 'LIQUID',
+    oversize: 'OVERSIZE',
+    lowloader: 'LOWLOADER',
+    car_transport: 'CAR_TRANSPORT',
+    cooling: 'COOLING',
+    hazmat: 'HAZMAT',
+    container: 'CONTAINER',
+  };
+  const normalized = type.toUpperCase() as TransportType;
+  return mapping[type] ?? (Object.values(TransportType).includes(normalized) ? normalized : 'PALLET');
+}
+
+function addressLabel(address: JobAddressInput) {
+  return [
+    address.street,
+    address.postalCode,
+    address.city,
+    address.country,
+  ].filter(Boolean).join(', ');
+}
+
+async function geocodeAddress(address: JobAddressInput) {
+  try {
+    return await mapService.geocode(addressLabel(address));
+  } catch (error) {
+    console.warn('[Jobs] Address geocoding skipped:', error);
+    return null;
+  }
+}
+
+function addressCreateData(
+  address: JobAddressInput,
+  userId: string,
+  companyId: string | undefined,
+  geocoding: Awaited<ReturnType<typeof geocodeAddress>>,
+) {
+  return {
+    userId,
+    companyId,
+    label: address.label,
+    contactName: address.contactName,
+    contactPhone: address.contactPhone,
+    street: address.street || geocoding?.address.street || address.city,
+    streetNumber: address.streetNumber || geocoding?.address.streetNumber,
+    postalCode: address.postalCode || geocoding?.address.postalCode || '',
+    city: address.city || geocoding?.address.city || '',
+    state: address.state,
+    country: address.country || geocoding?.address.country || '',
+    latitude: geocoding?.coordinates.lat,
+    longitude: geocoding?.coordinates.lng,
   };
 }
 
@@ -235,8 +337,8 @@ export async function publishJob(jobId: string): Promise<void> {
     },
   });
   
-  // Broadcast job published status
-  await broadcastJobStatus({ id: jobId, status: 'published' });
+  // Redis is a side channel; publishing must not fail only because Redis is offline.
+  await safeSideEffect('broadcast job published', () => broadcastJobStatus({ id: jobId, status: 'published' }));
   
   // Build matching input
   const matchingInput: JobRequirements = {
@@ -270,7 +372,7 @@ export async function publishJob(jobId: string): Promise<void> {
 // GET JOB
 // ============================================
 
-export async function getJob(jobId: string, userId: string): Promise<JobWithDetails | null> {
+export async function getJob(jobId: string, userId: string, roleHeader = ''): Promise<JobWithDetails | null> {
   const transport = await prisma.transport.findUnique({
     where: { id: jobId },
     include: {
@@ -311,8 +413,7 @@ export async function getJob(jobId: string, userId: string): Promise<JobWithDeta
   if (!transport) return null;
   
   // Verify access
-  if (transport.shipperUserId !== userId) {
-    // TODO: Check if user is assigned transporter
+  if (!canViewJob(transport, userId, roleHeader)) {
     return null;
   }
   
@@ -371,14 +472,51 @@ export async function getJob(jobId: string, userId: string): Promise<JobWithDeta
     deliveryDatetime: transport.deliveryDatetime ?? undefined,
     description: transport.description ?? undefined,
     weightKg: transport.transportDetail?.weightKg ?? undefined,
+    volumeM3: transport.transportDetail?.volumeM3 ?? undefined,
+    transportType: transport.transportType,
+    cargoDetails: parseDetailsJson(transport.transportDetail?.detailsJson),
     shipperBudget: transport.shipperBudget ?? undefined,
     agreedPrice: transport.agreedPrice ?? undefined,
+    currency: transport.currency,
+    dbStatus: transport.status,
     matchedTransporters,
     bids,
     assignedTransporter,
     createdAt: transport.createdAt,
     updatedAt: transport.updatedAt,
   };
+}
+
+function canViewJob(transport: any, userId: string, roleHeader: string) {
+  if (!transport) return false;
+  if (transport.shipperUserId === userId) return true;
+
+  const roles = roleHeader.split(',').map((role) => role.trim()).filter(Boolean);
+  const isInternal = roles.some((role) => role === 'ADMIN' || role === 'SUPPORT');
+  if (isInternal) return true;
+
+  const isCarrierSide = roles.some((role) => ['CARRIER', 'DISPATCHER', 'DRIVER_SELF_EMPLOYED'].includes(role));
+  if (isCarrierSide && transport.status === 'PUBLISHED') return true;
+
+  return transport.assignment?.driver?.userId === userId;
+}
+
+function parseDetailsJson(value?: string | null): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function safeSideEffect(label: string, effect: () => Promise<unknown>) {
+  try {
+    await effect();
+  } catch (error) {
+    console.warn(`[Jobs] Non-blocking side effect failed (${label}):`, error instanceof Error ? error.message : error);
+  }
 }
 
 // ============================================
@@ -549,18 +687,17 @@ export async function updateJobStatus(
     await handleJobCompletion(jobId);
   }
   
-  // Broadcast status update via Redis
-  // Python equivalent: broadcast_job_status(job)
-  await broadcastJobStatus({ id: jobId, status: newStatus });
+  // Redis is a side channel; status changes must remain durable even if Redis is offline.
+  await safeSideEffect('broadcast job status', () => broadcastJobStatus({ id: jobId, status: newStatus }));
   
   // Notify shipper
   if (transport.shipperUserId) {
-    await notifyUser(
+    await safeSideEffect('notify shipper', () => notifyUser(
       transport.shipperUserId,
       `Job status updated to ${newStatus}`,
       newStatus === 'completed' ? 'success' : 'info',
       { jobId, status: newStatus }
-    );
+    ));
   }
   
   console.log(`[Jobs] Updated job ${jobId} to ${newStatus}`);

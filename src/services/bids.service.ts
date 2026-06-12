@@ -41,6 +41,15 @@ export interface CreateBidInput {
   validUntilHours?: number;    // hours from now
 }
 
+export interface UpdateBidInput {
+  bidId: string;
+  userId: string;
+  price: number;
+  message?: string;
+  estimatedDuration?: number;
+  validUntilHours?: number;
+}
+
 export interface BidWithDetails {
   id: string;
   jobId: string;
@@ -78,16 +87,18 @@ export async function createBid(input: CreateBidInput): Promise<{ bidId: string;
     throw new Error('Job is not open for bids');
   }
   
-  // Check if transporter already bid
-  const existingBid = await prisma.offer.findFirst({
+  // Check if transporter already bid. Withdrawn/rejected offers may be reused
+  // because the schema enforces one offer per transport and driver.
+  const existingBid = await prisma.offer.findUnique({
     where: {
-      transportId: input.jobId,
-      driverId: input.transporterId,
-      status: { in: ['PENDING', 'ACCEPTED'] },
+      transportId_driverId: {
+        transportId: input.jobId,
+        driverId: input.transporterId,
+      },
     },
   });
   
-  if (existingBid) {
+  if (existingBid && ['PENDING', 'ACCEPTED'].includes(existingBid.status)) {
     throw new Error('You already have an active bid for this job');
   }
   
@@ -103,24 +114,39 @@ export async function createBid(input: CreateBidInput): Promise<{ bidId: string;
   // If not in matching, they can still bid but with lower priority
   const isMatched = !!matchingCandidate;
   
-  // Create bid
   const validUntil = input.validUntilHours
     ? new Date(Date.now() + input.validUntilHours * 60 * 60 * 1000)
     : new Date(Date.now() + 24 * 60 * 60 * 1000); // Default 24 hours
   
-  const offer = await prisma.offer.create({
-    data: {
-      transportId: input.jobId,
-      driverId: input.transporterId,
-      vehicleId: input.vehicleId,
-      price: input.price,
-      currency: input.currency ?? 'EUR',
-      message: input.message,
-      estimatedDuration: input.estimatedDuration,
-      status: 'PENDING',
-      validUntil,
-    },
-  });
+  const offer = existingBid
+    ? await prisma.offer.update({
+        where: { id: existingBid.id },
+        data: {
+          vehicleId: input.vehicleId,
+          price: input.price,
+          currency: input.currency ?? 'EUR',
+          message: input.message,
+          estimatedDuration: input.estimatedDuration,
+          status: 'PENDING',
+          validUntil,
+          acceptedAt: null,
+          rejectedAt: null,
+          rejectionReason: null,
+        },
+      })
+    : await prisma.offer.create({
+        data: {
+          transportId: input.jobId,
+          driverId: input.transporterId,
+          vehicleId: input.vehicleId,
+          price: input.price,
+          currency: input.currency ?? 'EUR',
+          message: input.message,
+          estimatedDuration: input.estimatedDuration,
+          status: 'PENDING',
+          validUntil,
+        },
+      });
   
   // Update matching candidate status if exists
   if (matchingCandidate) {
@@ -157,10 +183,16 @@ export async function getBidsForJob(
   }
   
   if (transport.shipperUserId !== userId) {
-    // Check if user is the transporter with a bid
-    const transporterBid = await prisma.offer.findFirst({
-      where: { transportId: jobId, driverId: userId },
+    const driver = await prisma.driver.findUnique({
+      where: { userId },
+      select: { id: true },
     });
+
+    const transporterBid = driver
+      ? await prisma.offer.findFirst({
+          where: { transportId: jobId, driverId: driver.id },
+        })
+      : null;
     
     if (!transporterBid) {
       throw new Error('Not authorized');
@@ -180,6 +212,7 @@ export async function getBidsForJob(
     include: {
       driver: {
         include: {
+          company: true,
           user: {
             include: {
               companyUsers: {
@@ -197,8 +230,7 @@ export async function getBidsForJob(
     id: offer.id,
     jobId: offer.transportId,
     transporterId: offer.driverId,
-    transporterName: offer.driver.user.companyUsers[0]?.company.name 
-      || `${offer.driver.user.firstName} ${offer.driver.user.lastName}`,
+    transporterName: getTransporterDisplayName(offer.driver),
     transporterRating: offer.driver.ratingAvg,
     vehicleId: offer.vehicleId,
     vehicleType: offer.vehicle.type,
@@ -210,6 +242,76 @@ export async function getBidsForJob(
     createdAt: offer.createdAt,
     validUntil: offer.validUntil ?? undefined,
   }));
+}
+
+// ============================================
+// UPDATE BID
+// ============================================
+
+export async function updateBid(input: UpdateBidInput): Promise<{ success: boolean; bidId: string; status: string }> {
+  const offer = await prisma.offer.findUnique({
+    where: { id: input.bidId },
+    include: {
+      driver: {
+        select: { userId: true },
+      },
+      transport: {
+        select: {
+          id: true,
+          status: true,
+          shipperBudget: true,
+          currency: true,
+        },
+      },
+    },
+  });
+
+  if (!offer) {
+    throw new Error('Bid not found');
+  }
+
+  if (offer.driver.userId !== input.userId) {
+    throw new Error('Not authorized');
+  }
+
+  if (offer.status !== 'PENDING') {
+    throw new Error(`Bid is already ${offer.status.toLowerCase()}`);
+  }
+
+  if (offer.transport.status !== 'PUBLISHED') {
+    throw new Error('Job is not open for bids');
+  }
+
+  if (!Number.isFinite(input.price) || input.price <= 0) {
+    throw new Error('Invalid bid price');
+  }
+
+  const minimumPrice = calculateMinimumBidPrice(offer.transport.shipperBudget);
+  if (minimumPrice && input.price < minimumPrice) {
+    throw new Error(`Bid below minimum:${minimumPrice}:${offer.transport.currency}`);
+  }
+
+  const validUntil = input.validUntilHours
+    ? new Date(Date.now() + input.validUntilHours * 60 * 60 * 1000)
+    : undefined;
+
+  await prisma.offer.update({
+    where: { id: input.bidId },
+    data: {
+      price: input.price,
+      message: input.message,
+      estimatedDuration: input.estimatedDuration,
+      ...(validUntil ? { validUntil } : {}),
+    },
+  });
+
+  await notifyShipperOfBid(offer.transport.id, offer.id, input.price);
+
+  return {
+    success: true,
+    bidId: offer.id,
+    status: 'pending',
+  };
 }
 
 // ============================================
@@ -368,6 +470,11 @@ export async function withdrawBid(
 ): Promise<{ success: boolean }> {
   const offer = await prisma.offer.findUnique({
     where: { id: bidId },
+    include: {
+      driver: {
+        select: { userId: true },
+      },
+    },
   });
   
   if (!offer) {
@@ -375,7 +482,7 @@ export async function withdrawBid(
   }
   
   // Verify user is the transporter
-  if (offer.driverId !== userId) {
+  if (offer.driver.userId !== userId) {
     throw new Error('Not authorized');
   }
   
@@ -493,12 +600,18 @@ function mapBidStatus(status: string): BidStatus {
   return map[status] ?? 'pending';
 }
 
+function calculateMinimumBidPrice(shipperBudget?: number | null) {
+  if (!shipperBudget || shipperBudget <= 0) return null;
+  return Math.round(shipperBudget * 0.8 * 100) / 100;
+}
+
 async function mapBidToDetails(offer: any): Promise<BidWithDetails> {
   const offerWithIncludes = await prisma.offer.findUnique({
     where: { id: offer.id },
     include: {
       driver: {
         include: {
+          company: true,
           user: {
             include: {
               companyUsers: {
@@ -516,8 +629,9 @@ async function mapBidToDetails(offer: any): Promise<BidWithDetails> {
     id: offer.id,
     jobId: offer.transportId,
     transporterId: offer.driverId,
-    transporterName: offerWithIncludes?.driver.user.companyUsers[0]?.company.name
-      || `${offerWithIncludes?.driver.user.firstName} ${offerWithIncludes?.driver.user.lastName}`,
+    transporterName: offerWithIncludes?.driver
+      ? getTransporterDisplayName(offerWithIncludes.driver)
+      : 'Transporteur',
     transporterRating: offerWithIncludes?.driver.ratingAvg ?? 0,
     vehicleId: offer.vehicleId,
     vehicleType: offerWithIncludes?.vehicle.type ?? 'UNKNOWN',
@@ -529,6 +643,18 @@ async function mapBidToDetails(offer: any): Promise<BidWithDetails> {
     createdAt: offer.createdAt,
     validUntil: offer.validUntil ?? undefined,
   };
+}
+
+function getTransporterDisplayName(driver: any) {
+  const driverCompanyName = driver.company?.name;
+  if (driverCompanyName) return driverCompanyName;
+
+  const companyUserName = driver.user?.companyUsers?.find((item: any) => item.company?.type === 'CARRIER')?.company?.name
+    || driver.user?.companyUsers?.[0]?.company?.name;
+  if (companyUserName) return companyUserName;
+
+  const fullName = [driver.user?.firstName, driver.user?.lastName].filter(Boolean).join(' ').trim();
+  return fullName || 'Transporteur';
 }
 
 async function notifyShipperOfBid(jobId: string, bidId: string, price: number): Promise<void> {
@@ -551,20 +677,20 @@ async function notifyShipperOfBid(jobId: string, bidId: string, price: number): 
   
   // Broadcast via Redis for real-time notification
   // Python equivalent: notify_user(user_id, message)
-  await notifyUser(
+  await safeSideEffect('notify shipper of bid', () => notifyUser(
     transport.shipperUserId,
     `New bid received: €${price}`,
     'info',
     { jobId, bidId, price, type: 'NEW_BID' }
-  );
+  ));
   
   // Also broadcast to job channel
-  await broadcastNewBid({
+  await safeSideEffect('broadcast new bid', () => broadcastNewBid({
     bidId,
     jobId,
     transporterId: '', // Will be filled by caller
     amount: price,
-  });
+  }));
 }
 
 async function notifyTransporterOfAcceptance(offer: any): Promise<void> {
@@ -582,15 +708,23 @@ async function notifyTransporterOfAcceptance(offer: any): Promise<void> {
   });
   
   // Broadcast via Redis for real-time notification
-  await notifyUser(
+  await safeSideEffect('notify transporter of acceptance', () => notifyUser(
     transporterUserId,
     `Your bid was accepted! Price: €${offer.price}`,
     'success',
     { jobId: offer.transportId, bidId: offer.id, type: 'BID_ACCEPTED' }
-  );
+  ));
   
   // Update job status
-  await broadcastJobStatus({ id: offer.transportId, status: 'booked' });
+  await safeSideEffect('broadcast accepted job status', () => broadcastJobStatus({ id: offer.transportId, status: 'booked' }));
+}
+
+async function safeSideEffect(label: string, effect: () => Promise<unknown>) {
+  try {
+    await effect();
+  } catch (error) {
+    console.warn(`[Bids] Non-blocking side effect failed (${label}):`, error instanceof Error ? error.message : error);
+  }
 }
 
 // ============================================
@@ -600,6 +734,7 @@ async function notifyTransporterOfAcceptance(offer: any): Promise<void> {
 export const bidsService = {
   createBid,
   getBidsForJob,
+  updateBid,
   acceptBid,
   rejectBid,
   withdrawBid,

@@ -492,7 +492,7 @@ export function calculateTransactionRiskScore(context: TransactionRiskContext): 
   if (context.hasEscrow) {
     factors.push({
       ...TRANSACTION_RISK_FACTORS.HAS_ESCROW,
-      description: 'Escrow-Zahlung aktiv',
+      description: 'Zahlungsschutz aktiv',
     });
     totalScore += TRANSACTION_RISK_FACTORS.HAS_ESCROW.impact;
   }
@@ -509,7 +509,7 @@ export function calculateTransactionRiskScore(context: TransactionRiskContext): 
   if (!context.hasEscrow && context.amount > 10000) {
     factors.push({
       ...TRANSACTION_RISK_FACTORS.NO_ESCROW,
-      description: 'Kein Escrow bei hohem Betrag',
+      description: 'Kein Zahlungsschutz bei hohem Betrag',
     });
     totalScore += TRANSACTION_RISK_FACTORS.NO_ESCROW.impact;
   }

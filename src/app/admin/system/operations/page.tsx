@@ -3,6 +3,8 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { OperationsCronActions } from '@/components/admin/operations-cron-actions';
 import { db } from '@/lib/db';
 import { getOperationsReadiness, OperationsReadinessCheck } from '@/lib/operations-readiness';
+import { getTrackingReadiness } from '@/lib/tracking-readiness';
+import { getAutomaticPayoutReleaseQueue } from '@/services/order-payout-release.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,9 +17,15 @@ type OperationAuditEntry = {
   detail?: string;
 };
 
+type AutoReleaseQueue = Awaited<ReturnType<typeof getAutomaticPayoutReleaseQueue>>;
+
 export default async function AdminOperationsPage() {
   const report = getOperationsReadiness();
-  const recentAuditLogs = await getRecentOperationAuditLogs();
+  const trackingReport = getTrackingReadiness();
+  const [recentAuditLogs, autoReleaseQueue] = await Promise.all([
+    getRecentOperationAuditLogs(),
+    getAutomaticPayoutReleaseQueue({ limit: 25 }),
+  ]);
 
   return (
     <DashboardLayout title="Operations Center" subtitle="Cron Jobs, Reconciliation und produktive Automatisierung">
@@ -47,7 +55,7 @@ export default async function AdminOperationsPage() {
               <div className="rounded-[18px] border border-white/[0.08] bg-[#06121C]/60 p-5 text-center shadow-xl shadow-[#00D4FF]/10">
                 <p className="text-xs font-medium uppercase tracking-[0.22em] text-white/35">Cron Jobs</p>
                 <p className="mt-2 text-5xl font-semibold text-white">{report.cronJobs.length}</p>
-                <p className="mt-2 text-sm text-white/45">Vercel geplant</p>
+                <p className="mt-2 text-sm text-white/45">Server geplant</p>
               </div>
             </div>
           </div>
@@ -59,6 +67,37 @@ export default async function AdminOperationsPage() {
           ))}
         </section>
 
+        <AutoReleaseQueuePanel queue={autoReleaseQueue} />
+
+        <section className="rounded-[18px] border border-white/[0.08] bg-white/[0.05] p-5 shadow-xl shadow-black/10">
+          <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl border border-[#00D4FF]/20 bg-[#00D4FF]/10 p-3 text-[#00D4FF]">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-white">Live Tracking & Google Maps</h3>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-white/45">
+                  Prüft Google Maps Keys, Mock-/Google-Modus, Redis Pub/Sub und optionalen WebSocket-Endpunkt für den eigenen Serverbetrieb.
+                </p>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/[0.08] bg-[#06121C]/60 px-4 py-3 text-right">
+              <p className="text-xs uppercase tracking-[0.16em] text-white/35">Tracking Readiness</p>
+              <p className="mt-1 text-2xl font-semibold text-white">{trackingReport.score}%</p>
+              <p className={`text-xs ${trackingReport.ready ? 'text-[#8ff0b9]' : 'text-[#F39C12]'}`}>
+                {trackingReport.provider === 'google' ? 'Google Modus' : 'Mock/Testmodus'}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            {trackingReport.checks.map((check) => (
+              <OperationsCheckCard key={check.id} check={check} />
+            ))}
+          </div>
+        </section>
+
         <section className="rounded-[18px] border border-white/[0.08] bg-white/[0.05] p-5 shadow-xl shadow-black/10">
           <div className="mb-5 flex items-start gap-3">
             <div className="rounded-2xl border border-[#00D4FF]/20 bg-[#00D4FF]/10 p-3 text-[#00D4FF]">
@@ -67,7 +106,7 @@ export default async function AdminOperationsPage() {
             <div>
               <h3 className="font-semibold text-white">Geplante Jobs</h3>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-white/45">
-                Diese Jobs werden über Vercel Cron geplant und benötigen in Production ein gesetztes `CRON_SECRET`.
+                Diese Jobs müssen auf dem Zielserver geplant werden und benötigen in Production ein gesetztes `CRON_SECRET`.
               </p>
             </div>
           </div>
@@ -96,6 +135,123 @@ export default async function AdminOperationsPage() {
       </div>
     </DashboardLayout>
   );
+}
+
+function AutoReleaseQueuePanel({ queue }: { queue: AutoReleaseQueue }) {
+  return (
+    <section className="rounded-[18px] border border-white/[0.08] bg-white/[0.05] p-5 shadow-xl shadow-black/10">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="rounded-2xl border border-[#2ECC71]/20 bg-[#2ECC71]/10 p-3 text-[#8ff0b9]">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-white">Automatische Wallet-Freigaben</h3>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-white/45">
+              Zeigt alle gelieferten Aufträge, bei denen der Scheduler nach POD/eCMR, Rechnung, 24-Werktagsstunden-Frist und offenen Fällen über die Wallet-Freigabe entscheidet.
+            </p>
+            <p className="mt-2 text-xs text-white/35">Stand: {new Date(queue.now).toLocaleString('de-DE')}</p>
+            {queue.available === false && queue.error ? (
+              <p className="mt-2 text-xs leading-5 text-[#ffb5ab]">
+                Queue aktuell nicht erreichbar: {queue.error}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-2 sm:min-w-[420px]">
+          <QueueMetric label="Gesamt" value={queue.total} />
+          <QueueMetric label="Bereit" value={queue.ready} tone="green" />
+          <QueueMetric label="Blockiert" value={queue.blocked} tone="orange" />
+          <QueueMetric label="Freigegeben" value={queue.released} tone="cyan" />
+        </div>
+      </div>
+
+      {queue.rows.length === 0 ? (
+        <div className="rounded-2xl border border-white/[0.08] bg-[#06121C]/45 p-4 text-sm text-white/45">
+          Aktuell gibt es keine gelieferten Aufträge in der automatischen Freigabe-Queue.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {queue.rows.slice(0, 8).map((row) => (
+            <article key={row.orderId} className="rounded-2xl border border-white/[0.08] bg-[#06121C]/45 p-4">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${releaseStatusClass(row.status)}`}>
+                      {releaseStatusLabel(row.status)}
+                    </span>
+                    <p className="font-mono text-xs text-white/55">{row.orderId}</p>
+                    {row.hasPod ? (
+                      <span className="rounded-full bg-[#2ECC71]/10 px-2.5 py-1 text-xs font-semibold text-[#8ff0b9]">POD vorhanden</span>
+                    ) : (
+                      <span className="rounded-full bg-[#F39C12]/10 px-2.5 py-1 text-xs font-semibold text-[#ffd79a]">POD fehlt</span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-sm text-white/45">
+                    {row.driverEmail || row.driverUserId || 'Transporteur unbekannt'}
+                  </p>
+                  {row.blockers[0] ? (
+                    <p className="mt-2 text-xs leading-5 text-[#ffd79a]">{row.blockers[0]}</p>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
+                  <QueueDetail label="Betrag" value={formatMoney(row.amount, row.currency)} />
+                  <QueueDetail label="Geliefert" value={row.deliveredAt ? new Date(row.deliveredAt).toLocaleString('de-DE') : '-'} />
+                  <QueueDetail
+                    label={row.status === 'released' ? 'Freigegeben' : 'Früheste Freigabe'}
+                    value={
+                      row.status === 'released'
+                        ? row.releasedAt ? new Date(row.releasedAt).toLocaleString('de-DE') : '-'
+                        : row.releaseEligibleAt ? new Date(row.releaseEligibleAt).toLocaleString('de-DE') : '-'
+                    }
+                  />
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function QueueMetric({ label, value, tone = 'default' }: { label: string; value: number; tone?: 'default' | 'green' | 'orange' | 'cyan' }) {
+  const color = tone === 'green'
+    ? 'text-[#8ff0b9]'
+    : tone === 'orange'
+      ? 'text-[#ffd79a]'
+      : tone === 'cyan'
+        ? 'text-[#b9f4ff]'
+        : 'text-white';
+
+  return (
+    <div className="rounded-2xl border border-white/[0.08] bg-[#06121C]/60 p-3 text-center">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold ${color}`}>{value}</p>
+    </div>
+  );
+}
+
+function QueueDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
+function releaseStatusLabel(status: string) {
+  if (status === 'ready') return 'Bereit';
+  if (status === 'released') return 'Freigegeben';
+  return 'Blockiert';
+}
+
+function releaseStatusClass(status: string) {
+  if (status === 'ready') return 'bg-[#2ECC71]/10 text-[#8ff0b9]';
+  if (status === 'released') return 'bg-[#00D4FF]/10 text-[#b9f4ff]';
+  return 'bg-[#F39C12]/10 text-[#ffd79a]';
 }
 
 function OperationsCheckCard({ check }: { check: OperationsReadinessCheck }) {
@@ -212,6 +368,9 @@ async function getRecentOperationAuditLogs(): Promise<OperationAuditEntry[]> {
       const detailParts = [
         typeof result.duration === 'number' ? `Dauer: ${result.duration}ms` : undefined,
         typeof result.pendingProcessed === 'number' ? `Payouts: ${result.pendingProcessed}` : undefined,
+        typeof result.autoReleased === 'number' ? `Auto-Freigaben: ${result.autoReleased}` : undefined,
+        typeof result.autoReleaseReady === 'number' ? `Bereit: ${result.autoReleaseReady}` : undefined,
+        typeof result.autoReleaseBlocked === 'number' ? `Blockiert: ${result.autoReleaseBlocked}` : undefined,
         typeof result.processed === 'number' ? `Verarbeitet: ${result.processed}` : undefined,
         typeof result.warnings === 'number' ? `Hinweise: ${result.warnings}` : undefined,
         typeof result.errors === 'number' ? `Fehler: ${result.errors}` : undefined,
@@ -240,4 +399,11 @@ function parseAuditData(value: string | null) {
   } catch {
     return {} as Record<string, unknown>;
   }
+}
+
+function formatMoney(value: number, currency = 'EUR') {
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency,
+  }).format(value);
 }

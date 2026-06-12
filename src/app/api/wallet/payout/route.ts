@@ -5,6 +5,7 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { PayoutStatus } from '@prisma/client';
 import { db } from '@/lib/db';
 import { 
   performHybridSecurityCheck,
@@ -12,6 +13,7 @@ import {
   ActionContext,
 } from '@/lib/hybrid-security';
 import { logAuditEvent } from '@/lib/permissions';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 // ============================================
 // INTERFACES
@@ -39,6 +41,12 @@ interface PayoutResponse {
     factors: string[];
   };
   mitigations?: string[];
+  payoutLimits?: {
+    minAmount: number;
+    maxAmount: number;
+    processingDays: number;
+    currency: string;
+  };
 }
 
 // ============================================
@@ -55,6 +63,7 @@ interface PayoutResponse {
 export async function POST(request: NextRequest) {
   try {
     const body: PayoutRequest = await request.json();
+    const payoutLimits = await getPayoutLimits();
 
     // Validate amount
     if (!body.amount || body.amount <= 0) {
@@ -65,15 +74,28 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Auth validation
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
+    if (body.amount < payoutLimits.minAmount) {
       return NextResponse.json({
-        error: 'UnauthorizedError',
-        message: 'Authentifizierung erforderlich',
-        code: 'AUTH_REQUIRED',
-      }, { status: 401 });
+        error: 'ValidationError',
+        message: `Mindestbetrag für Bankauszahlungen ist ${formatMoney(payoutLimits.minAmount, body.currency || payoutLimits.currency)}.`,
+        code: 'PAYOUT_AMOUNT_TOO_LOW',
+        minAmount: payoutLimits.minAmount,
+      }, { status: 400 });
     }
+
+    if (body.amount > payoutLimits.maxAmount) {
+      return NextResponse.json({
+        error: 'ValidationError',
+        message: `Maximalbetrag pro Bankauszahlung ist ${formatMoney(payoutLimits.maxAmount, body.currency || payoutLimits.currency)}.`,
+        code: 'PAYOUT_AMOUNT_TOO_HIGH',
+        maxAmount: payoutLimits.maxAmount,
+      }, { status: 400 });
+    }
+
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
+    const userId = auth.user.id;
 
     // Get user with wallet and payout method
     const user = await db.user.findUnique({
@@ -106,13 +128,38 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
+    if (user.wallet.status !== 'ACTIVE') {
+      return NextResponse.json({
+        error: 'WalletError',
+        message: 'Wallet ist nicht aktiv. Auszahlung ist aktuell nicht möglich.',
+        code: 'WALLET_INACTIVE',
+      }, { status: 403 });
+    }
+
+    if ((body.currency || 'EUR') !== user.wallet.currency) {
+      return NextResponse.json({
+        error: 'ValidationError',
+        message: `Auszahlungen sind nur in ${user.wallet.currency} möglich.`,
+        code: 'CURRENCY_MISMATCH',
+      }, { status: 400 });
+    }
+
+    const userRoles = user.roles.map((userRole) => userRole.role.name);
+    if (!hasPayoutRole(userRoles)) {
+      return NextResponse.json({
+        error: 'ForbiddenError',
+        message: 'Bankauszahlungen sind nur für Transporteure, Dispatcher und selbstständige Fahrer verfügbar.',
+        code: 'PAYOUT_ROLE_REQUIRED',
+      }, { status: 403 });
+    }
+
     // Check wallet balance. Reserved funds still belong to open orders and cannot
     // be withdrawn until the reservation is released or finalized.
     const availableBalance = user.wallet.balance - (user.wallet.reservedBalance || 0);
     if (availableBalance < body.amount) {
       return NextResponse.json({
         error: 'ValidationError',
-        message: 'Unzureichendes frei verfuegbares Guthaben',
+        message: `Unzureichendes frei verfügbares Guthaben. Verfügbar: ${formatMoney(availableBalance, user.wallet.currency)}.`,
         code: 'INSUFFICIENT_BALANCE',
         available: availableBalance,
       }, { status: 400 });
@@ -142,7 +189,7 @@ export async function POST(request: NextRequest) {
     const securityContext: SecurityContext = {
       userId: user.id,
       email: user.email,
-      roles: user.roles.map(ur => ur.role.name as any),
+      roles: userRoles as any,
       companyId: user.companyUsers[0]?.companyId,
       companyRole: user.companyUsers[0]?.roleInCompany as any,
       isVerified: user.status === 'ACTIVE',
@@ -228,7 +275,7 @@ export async function POST(request: NextRequest) {
     // ============================================
     // HANDLE YELLOW WITH MITIGATIONS
     // ============================================
-    let status: PayoutResponse['status'] = 'PENDING';
+    let status: PayoutResponse['status'] = 'PROCESSING';
     let availableAt: Date | undefined;
     let mitigations: string[] = [];
 
@@ -257,50 +304,46 @@ export async function POST(request: NextRequest) {
     // ============================================
     // CREATE PAYOUT TRANSACTION
     // ============================================
-    const payoutTransaction = await db.walletTransaction.create({
-      data: {
-        walletId: user.wallet.id,
-        type: 'PAYOUT',
-        amount: -body.amount,
-        currency: body.currency || 'EUR',
-        description: body.description || 'Auszahlung',
-        processedAt: status === 'DELAYED' ? null : new Date(),
-      },
-    });
+    const payoutWrite = await db.$transaction(async (tx) => {
+      const payout = await tx.payout.create({
+        data: {
+          userId,
+          amountCents: Math.round(body.amount * 100),
+          currency: body.currency || 'EUR',
+          status: status === 'DELAYED' ? PayoutStatus.PENDING : PayoutStatus.PROCESSING,
+          payoutMethodId: payoutMethod.id,
+          ibanLast4: payoutMethod.iban.slice(-4),
+          riskScore: securityResult.riskCheck?.score,
+          riskLevel: securityResult.riskCheck?.level?.toLowerCase(),
+          riskFactors: JSON.stringify(securityResult.riskCheck?.factors || []),
+          delayedUntil: status === 'DELAYED' ? availableAt : undefined,
+          delayReason: status === 'DELAYED' ? mitigations.join('; ') || 'Risk mitigation delay' : undefined,
+          idempotencyKey: `wallet_payout_${user.wallet!.id}_${Date.now()}`,
+        },
+      });
 
-    // Update wallet balance
-    await db.wallet.update({
-      where: { id: user.wallet.id },
-      data: {
-        balance: { decrement: body.amount },
-        totalWithdrawn: { increment: body.amount },
-      },
-    });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: user.wallet!.id,
+          type: 'PAYOUT',
+          amount: -body.amount,
+          currency: body.currency || 'EUR',
+          description: body.description || 'Auszahlung',
+          payoutId: payout.id,
+          processedAt: status === 'DELAYED' ? null : new Date(),
+        },
+      });
 
-    // Create delayed payout record if applicable
-    if (status === 'DELAYED' && availableAt) {
-      await db.$executeRaw`
-        INSERT INTO delayed_payouts (
-          transaction_id, 
-          user_id, 
-          amount, 
-          currency, 
-          payout_method_id,
-          available_at, 
-          status, 
-          created_at
-        ) VALUES (
-          ${payoutTransaction.id},
-          ${userId},
-          ${body.amount},
-          ${body.currency || 'EUR'},
-          ${body.payoutMethodId},
-          ${availableAt},
-          'PENDING',
-          ${new Date()}
-        )
-      `;
-    }
+      await tx.wallet.update({
+        where: { id: user.wallet!.id },
+        data: {
+          balance: { decrement: body.amount },
+          totalWithdrawn: { increment: body.amount },
+        },
+      });
+
+      return { payout };
+    });
 
     // Log successful action
     await logAuditEvent({
@@ -331,7 +374,7 @@ export async function POST(request: NextRequest) {
           ? `Ihre Auszahlung von ${body.amount.toLocaleString()} ${body.currency || 'EUR'} wird am ${availableAt?.toLocaleDateString('de-DE')} bearbeitet.`
           : `Ihre Auszahlung von ${body.amount.toLocaleString()} ${body.currency || 'EUR'} wurde eingeleitet.`,
         data: JSON.stringify({
-          payoutId: payoutTransaction.id,
+          payoutId: payoutWrite.payout.id,
           amount: body.amount,
           status,
           availableAt,
@@ -347,9 +390,10 @@ export async function POST(request: NextRequest) {
       message: status === 'DELAYED'
         ? `Auszahlung wird am ${availableAt?.toLocaleDateString('de-DE')} bearbeitet.`
         : 'Auszahlung erfolgreich eingeleitet.',
-      payoutId: payoutTransaction.id,
+      payoutId: payoutWrite.payout.id,
       status,
       availableAt,
+      payoutLimits,
       riskAnalysis: securityResult.riskCheck ? {
         score: securityResult.riskCheck.score,
         level: securityResult.riskCheck.level,
@@ -378,4 +422,32 @@ export async function POST(request: NextRequest) {
       code: 'INTERNAL_ERROR',
     }, { status: 500 });
   }
+}
+
+function hasPayoutRole(roles: string[]) {
+  return roles.some((role) => role === 'CARRIER' || role === 'DISPATCHER' || role === 'DRIVER_SELF_EMPLOYED');
+}
+
+async function getPayoutLimits() {
+  const settings = await db.systemSetting.findMany({
+    where: { key: { in: ['min_payout_amount', 'max_payout_amount', 'payout_processing_days'] } },
+  });
+  const valueFor = (key: string, fallback: number) => {
+    const value = Number(settings.find((setting) => setting.key === key)?.value);
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  };
+
+  return {
+    minAmount: valueFor('min_payout_amount', 50),
+    maxAmount: valueFor('max_payout_amount', 25000),
+    processingDays: valueFor('payout_processing_days', 3),
+    currency: 'EUR',
+  };
+}
+
+function formatMoney(value: number, currency = 'EUR') {
+  return new Intl.NumberFormat('de-DE', {
+    style: 'currency',
+    currency,
+  }).format(value);
 }

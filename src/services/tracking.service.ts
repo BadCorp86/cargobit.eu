@@ -1,134 +1,78 @@
 /**
  * CargoBit Tracking Service
- * Status transitions, Job Events, Redis-based WebSocket broadcasting
- * 
- * Redis-basierter WS-Broadcast:
- * - API-Services: publishen Events nach Redis (PUBLISH channel payload)
- * - WS-Service: subscribed auf Redis-Channels und broadcastet an Websocket-Clients
- * 
- * Python equivalent:
- * ```python
- * def broadcast_job_status(job):
- *     publish_event(
- *         f"job:{job.id}",
- *         {"jobId": str(job.id), "status": job.status}
- *     )
- * ```
+ *
+ * Central tracking logic for Transport, Assignment, Driver and TrackingPoint.
+ * Redis/WebSocket publishing is best-effort so GPS writes do not fail when
+ * Redis is not available in local/test environments.
  */
 
 import { prisma } from '@/lib/db';
-import type { TransportStatus, JobEventType } from '@prisma/client';
-import { broadcastJobStatus, broadcastTrackingUpdate } from './redis-publisher.service';
-
-// ============================================
-// TYPES
-// ============================================
+import type { TransportStatus } from '@prisma/client';
+import { broadcastJobStatusWithMetadata, broadcastTrackingUpdate } from './redis-publisher.service';
 
 export interface UpdateStatusRequest {
   status: TransportStatus;
-  eventType?: JobEventType;
+  eventType?: string;
   description?: string;
   latitude?: number;
   longitude?: number;
 }
 
-export interface JobEventPayload {
-  jobId: string;
-  status: TransportStatus;
-  eventType?: JobEventType;
-  timestamp: string;
+export interface TrackingLocationInput {
+  latitude: number;
+  longitude: number;
+  speed?: number;
+  heading?: number;
+  accuracy?: number;
 }
 
-// ============================================
-// 1. UPDATE JOB STATUS (Python spec)
-// ============================================
+const ACTIVE_TRACKING_STATUSES: TransportStatus[] = ['ASSIGNED', 'PICKUP_DONE', 'IN_TRANSIT', 'DELIVERY_DONE'];
 
-/**
- * Python equivalent:
- * @router.post("/jobs/{job_id}/status")
- * def update_status(
- *     job_id: str,
- *     req: UpdateStatusRequest,
- *     db: Session = Depends(get_db),
- *     user_id: str = Depends(get_current_transporter),
- * ):
- *     job = get_job(db, job_id)
- *     if not job or job.transporter_id != user_id:
- *         raise HTTPException(404, "Job not found")
- *     
- *     job.status = req.status
- *     db.add(job)
- *     
- *     if req.event_type:
- *         ev = JobEvent(id=uuid4(), job_id=job.id, type=req.event_type)
- *         db.add(ev)
- *     
- *     db.commit()
- *     
- *     # Websocket/Event push
- *     broadcast_job_update(job.id, job.status, req.event_type)
- *     
- *     return {"status": job.status}
- */
 export async function updateJobStatus(
   jobId: string,
   userId: string,
-  req: UpdateStatusRequest
+  req: UpdateStatusRequest,
 ): Promise<{ success: boolean; status?: TransportStatus; error?: string }> {
-  // Get job
   const transport = await prisma.transport.findUnique({
     where: { id: jobId },
     include: { assignment: true },
   });
-  
-  if (!transport) {
-    return { success: false, error: 'Job not found' };
-  }
-  
-  // Check authorization - must be assigned driver or admin
-  const driver = await prisma.driver.findFirst({
-    where: { userId },
-  });
-  
-  const isAssignedDriver = driver && transport.assignment?.driverId === driver.id;
-  
-  if (!isAssignedDriver) {
-    return { success: false, error: 'Not authorized to update this job' };
-  }
-  
-  // Validate status transition
+
+  if (!transport) return { success: false, error: 'Job not found' };
+
+  const driver = await prisma.driver.findFirst({ where: { userId } });
+  const isAssignedDriver = Boolean(driver && transport.assignment?.driverId === driver.id);
+
+  if (!isAssignedDriver) return { success: false, error: 'Not authorized to update this job' };
+
   const validTransitions: Record<TransportStatus, TransportStatus[]> = {
-    'CREATED': ['PUBLISHED', 'CANCELLED'],
-    'PUBLISHED': ['ASSIGNED', 'CANCELLED'],
-    'ASSIGNED': ['IN_TRANSIT', 'CANCELLED'],
-    'IN_TRANSIT': ['PICKUP_DONE', 'DELIVERY_DONE', 'COMPLETED', 'CANCELLED'],
-    'PICKUP_DONE': ['IN_TRANSIT', 'DELIVERY_DONE', 'COMPLETED'],
-    'DELIVERY_DONE': ['COMPLETED'],
-    'COMPLETED': [],
-    'CANCELLED': [],
+    CREATED: ['PUBLISHED', 'CANCELLED'],
+    PUBLISHED: ['ASSIGNED', 'CANCELLED'],
+    ASSIGNED: ['PICKUP_DONE', 'IN_TRANSIT', 'CANCELLED'],
+    PICKUP_DONE: ['IN_TRANSIT', 'DELIVERY_DONE', 'COMPLETED'],
+    IN_TRANSIT: ['DELIVERY_DONE', 'COMPLETED', 'CANCELLED'],
+    DELIVERY_DONE: ['COMPLETED'],
+    COMPLETED: [],
+    CANCELLED: [],
   };
-  
+
   if (!validTransitions[transport.status].includes(req.status)) {
-    return { 
-      success: false, 
-      error: `Invalid status transition: ${transport.status} → ${req.status}` 
-    };
+    return { success: false, error: `Invalid status transition: ${transport.status} -> ${req.status}` };
   }
-  
-  // Update in transaction
+
+  const timestamp = new Date();
   const result = await prisma.$transaction(async (tx) => {
-    // Update job status
     const updated = await tx.transport.update({
       where: { id: jobId },
       data: {
         status: req.status,
-        ...(req.status === 'IN_TRANSIT' && { pickedUpAt: new Date() }),
-        ...(req.status === 'COMPLETED' && { completedAt: new Date(), deliveredAt: new Date() }),
-        ...(req.status === 'CANCELLED' && { cancelledAt: new Date() }),
+        ...(req.status === 'PICKUP_DONE' || req.status === 'IN_TRANSIT' ? { pickedUpAt: transport.pickedUpAt || timestamp } : {}),
+        ...(req.status === 'DELIVERY_DONE' ? { deliveredAt: transport.deliveredAt || timestamp } : {}),
+        ...(req.status === 'COMPLETED' ? { completedAt: timestamp, deliveredAt: transport.deliveredAt || timestamp } : {}),
+        ...(req.status === 'CANCELLED' ? { cancelledAt: timestamp } : {}),
       },
     });
-    
-    // Create status history
+
     await tx.transportStatusHistory.create({
       data: {
         transportId: jobId,
@@ -137,174 +81,196 @@ export async function updateJobStatus(
         note: req.description,
       },
     });
-    
-    // Create job event if specified
-    if (req.eventType) {
-      await tx.jobEvent.create({
+
+    if (typeof req.latitude === 'number' && typeof req.longitude === 'number' && driver) {
+      await tx.trackingPoint.create({
         data: {
           transportId: jobId,
-          type: req.eventType,
-          description: req.description,
+          driverId: driver.id,
           latitude: req.latitude,
           longitude: req.longitude,
-          createdBy: userId,
         },
       });
     }
-    
+
     return updated;
   });
-  
-  // Broadcast update via Redis (WebSocket subscribers will receive it)
-  await broadcastJobStatus(jobId, req.status, {
+
+  await safeBroadcastJobStatus(jobId, req.status, {
     previousStatus: transport.status,
     eventType: req.eventType,
-    metadata: req.description ? { description: req.description } : undefined,
+    description: req.description,
   });
-  
+
   return { success: true, status: result.status };
 }
-
-// ============================================
-// 2. CREATE JOB EVENT
-// ============================================
 
 export async function createJobEvent(
   jobId: string,
   userId: string,
   data: {
-    type: JobEventType;
+    type: string;
     description?: string;
     latitude?: number;
     longitude?: number;
-    metadata?: Record<string, any>;
-  }
+    metadata?: Record<string, unknown>;
+  },
 ): Promise<{ success: boolean; eventId?: string; error?: string }> {
-  const transport = await prisma.transport.findUnique({
-    where: { id: jobId },
-    include: { assignment: true },
+  const status = data.type === 'delivery' ? 'DELIVERY_DONE' : data.type === 'pickup' ? 'PICKUP_DONE' : 'IN_TRANSIT';
+  const result = await updateJobStatus(jobId, userId, {
+    status,
+    eventType: data.type,
+    description: data.description,
+    latitude: data.latitude,
+    longitude: data.longitude,
   });
-  
-  if (!transport) {
-    return { success: false, error: 'Job not found' };
-  }
-  
-  // Check authorization
-  const driver = await prisma.driver.findFirst({ where: { userId } });
-  if (!driver || transport.assignment?.driverId !== driver.id) {
-    return { success: false, error: 'Not authorized' };
-  }
-  
-  const event = await prisma.jobEvent.create({
-    data: {
-      transportId: jobId,
-      type: data.type,
-      description: data.description,
-      latitude: data.latitude,
-      longitude: data.longitude,
-      metadata: data.metadata ? JSON.stringify(data.metadata) : null,
-      createdBy: userId,
-    },
-  });
-  
-  return { success: true, eventId: event.id };
+
+  return result.success
+    ? { success: true, eventId: `${jobId}:${data.type}:${Date.now()}` }
+    : { success: false, error: result.error };
 }
 
-// ============================================
-// 3. GET JOB TIMELINE
-// ============================================
-
 export async function getJobTimeline(jobId: string) {
-  const events = await prisma.jobEvent.findMany({
-    where: { transportId: jobId },
-    orderBy: { createdAt: 'asc' },
-  });
-  
-  const statusHistory = await prisma.transportStatusHistory.findMany({
-    where: { transportId: jobId },
-    orderBy: { changedAt: 'asc' },
-  });
-  
+  const [statusHistory, trackingPoints] = await Promise.all([
+    prisma.transportStatusHistory.findMany({
+      where: { transportId: jobId },
+      orderBy: { changedAt: 'asc' },
+    }),
+    prisma.trackingPoint.findMany({
+      where: { transportId: jobId },
+      orderBy: { timestamp: 'asc' },
+      take: 200,
+    }),
+  ]);
+
   return {
-    events: events.map(e => ({
-      id: e.id,
-      type: e.type,
-      description: e.description,
-      location: e.latitude && e.longitude 
-        ? { lat: e.latitude, lng: e.longitude }
-        : null,
-      metadata: e.metadata ? JSON.parse(e.metadata) : null,
-      createdAt: e.createdAt,
+    events: trackingPoints.map((point) => ({
+      id: point.id,
+      type: 'tracking_update',
+      description: 'GPS tracking update',
+      location: { lat: point.latitude, lng: point.longitude },
+      metadata: {
+        speed: point.speed,
+        heading: point.heading,
+        accuracy: point.accuracy,
+      },
+      createdAt: point.timestamp,
     })),
-    statusHistory: statusHistory.map(s => ({
-      status: s.status,
-      changedBy: s.changedBy,
-      note: s.note,
-      changedAt: s.changedAt,
+    statusHistory: statusHistory.map((item) => ({
+      status: item.status,
+      changedBy: item.changedBy,
+      note: item.note,
+      changedAt: item.changedAt,
     })),
   };
 }
 
-// ============================================
-// 4. TRACKING UPDATE (Redis broadcast)
-// ============================================
-
-/**
- * Update GPS tracking and broadcast via Redis.
- * 
- * Python equivalent:
- * ```python
- * def broadcast_tracking(job_id, driver_id, lat, lng):
- *     publish_event(
- *         f"tracking:{job_id}",
- *         {"jobId": job_id, "driverId": driver_id, "latitude": lat, "longitude": lng}
- *     )
- * ```
- */
 export async function updateTracking(
   jobId: string,
   driverId: string,
   latitude: number,
   longitude: number,
-  options?: { speed?: number; heading?: number }
-): Promise<{ success: boolean; error?: string }> {
-  // Verify job assignment
+  options?: { speed?: number; heading?: number; accuracy?: number },
+): Promise<{ success: boolean; pointId?: string; error?: string }> {
+  if (!isValidCoordinate(latitude, longitude)) {
+    return { success: false, error: 'Invalid coordinates' };
+  }
+
   const assignment = await prisma.assignment.findFirst({
     where: { transportId: jobId, driverId },
-  });
-  
-  if (!assignment) {
-    return { success: false, error: 'Not assigned to this job' };
-  }
-  
-  // Create tracking point
-  await prisma.trackingPoint.create({
-    data: {
-      transportId: jobId,
-      driverId,
-      latitude,
-      longitude,
-      speed: options?.speed,
-      heading: options?.heading,
+    include: {
+      transport: true,
+      driver: true,
+      vehicle: true,
     },
   });
-  
-  // Broadcast via Redis
-  await broadcastTrackingUpdate({
+
+  if (!assignment) return { success: false, error: 'Not assigned to this job' };
+
+  if (!ACTIVE_TRACKING_STATUSES.includes(assignment.transport.status)) {
+    return { success: false, error: 'Tracking is not active for this job status' };
+  }
+
+  const timestamp = new Date();
+  const currentLocation = JSON.stringify({
+    lat: latitude,
+    lng: longitude,
+    timestamp: timestamp.toISOString(),
+    accuracy: options?.accuracy,
+  });
+
+  const point = await prisma.$transaction(async (tx) => {
+    const created = await tx.trackingPoint.create({
+      data: {
+        transportId: jobId,
+        driverId,
+        latitude,
+        longitude,
+        speed: options?.speed,
+        heading: options?.heading,
+        accuracy: options?.accuracy,
+        timestamp,
+      },
+    });
+
+    await tx.driver.update({
+      where: { id: driverId },
+      data: { currentLocation },
+    });
+
+    await tx.vehicle.update({
+      where: { id: assignment.vehicleId },
+      data: { currentLocation },
+    });
+
+    return created;
+  });
+
+  await safeBroadcastTracking({
     jobId,
     driverId,
     latitude,
     longitude,
     speed: options?.speed,
     heading: options?.heading,
+    accuracy: options?.accuracy,
   });
-  
-  return { success: true };
+
+  return { success: true, pointId: point.id };
 }
 
-// ============================================
-// EXPORTS
-// ============================================
+function isValidCoordinate(latitude: number, longitude: number) {
+  return Number.isFinite(latitude)
+    && Number.isFinite(longitude)
+    && latitude >= -90
+    && latitude <= 90
+    && longitude >= -180
+    && longitude <= 180;
+}
+
+async function safeBroadcastTracking(payload: {
+  jobId: string;
+  driverId: string;
+  latitude: number;
+  longitude: number;
+  speed?: number;
+  heading?: number;
+  accuracy?: number;
+}) {
+  try {
+    await broadcastTrackingUpdate(payload);
+  } catch (error) {
+    console.warn('[TrackingService] Redis tracking broadcast skipped:', error instanceof Error ? error.message : error);
+  }
+}
+
+async function safeBroadcastJobStatus(jobId: string, status: TransportStatus, metadata?: Record<string, unknown>) {
+  try {
+    await broadcastJobStatusWithMetadata({ id: jobId, status }, metadata || {});
+  } catch (error) {
+    console.warn('[TrackingService] Redis status broadcast skipped:', error instanceof Error ? error.message : error);
+  }
+}
 
 export const trackingService = {
   updateJobStatus,

@@ -61,7 +61,7 @@ export const nicheMarketLanes: NicheMarketLane[] = [
     label: 'DACH Paletten & Express',
     region: 'DACH',
     cargo: '1-12 Paletten, Same-Day/Next-Day',
-    promise: 'Schnelle Angebote fuer kleine Gewerbe, Handel und Ersatzteile.',
+    promise: 'Schnelle Angebote für kleine Gewerbe, Handel und Ersatzteile.',
     fitScore: 94,
   },
   {
@@ -77,7 +77,7 @@ export const nicheMarketLanes: NicheMarketLane[] = [
     label: 'Solo-Transporteure bis 3,5t',
     region: 'DACH',
     cargo: 'Sprinter, Koffer, lokale Gewerbefahrten',
-    promise: 'Niedrige Einstiegshuerde fuer Kleingewerbe und transparente Verifikation.',
+    promise: 'Niedrige Einstiegshürde für Kleingewerbe und transparente Verifikation.',
     fitScore: 91,
   },
   {
@@ -98,7 +98,7 @@ export const lifecycleBlueprint: LifecycleStage[] = [
     status: 'done',
     description: 'Route, Fracht, Zeitfenster, Budget und Anforderungen werden strukturiert erfasst.',
     automation: 'KI-Preisempfehlung, Pflichtfelder, Risiko-Precheck',
-    cta: 'Auftrag vervollstaendigen',
+    cta: 'Auftrag vervollständigen',
     endpoint: '/api/jobs',
   },
   {
@@ -117,7 +117,7 @@ export const lifecycleBlueprint: LifecycleStage[] = [
     owner: 'Verlader',
     status: 'next',
     description: 'Verlader vergleicht Preis, Bewertung, Dokumente und Verfuegbarkeit.',
-    automation: 'Wallet-Reservierung, Fee Quote, Audit Trail',
+    automation: 'Zahlungsschutz-Reservierung, Fee Quote, Audit Trail',
     cta: 'Bestes Angebot pruefen',
     endpoint: '/api/bids',
   },
@@ -126,9 +126,9 @@ export const lifecycleBlueprint: LifecycleStage[] = [
     label: 'Transportstatus',
     owner: 'Fahrer',
     status: 'waiting',
-    description: 'Abholung, Unterwegs, Lieferung und Ereignisse werden mobil gefuehrt.',
+    description: 'Abholung, Unterwegs, Lieferung und Ereignisse werden mobil geführt.',
     automation: 'Status-Timeline, ETA, GPS-Punkte, Benachrichtigungen',
-    cta: 'Fahreransicht oeffnen',
+    cta: 'Fahreransicht öffnen',
     endpoint: '/driver/mobile',
   },
   {
@@ -146,7 +146,7 @@ export const lifecycleBlueprint: LifecycleStage[] = [
     label: 'Rechnung',
     owner: 'System',
     status: 'waiting',
-    description: 'Transportpreis, CargoBit-Gebuehren, Wallet-Gebuehr und MwSt. werden separat ausgewiesen.',
+    description: 'Transportpreis, CargoBit-Gebühren, Zahlungsschutz-Gebühr und MwSt. werden separat ausgewiesen.',
     automation: 'Automatische Rechnungsdaten, PDF/Email vorbereitet',
     cta: 'Rechnungsdaten pruefen',
     endpoint: '/api/subscriptions',
@@ -156,8 +156,8 @@ export const lifecycleBlueprint: LifecycleStage[] = [
     label: 'Auszahlung',
     owner: 'CargoBit',
     status: 'waiting',
-    description: 'Freigabe nach erledigtem Transport, POD-Pruefung und Risk Gate.',
-    automation: 'Wallet, Payout Delay, Stripe Connect/Bankauszahlung',
+    description: 'Freigabe nach erledigtem Transport, POD-Prüfung und Risk Gate.',
+    automation: 'Auszahlungskonto, Payout Delay, Stripe Connect/Bankauszahlung',
     cta: 'Payout Status',
     endpoint: '/api/wallet/payout',
   },
@@ -166,17 +166,17 @@ export const lifecycleBlueprint: LifecycleStage[] = [
 export const roleNextSteps: Record<ProductRole, RoleNextStep[]> = {
   shipper: [
     { id: 'create_order', label: 'Transportauftrag erstellen', detail: 'Route, Fracht, Zeitfenster und Budget festlegen.', href: '/#auftrag', priority: 'high' },
-    { id: 'fund_wallet', label: 'Wallet/Absicherung vorbereiten', detail: 'Zahlung fuer Angebote reservieren und Rechnung vorbereiten.', href: '/shipper/wallet', priority: 'high' },
-    { id: 'verify_profile', label: 'Profil verifizieren', detail: 'Privat KYC oder Firmen-KYB abschliessen.', href: '/preview', priority: 'medium' },
+    { id: 'fund_wallet', label: 'Zahlungsschutz vorbereiten', detail: 'Zahlung für Angebote reservieren und Rechnung vorbereiten.', href: '/shipper/wallet', priority: 'high' },
+    { id: 'verify_profile', label: 'Profil verifizieren', detail: 'Privat KYC oder Firmen-KYB abschließen.', href: '/preview', priority: 'medium' },
   ],
   carrier: [
-    { id: 'complete_trust', label: 'Trust Profil abschliessen', detail: 'Gewerbeschein, Transportlizenz und Versicherung pruefen lassen.', href: '/dashboard?role=carrier', priority: 'high' },
-    { id: 'fleet_ready', label: 'Fahrzeuge und Fahrer freigeben', detail: 'Kapazitaeten, Fahrzeugtypen und Verfuegbarkeit pflegen.', href: '/carrier/fleet', priority: 'high' },
-    { id: 'bid_dach', label: 'DACH Loads anbieten', detail: 'Mit Paletten/Express-Lanes starten und Bewertungen aufbauen.', href: '/carrier/loads', priority: 'medium' },
+    { id: 'complete_trust', label: 'Trust Profil abschließen', detail: 'Gewerbeschein, Transportlizenz und Versicherung prüfen lassen.', href: '/dashboard?role=carrier', priority: 'high' },
+    { id: 'fleet_ready', label: 'Fahrzeuge und Fahrer freigeben', detail: 'Kapazitäten, Fahrzeugtypen und Verfügbarkeit pflegen.', href: '/carrier/fleet', priority: 'high' },
+    { id: 'find_loads', label: 'Verfügbare Aufträge finden', detail: 'Passende Marktaufträge prüfen und seriöse Angebote abgeben.', href: '/carrier/loads', priority: 'medium' },
   ],
   driver: [
-    { id: 'open_mobile', label: 'Mobile Fahreransicht oeffnen', detail: 'Naechsten Stop, Status und POD direkt am Smartphone fuehren.', href: '/driver/mobile', priority: 'high' },
-    { id: 'upload_docs', label: 'Dokumente vervollstaendigen', detail: 'Fuehrerschein, Fahrerkarte, Versicherung und ADR falls noetig.', href: '/driver/documents', priority: 'high' },
+    { id: 'open_mobile', label: 'Mobile Fahreransicht öffnen', detail: 'Nächsten Stopp, Status und POD direkt am Smartphone führen.', href: '/driver/mobile', priority: 'high' },
+    { id: 'upload_docs', label: 'Dokumente vervollständigen', detail: 'Führerschein, Fahrerkarte, Versicherung und ADR falls nötig.', href: '/driver/documents', priority: 'high' },
     { id: 'earnings', label: 'Verdienst und Auszahlung pruefen', detail: 'Offene Touren, reservierte Zahlungen und Payout Status.', href: '/driver/earnings', priority: 'medium' },
   ],
   dispatcher: [
@@ -232,13 +232,13 @@ export function getFallbackTrustProfile(role?: string | null): TrustProfile {
     level: businessRole ? 'trusted' : 'starter',
     title: businessRole ? 'Verifiziertes Transportprofil' : 'Abgesicherter Auftraggeber',
     summary: businessRole
-      ? 'Profil ist fuer DACH/Benelux-Loads geeignet, Versicherung und Lizenz sollten regelmaessig erneuert werden.'
-      : 'Auftraggeber ist startklar, Wallet-Reservierung und Profiltransparenz erhoehen die Angebotsqualitaet.',
+      ? 'Profil ist für DACH/Benelux-Aufträge geeignet, Versicherung und Lizenz sollten regelmäßig erneuert werden.'
+      : 'Auftraggeber ist startklar, Zahlungsschutz und Profiltransparenz erhöhen die Angebotsqualität.',
     signals: [
       {
         id: 'identity',
-        label: businessRole ? 'KYC/KYB abgeschlossen' : 'Identitaet geprueft',
-        detail: businessRole ? 'OCR, VIES und manuelle Kontrolle verfuegbar.' : 'Basis-Identitaet fuer sichere Auftragsvergabe.',
+        label: businessRole ? 'KYC/KYB abgeschlossen' : 'Identität geprüft',
+        detail: businessRole ? 'OCR, VIES und manuelle Kontrolle verfügbar.' : 'Basis-Identität für sichere Auftragsvergabe.',
         status: 'verified',
         owner: 'CargoBit',
       },
@@ -266,14 +266,14 @@ export function getFallbackTrustProfile(role?: string | null): TrustProfile {
       {
         id: 'payment_protection',
         label: 'Zahlungsabsicherung',
-        detail: 'Wallet-/Escrow-Logik mit Risk Gate vor Auszahlung.',
+        detail: 'Zahlungsschutz-Logik mit Risk Gate vor Auszahlung.',
         status: 'verified',
         owner: 'CargoBit',
       },
     ],
     requiredNextSteps: businessRole
-      ? ['Versicherung mit Ablaufdatum hinterlegen', 'Fahrzeug/Fahrer fuer erste DACH-Lane freigeben']
-      : ['Wallet fuer ersten Auftrag vorbereiten', 'Transparente Rechnungsdaten vervollstaendigen'],
+      ? ['Versicherung mit Ablaufdatum hinterlegen', 'Fahrzeug/Fahrer für erste DACH-Lane freigeben']
+      : ['Zahlungsschutz für ersten Auftrag vorbereiten', 'Transparente Rechnungsdaten vervollständigen'],
   };
 }
 
@@ -298,8 +298,8 @@ export function getFallbackDriverMission() {
       { id: 'pod', label: 'POD Foto/Signatur erfassen', done: false },
     ],
     actions: [
-      { label: 'Status senden', href: '/api/executions/demo/status' },
-      { label: 'POD hochladen', href: '/api/executions/demo/pod' },
+      { label: 'Status senden', href: '/driver/mobile' },
+      { label: 'POD hochladen', href: '/driver/mobile' },
       { label: 'Support', href: '/support/tickets' },
     ],
   };

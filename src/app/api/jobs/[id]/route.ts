@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { jobsService, type JobStatus } from '@/services/jobs.service';
+import { requireRequestUser, type RequestUser } from '@/lib/request-user-auth';
 
 // ============================================
 // GET /api/jobs/[id] - Get job details
@@ -17,17 +18,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const user = auth.user as RequestUser;
+    const userId = user.id;
     
     const { id } = await params;
-    const job = await jobsService.getJob(id, userId);
+    const roleHeader = resolveUserRolesForRequest(request, user);
+    const job = await jobsService.getJob(id, userId, roleHeader);
     
     if (!job) {
       return NextResponse.json(
@@ -47,6 +45,16 @@ export async function GET(
   }
 }
 
+function resolveUserRolesForRequest(request: NextRequest, user: RequestUser) {
+  if (user.roles.length > 0) return user.roles.join(',');
+
+  if (process.env.NODE_ENV !== 'production') {
+    return request.headers.get('x-user-role') || request.headers.get('x-user-roles') || '';
+  }
+
+  return '';
+}
+
 // ============================================
 // PATCH /api/jobs/[id] - Update job status
 // ============================================
@@ -56,14 +64,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
     
     const { id } = await params;
     const body = await request.json();
@@ -114,14 +117,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
     
     const { id } = await params;
     const { searchParams } = new URL(request.url);

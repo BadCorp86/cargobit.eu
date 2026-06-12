@@ -6,17 +6,39 @@ import {
   type TrustProfile,
   type TrustSignal,
 } from '@/lib/product-operating-model';
+import { getOptionalRequestUser, requestUserHasAnyRole } from '@/lib/request-user-auth';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const role = searchParams.get('role');
-  const userId = searchParams.get('userId') || request.headers.get('x-user-id');
+  const requestUser = await getOptionalRequestUser(request);
+  const requestedUserId = searchParams.get('userId');
+  const userId = requestedUserId || requestUser?.id;
 
   if (!userId) {
     return NextResponse.json({
       profile: getFallbackTrustProfile(role),
       source: 'fallback',
     });
+  }
+
+  if (requestedUserId && !requestUser) {
+    return NextResponse.json(
+      { error: 'AUTH_REQUIRED', message: 'Authentifizierung erforderlich.' },
+      { status: 401 },
+    );
+  }
+
+  if (
+    requestedUserId
+    && requestUser
+    && requestedUserId !== requestUser.id
+    && !requestUserHasAnyRole(requestUser, ['ADMIN', 'SUPPORT'])
+  ) {
+    return NextResponse.json(
+      { error: 'FORBIDDEN', message: 'Keine Berechtigung für dieses Trust-Profil.' },
+      { status: 403 },
+    );
   }
 
   try {
@@ -110,7 +132,7 @@ function buildTrustProfileFromUser(user: any, role?: string | null): TrustProfil
     {
       id: 'payment_protection',
       label: 'Zahlungsabsicherung',
-      detail: wallet ? `Wallet ${wallet.status}, ${wallet.balance.toFixed(2)} ${wallet.currency}` : 'Wallet wird vor Buchung benoetigt',
+      detail: wallet ? `Zahlungsschutz ${wallet.status}, ${wallet.balance.toFixed(2)} ${wallet.currency}` : 'Zahlungsschutz wird vor Buchung benoetigt',
       status: wallet?.status === 'ACTIVE' ? 'verified' : 'missing',
       owner: 'CargoBit',
     },

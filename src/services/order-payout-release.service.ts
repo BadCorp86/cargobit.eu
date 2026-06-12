@@ -7,6 +7,7 @@ const OPEN_TICKET_STATUSES = ['OPEN', 'IN_PROGRESS'];
 
 export interface OrderPayoutReadiness {
   orderId: string;
+  shipperUserId?: string;
   driverUserId?: string;
   release: OrderPayoutRelease;
   releaseEligibleAt?: string;
@@ -96,7 +97,7 @@ export async function getOrderPayoutReadiness(input: {
     }
 
     if (releaseEligibleAt && now.getTime() < releaseEligibleAt.getTime()) {
-      blockers.push(`Automatische Freigabe ist erst ab ${releaseEligibleAt.toISOString()} moeglich.`);
+      blockers.push(`Automatische Freigabe ist erst ab ${releaseEligibleAt.toISOString()} möglich.`);
     }
 
     if (openDisputes > 0 || openTickets > 0) {
@@ -124,6 +125,7 @@ export async function getOrderPayoutReadiness(input: {
 
   return {
     orderId: input.orderId,
+    shipperUserId: transport.shipperUserId,
     driverUserId,
     release,
     releaseEligibleAt: releaseEligibleAt?.toISOString(),
@@ -234,7 +236,7 @@ export async function releaseOrderPayout(input: {
         userId: readiness.driverUserId!,
         type: 'PAYOUT_RELEASED',
         title: 'Auszahlung ins Wallet freigegeben',
-        message: `${formatMoney(readiness.release.walletTransaction.amount, readiness.release.currency)} fuer Auftrag ${input.orderId} wurde ins Wallet gebucht.`,
+        message: `${formatMoney(readiness.release.walletTransaction.amount, readiness.release.currency)} für Auftrag ${input.orderId} wurde ins Wallet gebucht.`,
         data: JSON.stringify({
           orderId: input.orderId,
           releaseId: readiness.release.releaseId,
@@ -348,6 +350,85 @@ export async function runAutomaticPayoutReleases(input: { now?: Date; limit?: nu
     blocked: results.filter((result) => result.status === 'blocked').length,
     results,
   };
+}
+
+export async function getAutomaticPayoutReleaseQueue(input: { now?: Date; limit?: number } = {}) {
+  const now = input.now || new Date();
+  try {
+    const candidates = await prisma.transport.findMany({
+      where: {
+        status: { in: ['DELIVERY_DONE', 'COMPLETED'] },
+        OR: [
+          { deliveredAt: { not: null } },
+          { completedAt: { not: null } },
+        ],
+      },
+      include: {
+        documents: true,
+        assignment: {
+          include: {
+            driver: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        },
+      },
+      take: input.limit || 100,
+      orderBy: { updatedAt: 'asc' },
+    });
+
+    const rows = await Promise.all(candidates.map(async (transport) => {
+      const hasPod = transport.documents.some((document) => ['pod', 'lieferschein', 'foto_delivery'].includes(document.type));
+      const existingRelease = await prisma.walletTransaction.findFirst({
+        where: {
+          relatedTransportId: transport.id,
+          reference: `settlement_release_${transport.id}`,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      const readiness = await getOrderPayoutReadiness({ orderId: transport.id, now });
+
+      return {
+        orderId: transport.id,
+        status: existingRelease ? 'released' : readiness?.release.status || 'blocked',
+        amount: readiness?.release.settlement.carrierWalletCredit || transport.agreedPrice || transport.shipperBudget || 0,
+        currency: readiness?.release.currency || transport.currency,
+        deliveredAt: readiness?.deliveredAt || null,
+        releaseEligibleAt: readiness?.releaseEligibleAt || null,
+        hasPod,
+        openDisputes: readiness?.openDisputes || 0,
+        openTickets: readiness?.openTickets || 0,
+        blockers: existingRelease ? [] : readiness?.release.blockedReasons || ['Payout readiness unavailable'],
+        driverUserId: readiness?.driverUserId || transport.assignment?.driver.userId || null,
+        driverEmail: transport.assignment?.driver.user.email || null,
+        releasedAt: existingRelease?.processedAt?.toISOString() || existingRelease?.createdAt.toISOString() || null,
+      };
+    }));
+
+    return {
+      available: true,
+      now: now.toISOString(),
+      total: rows.length,
+      ready: rows.filter((row) => row.status === 'ready').length,
+      blocked: rows.filter((row) => row.status === 'blocked').length,
+      released: rows.filter((row) => row.status === 'released').length,
+      rows,
+    };
+  } catch (error) {
+    console.error('[OrderPayoutRelease] Queue preview failed:', error);
+    return {
+      available: false,
+      now: now.toISOString(),
+      total: 0,
+      ready: 0,
+      blocked: 0,
+      released: 0,
+      rows: [],
+      error: error instanceof Error ? error.message : 'Auto-release queue unavailable',
+    };
+  }
 }
 
 function formatMoney(value: number, currency = 'EUR') {

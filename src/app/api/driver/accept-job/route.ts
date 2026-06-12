@@ -13,6 +13,7 @@ import {
   SecurityAction,
 } from '@/lib/hybrid-security';
 import { logAuditEvent } from '@/lib/permissions';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 // ============================================
 // INTERFACES
@@ -53,15 +54,9 @@ export async function POST(request: NextRequest) {
   try {
     const body: AcceptJobRequest = await request.json();
 
-    // Auth validation
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({
-        error: 'UnauthorizedError',
-        message: 'Authentifizierung erforderlich',
-        code: 'AUTH_REQUIRED',
-      }, { status: 401 });
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
 
     // Get driver and transport details
     const driver = await db.driver.findUnique({

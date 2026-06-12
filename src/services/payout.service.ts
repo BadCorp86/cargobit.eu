@@ -98,9 +98,15 @@ async function createStripeTransfer(
   //   metadata: { payout_id: payoutId, user_id: userId },
   // }, { idempotencyKey });
 
-  // For development/testing, simulate a successful transfer
   if (!STRIPE_SECRET_KEY) {
-    console.log('[PAYOUT] No Stripe key configured, simulating transfer');
+    if (process.env.NODE_ENV === 'production') {
+      return {
+        success: false,
+        error: 'Stripe secret key is required for production payouts',
+      };
+    }
+
+    console.log('[PAYOUT] No Stripe key configured, simulating transfer in development only');
     return {
       success: true,
       transferId: `tr_simulated_${payoutId}_${Date.now()}`,

@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { trackingService } from '@/services/tracking.service';
+import { requireRequestUser } from '@/lib/request-user-auth';
 import type { TransportStatus, JobEventType } from '@prisma/client';
 
 // ============================================
@@ -19,14 +20,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
     
     const { id: jobId } = await params;
     const body = await request.json();

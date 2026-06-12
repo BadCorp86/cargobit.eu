@@ -818,6 +818,7 @@ model TrackingPoint {
   
   speed         Float?    // km/h
   heading       Float?    // degrees
+  accuracy      Float?    // meters
   
   transport     Transport @relation(fields: [transportId], references: [id], onDelete: Cascade)
   driver        Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)

@@ -258,7 +258,7 @@ export default function AdminReportsPage() {
   const maxMonthlyRevenue = Math.max(...report.monthly.map((item) => item.totalRevenue), 1);
 
   return (
-    <DashboardLayout title="Berichte" subtitle="Finanz-, Operations-, Wallet- und Risiko-Kennzahlen">
+    <DashboardLayout title="Berichte" subtitle="Finanz-, Operations-, Zahlungsschutz- und Risiko-Kennzahlen">
       <div className="space-y-6">
         <div className="flex flex-col gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.05] p-5 shadow-xl shadow-black/10 backdrop-blur-xl lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -298,7 +298,7 @@ export default function AdminReportsPage() {
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {[
-            ['Netto-Ertrag', formatCurrency(report.finance.totalNetRevenue), 'text-[#9EF2BC]', 'Provisionen, Wallet-Gebühren und Abos'],
+            ['Netto-Ertrag', formatCurrency(report.finance.totalNetRevenue), 'text-[#9EF2BC]', 'Provisionen, Zahlungsschutz-Gebühren und Business-Umsatz'],
             ['Transportvolumen', formatCurrency(report.finance.grossTransportVolume), 'text-[#8BC5FF]', 'Summe akzeptierter Budgets/Preise'],
             ['Offene Payouts', formatCurrency(report.finance.pendingPayoutAmount), 'text-[#FFD28A]', 'Pending und Processing'],
             ['Offene Fälle', report.risk.openDisputes + report.risk.openTickets, riskTone(report.risk.openDisputes + report.risk.openTickets, 10, 25), 'Disputes und Support'],
@@ -339,10 +339,10 @@ export default function AdminReportsPage() {
             <div className="space-y-4">
               {[
                 ['Provisionen', report.finance.commissionRevenue, 'green'],
-                ['Wallet-Gebühren', report.finance.walletFeeRevenue, 'blue'],
-                ['Abo-Umsatz', report.finance.subscriptionRevenue, 'yellow'],
-                ['Wallet-Eingänge', report.finance.walletInflow, 'gray'],
-                ['Wallet-Ausgänge', report.finance.walletOutflow, 'gray'],
+                ['Zahlungsschutz-Gebühren', report.finance.walletFeeRevenue, 'blue'],
+                ['Business-Umsatz', report.finance.subscriptionRevenue, 'yellow'],
+                ['Zahlungseingänge', report.finance.walletInflow, 'gray'],
+                ['Auszahlungen', report.finance.walletOutflow, 'gray'],
               ].map(([label, value, tone]) => (
                 <div key={String(label)} className="flex items-center justify-between gap-3 border-b border-white/[0.06] pb-3 last:border-0 last:pb-0">
                   <span className="text-sm text-white/65">{label}</span>

@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withAdminAuth } from '@/lib/admin-rbac';
 import { disputeService } from '@/services/dispute.service';
 import type { DisputeStatus } from '@prisma/client';
 
@@ -12,16 +13,7 @@ import type { DisputeStatus } from '@prisma/client';
 // ============================================
 
 export async function GET(request: NextRequest) {
-  try {
-    const userRole = request.headers.get('x-user-role');
-    
-    if (userRole !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Admin access required' },
-        { status: 403 }
-      );
-    }
-    
+  return withAdminAuth(request, async () => {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') as DisputeStatus | null;
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -39,11 +31,19 @@ export async function GET(request: NextRequest) {
       offset,
       total: disputes.length,
     });
-    
-  } catch (error: any) {
-    console.error('[API] GET /disputes error:', error);
+  }, ['ADMIN', 'SUPPORT']);
+}
+
+export async function POST() {
+  try {
     return NextResponse.json(
-      { error: error.message || 'Failed to get disputes' },
+      { error: 'METHOD_NOT_AVAILABLE', message: 'Use /api/jobs/[id]/disputes to create a dispute for a transport.' },
+      { status: 405 },
+    );
+  } catch (error: any) {
+    console.error('[API] POST /disputes error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to process dispute request' },
       { status: 500 }
     );
   }

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
 
 const FEEDBACK_CATEGORIES = new Set([
   'Funktion fehlt',
   'Bedienbarkeit',
-  'Preis & Wallet',
+  'Preis & Zahlungsschutz',
   'Transportprozess',
   'Verifizierung',
   'Sonstiges',
@@ -15,30 +16,9 @@ function cleanText(value: unknown, maxLength: number) {
 }
 
 async function resolveFeedbackUser(request: NextRequest) {
-  const headerUserId = cleanText(request.headers.get('x-user-id'), 128);
-  const headerEmail = cleanText(request.headers.get('x-user-email'), 254).toLowerCase();
-
-  if (headerUserId) {
-    const user = await db.user.findUnique({ where: { id: headerUserId } });
-    if (user) return user;
-  }
-
-  if (headerEmail) {
-    const user = await db.user.findUnique({ where: { email: headerEmail } });
-    if (user) return user;
-
-    return db.user.create({
-      data: {
-        email: headerEmail,
-        passwordHash: 'feedback-auth-store-user',
-        firstName: 'CargoBit',
-        lastName: 'Nutzer',
-        status: 'ACTIVE',
-      },
-    });
-  }
-
-  return null;
+  const requestUser = await getOptionalRequestUser(request);
+  if (!requestUser) return null;
+  return db.user.findUnique({ where: { id: requestUser.id } });
 }
 
 export async function POST(request: NextRequest) {

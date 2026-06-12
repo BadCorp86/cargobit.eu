@@ -232,7 +232,7 @@ export function BidList({
             <DialogDescription>
               Du akzeptierst das Angebot von {selectedBid?.transporterName || 'Transporteur'} über{' '}
               <strong>{selectedBid?.price && formatPrice(selectedBid.price)}</strong>.
-              Der Betrag wird von deinem Wallet abgebucht.
+              Der Betrag wird über den Zahlungsschutz reserviert.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { bidsService, type CreateBidInput } from '@/services/bids.service';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 // ============================================
 // GET /api/bids - List user's bids
@@ -13,14 +14,9 @@ import { bidsService, type CreateBidInput } from '@/services/bids.service';
 
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
     
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -87,14 +83,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
     
     const body = await request.json();
     

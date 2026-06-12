@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const userId = request.headers.get('x-user-id') || 'demo-user';
+  const auth = await requireRequestUser(request);
+  if (auth.response) return auth.response;
+  const userId = auth.user!.id;
 
   try {
     const companyUser = await db.companyUser.findFirst({
@@ -71,7 +74,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'InternalServerError',
-        message: 'Abo-Rechnungen konnten nicht geladen werden.',
+        message: 'Business-Rechnungen konnten nicht geladen werden.',
         code: 'SUBSCRIPTION_INVOICES_FAILED',
       },
       { status: 500 },
@@ -91,10 +94,10 @@ function createDemoInvoices() {
       invoiceNumber: `CB-SUB-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
       status: 'paid',
       currency: 'EUR',
-      subtotal: 149,
-      tax: 28.31,
-      total: 177.31,
-      amountPaid: 177.31,
+      subtotal: 89,
+      tax: 16.91,
+      total: 105.91,
+      amountPaid: 105.91,
       amountDue: 0,
       hostedInvoiceUrl: null,
       invoicePdfUrl: null,

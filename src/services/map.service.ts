@@ -1,17 +1,11 @@
 /**
  * CargoBit Map Service
- * 
- * HERE Maps Integration for:
- * - Route calculation
- * - Distance estimation
- * - Geocoding (address to coordinates)
- * - Reverse geocoding (coordinates to address)
- * - Toll cost estimation
+ *
+ * Server-neutral provider layer for route calculation and geocoding.
+ * Production can use Google Maps Platform, tests and CI can use the mock
+ * provider without API keys or external network calls.
  */
 
-// ===========================================
-// TYPES
-// ===========================================
 export interface Coordinates {
   lat: number;
   lng: number;
@@ -27,20 +21,22 @@ export interface Address {
 }
 
 export interface RouteResult {
-  distance: number;        // in km
-  duration: number;        // in minutes
-  tollCost: number;        // in EUR
-  fuelCost: number;        // in EUR
-  polyline?: string;       // Encoded polyline for map display
+  distance: number;
+  duration: number;
+  tollCost: number;
+  fuelCost: number;
+  polyline?: string;
   transitCountries: string[];
   waypoints: Coordinates[];
+  provider: 'google' | 'mock';
 }
 
 export interface GeocodingResult {
   coordinates: Coordinates;
   formattedAddress: string;
   address: Address;
-  confidence: number;      // 0-1
+  confidence: number;
+  provider: 'google' | 'mock';
 }
 
 export interface TollInfo {
@@ -50,343 +46,379 @@ export interface TollInfo {
   currency: string;
 }
 
-// ===========================================
-// MAP SERVICE CLASS
-// ===========================================
-class MapService {
-  private apiKey: string | undefined;
-  private appId: string | undefined;
-  private appCode: string | undefined;
-  private enabled: boolean;
+interface MapProvider {
+  geocode(address: string): Promise<GeocodingResult | null>;
+  reverseGeocode(coordinates: Coordinates): Promise<GeocodingResult | null>;
+  calculateRoute(
+    origin: Coordinates | string,
+    destination: Coordinates | string,
+    waypoints?: (Coordinates | string)[],
+    options?: RouteOptions,
+  ): Promise<RouteResult | null>;
+}
 
-  private readonly BASE_URL = 'https://router.hereapi.com/v8';
-  private readonly GEOCODE_URL = 'https://geocode.search.hereapi.com/v1';
-  private readonly REVERSE_GEOCODE_URL = 'https://revgeocode.search.hereapi.com/v1';
+interface RouteOptions {
+  avoidTolls?: boolean;
+  vehicleType?: 'truck' | 'car';
+  hazmat?: boolean;
+}
 
-  constructor() {
-    this.apiKey = process.env.HERE_API_KEY;
-    this.appId = process.env.HERE_APP_ID;
-    this.appCode = process.env.HERE_APP_CODE;
-    this.enabled = !!this.apiKey;
+class GoogleMapsProvider implements MapProvider {
+  private readonly serverKey = process.env.GOOGLE_MAPS_SERVER_KEY;
+  private readonly geocodeUrl = 'https://maps.googleapis.com/maps/api/geocode/json';
+  private readonly routesUrl = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 
-    if (!this.enabled) {
-      console.warn('⚠️ HERE Maps API key not configured. Map features will be simulated.');
-    }
+  isConfigured() {
+    return Boolean(this.serverKey);
   }
 
-  // ===========================================
-  // GEOCODING
-  // ===========================================
-
-  /**
-   * Convert address to coordinates
-   */
   async geocode(address: string): Promise<GeocodingResult | null> {
-    if (!this.apiKey) {
-      // Return mock coordinates for development
-      return this.getMockGeocoding(address);
-    }
+    if (!this.serverKey) return null;
 
-    try {
-      const url = new URL(`${this.GEOCODE_URL}/geocode`);
-      url.searchParams.append('q', address);
-      url.searchParams.append('apiKey', this.apiKey);
+    const url = new URL(this.geocodeUrl);
+    url.searchParams.set('address', address);
+    url.searchParams.set('language', 'de');
+    url.searchParams.set('region', 'de');
+    url.searchParams.set('key', this.serverKey);
 
-      const response = await fetch(url.toString());
-      const data = await response.json();
+    const response = await fetch(url);
+    const data = await response.json();
 
-      if (!data.items || data.items.length === 0) {
-        return null;
-      }
-
-      const item = data.items[0];
-      const pos = item.position;
-
-      return {
-        coordinates: {
-          lat: pos.lat,
-          lng: pos.lng,
-        },
-        formattedAddress: item.address.label,
-        address: {
-          street: item.address.street || '',
-          streetNumber: item.address.houseNumber || '',
-          postalCode: item.address.postalCode || '',
-          city: item.address.city,
-          country: item.address.countryName,
-          countryCode: item.address.countryCode,
-        },
-        confidence: item.scoring?.queryScore || 0.8,
-      };
-    } catch (error) {
-      console.error('❌ Geocoding error:', error);
-      return this.getMockGeocoding(address);
-    }
-  }
-
-  /**
-   * Convert coordinates to address
-   */
-  async reverseGeocode(coordinates: Coordinates): Promise<GeocodingResult | null> {
-    if (!this.apiKey) {
-      return {
-        coordinates,
-        formattedAddress: `${coordinates.lat.toFixed(4)}, ${coordinates.lng.toFixed(4)}`,
-        address: {
-          street: '',
-          postalCode: '',
-          city: '',
-          country: '',
-          countryCode: '',
-        },
-        confidence: 0.5,
-      };
-    }
-
-    try {
-      const url = new URL(`${this.REVERSE_GEOCODE_URL}/revgeocode`);
-      url.searchParams.append('at', `${coordinates.lat},${coordinates.lng}`);
-      url.searchParams.append('apiKey', this.apiKey);
-
-      const response = await fetch(url.toString());
-      const data = await response.json();
-
-      if (!data.items || data.items.length === 0) {
-        return null;
-      }
-
-      const item = data.items[0];
-
-      return {
-        coordinates,
-        formattedAddress: item.address.label,
-        address: {
-          street: item.address.street || '',
-          streetNumber: item.address.houseNumber || '',
-          postalCode: item.address.postalCode || '',
-          city: item.address.city,
-          country: item.address.countryName,
-          countryCode: item.address.countryCode,
-        },
-        confidence: 0.9,
-      };
-    } catch (error) {
-      console.error('❌ Reverse geocoding error:', error);
+    if (data.status !== 'OK' || !data.results?.[0]) {
       return null;
     }
+
+    const result = data.results[0];
+    const components = parseGoogleAddressComponents(result.address_components || []);
+
+    return {
+      coordinates: {
+        lat: result.geometry.location.lat,
+        lng: result.geometry.location.lng,
+      },
+      formattedAddress: result.formatted_address,
+      address: components,
+      confidence: result.partial_match ? 0.65 : 0.95,
+      provider: 'google',
+    };
   }
 
-  // ===========================================
-  // ROUTING
-  // ===========================================
+  async reverseGeocode(coordinates: Coordinates): Promise<GeocodingResult | null> {
+    if (!this.serverKey) return null;
 
-  /**
-   * Calculate route between two points
-   */
+    const url = new URL(this.geocodeUrl);
+    url.searchParams.set('latlng', `${coordinates.lat},${coordinates.lng}`);
+    url.searchParams.set('language', 'de');
+    url.searchParams.set('key', this.serverKey);
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.status !== 'OK' || !data.results?.[0]) {
+      return null;
+    }
+
+    const result = data.results[0];
+    const components = parseGoogleAddressComponents(result.address_components || []);
+
+    return {
+      coordinates,
+      formattedAddress: result.formatted_address,
+      address: components,
+      confidence: 0.9,
+      provider: 'google',
+    };
+  }
+
   async calculateRoute(
     origin: Coordinates | string,
     destination: Coordinates | string,
     waypoints?: (Coordinates | string)[],
-    options?: {
-      avoidTolls?: boolean;
-      vehicleType?: 'truck' | 'car';
-      hazmat?: boolean;
-    }
+    options?: RouteOptions,
   ): Promise<RouteResult | null> {
-    // Resolve addresses to coordinates
-    const originCoords = typeof origin === 'string' 
-      ? (await this.geocode(origin))?.coordinates 
-      : origin;
-    const destCoords = typeof destination === 'string'
-      ? (await this.geocode(destination))?.coordinates
-      : destination;
+    if (!this.serverKey) return null;
 
-    if (!originCoords || !destCoords) {
-      return null;
-    }
+    const originCoords = await this.resolveCoordinates(origin);
+    const destinationCoords = await this.resolveCoordinates(destination);
 
-    if (!this.apiKey) {
-      return this.getMockRoute(originCoords, destCoords);
-    }
+    if (!originCoords || !destinationCoords) return null;
 
-    try {
-      const url = new URL(`${this.BASE_URL}/routes`);
-      url.searchParams.append('transportMode', options?.vehicleType === 'truck' ? 'truck' : 'car');
-      url.searchParams.append('origin', `${originCoords.lat},${originCoords.lng}`);
-      url.searchParams.append('destination', `${destCoords.lat},${destCoords.lng}`);
-      url.searchParams.append('return', 'polyline,summary,tolls,actions');
-      url.searchParams.append('apiKey', this.apiKey);
+    const intermediates = await Promise.all((waypoints || []).map((waypoint) => this.resolveCoordinates(waypoint)));
 
-      if (waypoints && waypoints.length > 0) {
-        const viaPoints = waypoints.map(wp => {
-          if (typeof wp === 'string') {
-            return wp; // Will need geocoding
-          }
-          return `${wp.lat},${wp.lng}`;
-        }).join(',');
-        // url.searchParams.append('via', viaPoints);
-      }
-
-      if (options?.avoidTolls) {
-        url.searchParams.append('tolls[pass]', 'none');
-      }
-
-      if (options?.vehicleType === 'truck') {
-        url.searchParams.append('truck[height]', '4.0');
-        url.searchParams.append('truck[weight]', '18.0');
-      }
-
-      const response = await fetch(url.toString());
-      const data = await response.json();
-
-      if (!data.routes || data.routes.length === 0) {
-        return null;
-      }
-
-      const route = data.routes[0];
-      const summary = route.sections[0]?.summary || {};
-      const tolls = route.sections[0]?.tolls || [];
-
-      // Calculate total toll cost
-      let tollCost = 0;
-      const transitCountries: string[] = [];
-
-      for (const toll of tolls) {
-        tollCost += toll.totalPrice?.value || 0;
-        if (toll.country && !transitCountries.includes(toll.country)) {
-          transitCountries.push(toll.country);
-        }
-      }
-
-      return {
-        distance: Math.round((summary.length || 0) / 1000), // km
-        duration: Math.round((summary.duration || 0) / 60),  // minutes
-        tollCost: Math.round(tollCost * 100) / 100,
-        fuelCost: this.estimateFuelCost(summary.length || 0, options?.vehicleType === 'truck'),
-        polyline: route.sections[0]?.polyline,
-        transitCountries,
-        waypoints: [originCoords, destCoords],
-      };
-    } catch (error) {
-      console.error('❌ Route calculation error:', error);
-      return this.getMockRoute(originCoords, destCoords);
-    }
-  }
-
-  /**
-   * Get toll information for a route
-   */
-  async getTollInfo(origin: Coordinates, destination: Coordinates): Promise<TollInfo[]> {
-    const route = await this.calculateRoute(origin, destination);
-    if (!route) return [];
-
-    // Mock toll info for development
-    const tollInfo: TollInfo[] = [
-      { country: 'DE', system: 'Toll Collect', cost: route.distance * 0.15, currency: 'EUR' },
-    ];
-
-    if (route.transitCountries.includes('AT')) {
-      tollInfo.push({ country: 'AT', system: 'ASFINAG', cost: route.distance * 0.22, currency: 'EUR' });
-    }
-
-    return tollInfo;
-  }
-
-  // ===========================================
-  // UTILITY METHODS
-  // ===========================================
-
-  /**
-   * Calculate distance between two coordinates (Haversine formula)
-   */
-  calculateDistance(coord1: Coordinates, coord2: Coordinates): number {
-    const R = 6371; // Earth's radius in km
-    const dLat = this.toRad(coord2.lat - coord1.lat);
-    const dLng = this.toRad(coord2.lng - coord1.lng);
-
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(this.toRad(coord1.lat)) * Math.cos(this.toRad(coord2.lat)) *
-              Math.sin(dLng / 2) * Math.sin(dLng / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return Math.round(R * c * 10) / 10;
-  }
-
-  private toRad(deg: number): number {
-    return deg * (Math.PI / 180);
-  }
-
-  /**
-   * Estimate fuel cost based on distance
-   */
-  estimateFuelCost(distanceMeters: number, isTruck: boolean = true): number {
-    const distanceKm = distanceMeters / 1000;
-    const fuelEfficiency = isTruck ? 30 : 8; // liters per 100km
-    const fuelPrice = 1.80; // EUR per liter
-    return Math.round(distanceKm * (fuelEfficiency / 100) * fuelPrice * 100) / 100;
-  }
-
-  /**
-   * Check if route crosses international borders
-   */
-  isInternationalRoute(origin: Coordinates, destination: Coordinates): Promise<boolean> {
-    return this.reverseGeocode(origin).then(o => {
-      return this.reverseGeocode(destination).then(d => {
-        return o?.address.countryCode !== d?.address.countryCode;
-      });
-    });
-  }
-
-  // ===========================================
-  // MOCK DATA FOR DEVELOPMENT
-  // ===========================================
-
-  private getMockGeocoding(address: string): GeocodingResult {
-    // Simple mock based on city name
-    const cityCoords: Record<string, Coordinates> = {
-      'berlin': { lat: 52.5219, lng: 13.4132 },
-      'hamburg': { lat: 53.5526, lng: 9.9932 },
-      'münchen': { lat: 48.1374, lng: 11.5755 },
-      'wien': { lat: 48.2082, lng: 16.3738 },
-      'zürich': { lat: 47.3769, lng: 8.5417 },
-      'prag': { lat: 50.0755, lng: 14.4378 },
-      'amsterdam': { lat: 52.3731, lng: 4.8922 },
-      'paris': { lat: 48.8566, lng: 2.3522 },
+    const requestBody = {
+      origin: toGoogleWaypoint(originCoords),
+      destination: toGoogleWaypoint(destinationCoords),
+      intermediates: intermediates.filter(Boolean).map((point) => toGoogleWaypoint(point as Coordinates)),
+      travelMode: 'DRIVE',
+      routingPreference: 'TRAFFIC_AWARE',
+      computeAlternativeRoutes: false,
+      routeModifiers: {
+        avoidTolls: Boolean(options?.avoidTolls),
+      },
+      languageCode: 'de-DE',
+      units: 'METRIC',
     };
 
-    const searchKey = address.toLowerCase();
-    const matchedCity = Object.keys(cityCoords).find(city => searchKey.includes(city));
-    const coords = cityCoords[matchedCity || searchKey] || cityCoords['berlin'];
+    const response = await fetch(this.routesUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': this.serverKey,
+        'X-Goog-FieldMask': [
+          'routes.distanceMeters',
+          'routes.duration',
+          'routes.staticDuration',
+          'routes.polyline.encodedPolyline',
+          'routes.travelAdvisory.tollInfo',
+        ].join(','),
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const route = data.routes?.[0];
+    if (!route) return null;
+
+    const distanceMeters = Number(route.distanceMeters || 0);
+    const durationSeconds = parseGoogleDuration(route.duration);
 
     return {
-      coordinates: coords,
+      distance: Math.round(distanceMeters / 1000),
+      duration: Math.round(durationSeconds / 60),
+      tollCost: parseGoogleTollCost(route.travelAdvisory?.tollInfo),
+      fuelCost: estimateFuelCost(distanceMeters, options?.vehicleType !== 'car'),
+      polyline: route.polyline?.encodedPolyline,
+      transitCountries: [],
+      waypoints: [originCoords, destinationCoords],
+      provider: 'google',
+    };
+  }
+
+  private async resolveCoordinates(input: Coordinates | string): Promise<Coordinates | null> {
+    if (typeof input !== 'string') return input;
+    const result = await this.geocode(input);
+    return result?.coordinates || null;
+  }
+}
+
+class MockMapProvider implements MapProvider {
+  async geocode(address: string): Promise<GeocodingResult> {
+    const coordinates = getMockCoordinates(address);
+
+    return {
+      coordinates,
       formattedAddress: address,
       address: {
         street: '',
         postalCode: '',
         city: address,
-        country: 'DE',
+        country: 'Deutschland',
         countryCode: 'DE',
       },
       confidence: 0.8,
+      provider: 'mock',
     };
   }
 
-  private getMockRoute(origin: Coordinates, destination: Coordinates): RouteResult {
-    const distance = this.calculateDistance(origin, destination);
-    const avgSpeed = 60; // km/h for truck
+  async reverseGeocode(coordinates: Coordinates): Promise<GeocodingResult> {
+    return {
+      coordinates,
+      formattedAddress: `${coordinates.lat.toFixed(5)}, ${coordinates.lng.toFixed(5)}`,
+      address: {
+        street: '',
+        postalCode: '',
+        city: '',
+        country: '',
+        countryCode: '',
+      },
+      confidence: 0.5,
+      provider: 'mock',
+    };
+  }
+
+  async calculateRoute(
+    origin: Coordinates | string,
+    destination: Coordinates | string,
+    _waypoints?: (Coordinates | string)[],
+    _options?: RouteOptions,
+  ): Promise<RouteResult> {
+    const originCoords = typeof origin === 'string' ? getMockCoordinates(origin) : origin;
+    const destinationCoords = typeof destination === 'string' ? getMockCoordinates(destination) : destination;
+    const distance = calculateDistance(originCoords, destinationCoords);
 
     return {
       distance,
-      duration: Math.round((distance / avgSpeed) * 60),
+      duration: Math.round((distance / 62) * 60),
       tollCost: Math.round(distance * 0.15 * 100) / 100,
-      fuelCost: this.estimateFuelCost(distance * 1000, true),
+      fuelCost: estimateFuelCost(distance * 1000, true),
+      polyline: undefined,
       transitCountries: [],
-      waypoints: [origin, destination],
+      waypoints: [originCoords, destinationCoords],
+      provider: 'mock',
     };
   }
 }
 
-// Export singleton instance
+class MapService implements MapProvider {
+  private readonly googleProvider = new GoogleMapsProvider();
+  private readonly mockProvider = new MockMapProvider();
+
+  private get provider(): MapProvider {
+    const requestedProvider = (process.env.MAP_PROVIDER || 'mock').toLowerCase();
+
+    if (requestedProvider === 'google' && this.googleProvider.isConfigured()) {
+      return this.googleProvider;
+    }
+
+    return this.mockProvider;
+  }
+
+  async geocode(address: string): Promise<GeocodingResult | null> {
+    try {
+      return await this.provider.geocode(address);
+    } catch (error) {
+      console.error('[MapService] Geocoding failed:', error);
+      return this.mockProvider.geocode(address);
+    }
+  }
+
+  async reverseGeocode(coordinates: Coordinates): Promise<GeocodingResult | null> {
+    try {
+      return await this.provider.reverseGeocode(coordinates);
+    } catch (error) {
+      console.error('[MapService] Reverse geocoding failed:', error);
+      return this.mockProvider.reverseGeocode(coordinates);
+    }
+  }
+
+  async calculateRoute(
+    origin: Coordinates | string,
+    destination: Coordinates | string,
+    waypoints?: (Coordinates | string)[],
+    options?: RouteOptions,
+  ): Promise<RouteResult | null> {
+    try {
+      return await this.provider.calculateRoute(origin, destination, waypoints, options);
+    } catch (error) {
+      console.error('[MapService] Route calculation failed:', error);
+      return this.mockProvider.calculateRoute(origin, destination, waypoints, options);
+    }
+  }
+
+  async getTollInfo(origin: Coordinates, destination: Coordinates): Promise<TollInfo[]> {
+    const route = await this.calculateRoute(origin, destination);
+    if (!route) return [];
+
+    return [
+      { country: 'DE', system: route.provider === 'google' ? 'Google Routes API' : 'Mock Toll', cost: route.tollCost, currency: 'EUR' },
+    ];
+  }
+
+  calculateDistance(coord1: Coordinates, coord2: Coordinates): number {
+    return calculateDistance(coord1, coord2);
+  }
+
+  async isInternationalRoute(origin: Coordinates, destination: Coordinates): Promise<boolean> {
+    const [originAddress, destinationAddress] = await Promise.all([
+      this.reverseGeocode(origin),
+      this.reverseGeocode(destination),
+    ]);
+
+    return Boolean(originAddress?.address.countryCode && destinationAddress?.address.countryCode)
+      && originAddress?.address.countryCode !== destinationAddress?.address.countryCode;
+  }
+}
+
+function parseGoogleAddressComponents(components: Array<{ long_name: string; short_name: string; types: string[] }>): Address {
+  const get = (type: string, short = false) => {
+    const component = components.find((item) => item.types.includes(type));
+    return short ? component?.short_name || '' : component?.long_name || '';
+  };
+
+  return {
+    street: get('route'),
+    streetNumber: get('street_number'),
+    postalCode: get('postal_code'),
+    city: get('locality') || get('administrative_area_level_2'),
+    country: get('country'),
+    countryCode: get('country', true),
+  };
+}
+
+function toGoogleWaypoint(coordinates: Coordinates) {
+  return {
+    location: {
+      latLng: {
+        latitude: coordinates.lat,
+        longitude: coordinates.lng,
+      },
+    },
+  };
+}
+
+function parseGoogleDuration(duration?: string): number {
+  if (!duration) return 0;
+  return Number(duration.replace('s', '')) || 0;
+}
+
+function parseGoogleTollCost(tollInfo?: { estimatedPrice?: Array<{ currencyCode?: string; units?: string; nanos?: number }> }): number {
+  const price = tollInfo?.estimatedPrice?.[0];
+  if (!price) return 0;
+
+  const units = Number(price.units || 0);
+  const nanos = Number(price.nanos || 0) / 1_000_000_000;
+  return Math.round((units + nanos) * 100) / 100;
+}
+
+function estimateFuelCost(distanceMeters: number, isTruck = true): number {
+  const distanceKm = distanceMeters / 1000;
+  const fuelEfficiency = isTruck ? 30 : 8;
+  const fuelPrice = 1.8;
+  return Math.round(distanceKm * (fuelEfficiency / 100) * fuelPrice * 100) / 100;
+}
+
+function calculateDistance(coord1: Coordinates, coord2: Coordinates): number {
+  const earthRadiusKm = 6371;
+  const dLat = toRad(coord2.lat - coord1.lat);
+  const dLng = toRad(coord2.lng - coord1.lng);
+
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+    + Math.cos(toRad(coord1.lat)) * Math.cos(toRad(coord2.lat))
+    * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(earthRadiusKm * c * 10) / 10;
+}
+
+function toRad(degrees: number) {
+  return degrees * (Math.PI / 180);
+}
+
+function getMockCoordinates(address: string): Coordinates {
+  const cityCoords: Record<string, Coordinates> = {
+    berlin: { lat: 52.5219, lng: 13.4132 },
+    hamburg: { lat: 53.5526, lng: 9.9932 },
+    muenchen: { lat: 48.1374, lng: 11.5755 },
+    munich: { lat: 48.1374, lng: 11.5755 },
+    'münchen': { lat: 48.1374, lng: 11.5755 },
+    koeln: { lat: 50.9375, lng: 6.9603 },
+    'köln': { lat: 50.9375, lng: 6.9603 },
+    frankfurt: { lat: 50.1109, lng: 8.6821 },
+    wien: { lat: 48.2082, lng: 16.3738 },
+    zürich: { lat: 47.3769, lng: 8.5417 },
+    zurich: { lat: 47.3769, lng: 8.5417 },
+    prag: { lat: 50.0755, lng: 14.4378 },
+    amsterdam: { lat: 52.3731, lng: 4.8922 },
+    paris: { lat: 48.8566, lng: 2.3522 },
+    barcelona: { lat: 41.3874, lng: 2.1686 },
+  };
+
+  const normalized = address.toLowerCase();
+  const city = Object.keys(cityCoords).find((key) => normalized.includes(key));
+  return cityCoords[city || 'berlin'];
+}
+
 export const mapService = new MapService();
 export default mapService;

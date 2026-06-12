@@ -140,7 +140,7 @@ export function getRoleDashboardData(roleInput?: string | null, user?: RoleDashb
         roleLabel: 'Spedition Owner',
         primaryAction: { label: 'Kartenansicht', detail: 'Flotte live prüfen', href: '/carrier/fleet', color: '#1C7ED6', icon: 'map' },
         kpis: [
-          { title: 'Verfügbare Loads', value: '24', change: 14.2, changeLabel: '8 priorisiert', color: 'blue', icon: 'package', miniChartData: commonCharts.up },
+          { title: 'Verfügbare Aufträge', value: '24', change: 14.2, changeLabel: '8 priorisiert', color: 'blue', icon: 'package', miniChartData: commonCharts.up },
           { title: 'Fahrzeuge online', value: '12', change: 8.2, changeLabel: '8 unterwegs', color: 'green', icon: 'truck', miniChartData: commonCharts.route },
           { title: 'Aktive Fahrer', value: '15', change: 4.8, changeLabel: '10 verfügbar', color: 'cyan', icon: 'users', miniChartData: commonCharts.up },
           { title: 'Umsatz Monat', value: '45.200 €', change: 12.6, changeLabel: 'vs. letzter Monat', color: 'yellow', icon: 'wallet', miniChartData: commonCharts.money },
@@ -160,8 +160,8 @@ export function getRoleDashboardData(roleInput?: string | null, user?: RoleDashb
         quickActions: [
           { label: 'Disposition öffnen', detail: 'Touren und KI-Matching', href: '/dashboard?role=dispatcher', color: '#00D4FF', icon: 'target' },
           { label: 'Fahrer zuweisen', detail: 'Kapazität optimieren', href: '/carrier/drivers', color: '#1C7ED6', icon: 'user' },
-          { label: 'Angebot abgeben', detail: 'Load sichern', href: '/carrier/loads', color: '#2ECC71', icon: 'plus' },
-          { label: 'Payouts prüfen', detail: 'Wallet und Abrechnung', href: '/carrier/wallet', color: '#F39C12', icon: 'wallet' },
+          { label: 'Angebot abgeben', detail: 'Auftrag sichern', href: '/carrier/loads', color: '#2ECC71', icon: 'plus' },
+          { label: 'Payouts prüfen', detail: 'Auszahlungen und Abrechnung', href: '/carrier/wallet', color: '#F39C12', icon: 'wallet' },
         ],
         statusTitle: 'Flottenstatus',
         statusItems: [
@@ -252,8 +252,8 @@ export function getRoleDashboardData(roleInput?: string | null, user?: RoleDashb
           { from: 'Hamburg', to: 'Lübeck', progress: 58, detail: 'Express MedTech', value: '+245 €' },
         ],
         quickActions: [
-          { label: 'Vorschlag annehmen', detail: 'Tour optimieren', href: '/api/dispatcher/suggestions', color: '#2ECC71', icon: 'shield' },
-          { label: 'Simulation starten', detail: 'Scoring neu berechnen', href: '/api/dispatcher/simulate', color: '#00D4FF', icon: 'target' },
+          { label: 'Vorschlag annehmen', detail: 'Tour optimieren', href: '/dashboard?role=dispatcher', color: '#2ECC71', icon: 'shield' },
+          { label: 'Simulation starten', detail: 'Scoring neu berechnen', href: '/ml', color: '#00D4FF', icon: 'target' },
           { label: 'Regeln prüfen', detail: 'Matching Profil der Spedition', href: '/ml', color: '#F39C12', icon: 'file' },
         ],
         statusTitle: 'Operations Status',
@@ -336,13 +336,13 @@ export function getRoleDashboardData(roleInput?: string | null, user?: RoleDashb
         workItems: [
           { title: 'Transporteur Growth DACH', detail: '1.420 Leads • 9.8% CVR', meta: 'ROAS 4.2', status: 'Stark', statusTone: 'success' },
           { title: 'Shipper SME EU', detail: '2.180 Leads • 7.4% CVR', meta: 'ROAS 3.1', status: 'Aktiv', statusTone: 'info' },
-          { title: 'Spedition Enterprise', detail: '680 Leads • 12.1% CVR', meta: 'ROAS 5.0', status: 'Top', statusTone: 'success' },
+          { title: 'Spedition Business', detail: '680 Leads • 12.1% CVR', meta: 'ROAS 5.0', status: 'Top', statusTone: 'success' },
         ],
         routeTitle: 'Growth Map',
         routes: [
           { from: 'Hamburg', to: 'Paris', progress: 72, detail: 'SME Shipper Segment', value: '2.180' },
           { from: 'Warschau', to: 'München', progress: 48, detail: 'Transporteur Growth', value: '1.420' },
-          { from: 'Mailand', to: 'Barcelona', progress: 64, detail: 'Spedition Enterprise', value: '680' },
+          { from: 'Mailand', to: 'Barcelona', progress: 64, detail: 'Spedition Business', value: '680' },
         ],
         quickActions: [
           { label: 'Audience bauen', detail: 'Segment prüfen', href: '/marketer/partners', color: '#1C7ED6', icon: 'user' },
@@ -363,7 +363,7 @@ export function getRoleDashboardData(roleInput?: string | null, user?: RoleDashb
           { label: 'Shipper', value: 46, color: '#1C7ED6' },
           { label: 'Transporteure', value: 31, color: '#2ECC71' },
           { label: 'Driver', value: 14, color: '#F39C12' },
-          { label: 'Enterprise', value: 9, color: '#00D4FF' },
+          { label: 'Business', value: 9, color: '#00D4FF' },
         ],
       };
     case 'shipper':
@@ -397,7 +397,7 @@ export function getRoleDashboardData(roleInput?: string | null, user?: RoleDashb
         ],
         quickActions: [
           { label: 'Neuen Transport', detail: 'Auftrag erstellen', href: '/shipper/new', color: '#1C7ED6', icon: 'plus' },
-          { label: 'Wallet aufladen', detail: 'Guthaben sichern', href: '/shipper/wallet', color: '#2ECC71', icon: 'wallet' },
+          { label: 'Zahlung vorbereiten', detail: 'Auftrag absichern', href: '/shipper/wallet', color: '#2ECC71', icon: 'wallet' },
           { label: 'Dokumente', detail: 'CMR und Rechnungen', href: '/shipper/documents', color: '#00D4FF', icon: 'file' },
         ],
         statusTitle: 'Transportstatus',

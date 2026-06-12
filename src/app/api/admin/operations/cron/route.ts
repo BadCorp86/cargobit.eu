@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getOperationsReadiness } from '@/lib/operations-readiness';
 import { AdminRole, withAdminAuth } from '@/lib/admin-rbac';
 import { payoutScheduler } from '@/services/payout-scheduler.service';
+import { getAutomaticPayoutReleaseQueue } from '@/services/order-payout-release.service';
 import { ReconciliationScheduler } from '@/reconciliation/schedulers/reconciliation.scheduler';
 import { ReconciliationService } from '@/reconciliation/services/reconciliation.service';
 
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
       }
 
       const result = await payoutScheduler.runScheduledPayouts();
+      const autoReleaseQueue = await getAutomaticPayoutReleaseQueue({ limit: 25 });
       const response = {
         timestamp: result.timestamp,
         duration: result.duration,
@@ -67,6 +69,8 @@ export async function POST(request: NextRequest) {
         successful: result.processedPayouts,
         failed: result.failedPayouts,
         reconciled: result.reconciledPayouts,
+        autoReleased: result.autoReleasedPayouts,
+        autoReleaseQueue,
         warnings: result.diffs,
       };
       await recordOperationAudit(request, admin.id, admin.email, action, true, response);
@@ -105,21 +109,24 @@ export async function POST(request: NextRequest) {
 }
 
 async function getPayoutHealth() {
-  try {
-    const health = await payoutScheduler.healthCheck();
-    const stats = payoutScheduler.getStats();
+  const stats = payoutScheduler.getStats();
+  const [healthResult, autoReleaseQueue] = await Promise.all([
+    payoutScheduler.healthCheck()
+      .then((health) => ({ available: true, health }))
+      .catch((error) => ({
+        available: false,
+        error: error instanceof Error ? error.message : 'Payout health check failed',
+      })),
+    getAutomaticPayoutReleaseQueue({ limit: 25 }),
+  ]);
 
-    return {
-      available: true,
-      health,
-      stats,
-    };
-  } catch (error) {
-    return {
-      available: false,
-      error: error instanceof Error ? error.message : 'Payout health check failed',
-    };
-  }
+  return {
+    available: healthResult.available && autoReleaseQueue.available !== false,
+    health: healthResult.available ? healthResult.health : null,
+    healthError: healthResult.available ? undefined : healthResult.error,
+    stats,
+    autoReleaseQueue,
+  };
 }
 
 async function recordOperationAudit(
@@ -154,6 +161,7 @@ async function recordOperationAudit(
 function summarizeResult(result: unknown) {
   if (!result || typeof result !== 'object') return result;
   const value = result as Record<string, unknown>;
+  const autoReleaseQueue = value.autoReleaseQueue as Record<string, unknown> | undefined;
 
   return {
     available: value.available,
@@ -163,6 +171,10 @@ function summarizeResult(result: unknown) {
     successful: value.successful,
     failed: value.failed,
     reconciled: value.reconciled,
+    autoReleased: value.autoReleased,
+    autoReleaseReady: autoReleaseQueue?.ready,
+    autoReleaseBlocked: autoReleaseQueue?.blocked,
+    autoReleaseReleased: autoReleaseQueue?.released,
     processed: value.processed,
     diffs: Array.isArray(value.diffs) ? value.diffs.length : undefined,
     errors: Array.isArray(value.errors) ? value.errors.length : undefined,

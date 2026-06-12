@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createPaymentIntent } from '@/services/stripe-payment.service';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 // ============================================
 // TYPES
@@ -62,15 +63,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Get auth context from request headers
-    const authUserId = request.headers.get('x-user-id');
-    if (!authUserId) {
-      return NextResponse.json<ConfirmBookingResponse>({
-        success: false,
-        message: 'Authentication required',
-        error: 'AUTH_REQUIRED',
-      }, { status: 401 });
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response as NextResponse<ConfirmBookingResponse>;
+    const authUserId = auth.user!.id;
 
     // Verify user matches shipperId
     if (authUserId !== shipperId) {

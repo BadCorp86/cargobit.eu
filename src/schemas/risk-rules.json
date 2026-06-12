@@ -530,7 +530,7 @@
     {
       "id": "tx_no_escrow_high_value",
       "name": "KEIN_ESCROW_HOHER_BETRAG",
-      "description": "Kein Escrow bei Betrag ueber 10.000 EUR",
+      "description": "Kein Zahlungsschutz bei Betrag ueber 10.000 EUR",
       "entityType": "TRANSACTION",
       "category": "TRANSACTION",
       "condition": {
@@ -592,7 +592,7 @@
     {
       "id": "tx_has_escrow",
       "name": "ESCROW_AKTIV",
-      "description": "Escrow-Zahlung aktiv",
+      "description": "Zahlungsschutz aktiv",
       "entityType": "TRANSACTION",
       "category": "TRANSACTION",
       "condition": {

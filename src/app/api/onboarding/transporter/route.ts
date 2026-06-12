@@ -50,7 +50,6 @@ async function saveFile(file: File, path: string): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const userId = request.headers.get('x-user-id') || 'demo-user';
 
     // Extract form fields
     const companyName = formData.get('companyName') as string;

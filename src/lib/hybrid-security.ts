@@ -9,7 +9,7 @@ import {
   SystemRole, 
   Permission, 
 } from '@/types/permissions';
-import { 
+import {
   calculateCombinedRiskScore,
   RiskScore,
   RiskLevel,
@@ -17,6 +17,7 @@ import {
   TransactionRiskContext,
 } from '@/lib/risk-scoring';
 import { db } from '@/lib/db';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
 
 // ============================================
 // TYPES & INTERFACES
@@ -149,7 +150,7 @@ export const COMPACT_PERMISSION_MATRIX = {
       ASSIGN_DRIVER: false,
       UPDATE_STATUS: false,
       VIEW_WALLET: true,
-      INITIATE_PAYOUT: true,
+      INITIATE_PAYOUT: false,
       MANAGE_VEHICLES: false,
       MANAGE_USERS: false,
       MANAGE_PLANS: false,
@@ -163,9 +164,23 @@ export const COMPACT_PERMISSION_MATRIX = {
       ASSIGN_DRIVER: false,
       UPDATE_STATUS: false,
       VIEW_WALLET: true,
-      INITIATE_PAYOUT: true,
+      INITIATE_PAYOUT: false,
       MANAGE_VEHICLES: false,
       MANAGE_USERS: false,
+      MANAGE_PLANS: false,
+    },
+    CARRIER: {
+      CREATE_TRANSPORT: false,
+      VIEW_TRANSPORT: true,
+      ACCEPT_OFFER: false,
+      ACCEPT_JOB: false,
+      MAKE_OFFER: true,
+      ASSIGN_DRIVER: true,
+      UPDATE_STATUS: true,
+      VIEW_WALLET: true,
+      INITIATE_PAYOUT: true,
+      MANAGE_VEHICLES: true,
+      MANAGE_USERS: true,
       MANAGE_PLANS: false,
     },
     DISPATCHER: {
@@ -177,8 +192,8 @@ export const COMPACT_PERMISSION_MATRIX = {
       ASSIGN_DRIVER: true,
       UPDATE_STATUS: true,
       VIEW_WALLET: true,
-      INITIATE_PAYOUT: false,
-      MANAGE_VEHICLES: true,
+      INITIATE_PAYOUT: true,
+      MANAGE_VEHICLES: false,
       MANAGE_USERS: false,
       MANAGE_PLANS: false,
     },
@@ -190,8 +205,8 @@ export const COMPACT_PERMISSION_MATRIX = {
       MAKE_OFFER: true,
       ASSIGN_DRIVER: false,
       UPDATE_STATUS: true,
-      VIEW_WALLET: false,
-      INITIATE_PAYOUT: false,
+      VIEW_WALLET: true,
+      INITIATE_PAYOUT: true,
       MANAGE_VEHICLES: false,
       MANAGE_USERS: false,
       MANAGE_PLANS: false,
@@ -816,9 +831,9 @@ export function withHybridSecurity(
 // ============================================
 
 async function extractSecurityContext(request: NextRequest): Promise<SecurityContext | null> {
-  const userId = request.headers.get('x-user-id');
-  
-  if (!userId) return null;
+  const requestUser = await getOptionalRequestUser(request);
+  if (!requestUser) return null;
+  const userId = requestUser.id;
 
   const user = await db.user.findUnique({
     where: { id: userId },

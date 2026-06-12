@@ -8,19 +8,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { db } from '@/lib/db';
 import { getSubscriptionPlanConfig } from '@/lib/billing/plans';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
-const STRIPE_PRICE_ENV_KEYS: Record<string, { monthly: string; yearly: string }> = {
+const STRIPE_PRICE_ENV_KEYS: Record<string, { monthly: string; yearly?: string }> = {
   starter: {
-    monthly: 'STRIPE_PRICE_STARTER_MONTHLY',
-    yearly: 'STRIPE_PRICE_STARTER_YEARLY',
-  },
-  professional: {
-    monthly: 'STRIPE_PRICE_PROFESSIONAL_MONTHLY',
-    yearly: 'STRIPE_PRICE_PROFESSIONAL_YEARLY',
-  },
-  enterprise: {
-    monthly: 'STRIPE_PRICE_ENTERPRISE_MONTHLY',
-    yearly: 'STRIPE_PRICE_ENTERPRISE_YEARLY',
+    monthly: 'STRIPE_PRICE_BUSINESS_MONTHLY',
   },
 };
 
@@ -42,7 +34,19 @@ const mockStripeCheckout = {
 
 function getStripePriceId(plan: string, billingCycle: 'monthly' | 'yearly') {
   const envKey = STRIPE_PRICE_ENV_KEYS[plan]?.[billingCycle];
-  return envKey ? process.env[envKey] || `price_${plan}_${billingCycle}_mock` : undefined;
+  if (envKey) {
+    return process.env[envKey]
+      || (plan === 'starter' && billingCycle === 'monthly' ? process.env.STRIPE_PRICE_STARTER_MONTHLY : undefined)
+      || `price_${plan}_${billingCycle}_mock`;
+  }
+
+  return undefined;
+}
+
+function normalizePublicPlan(plan: unknown) {
+  const normalized = String(plan || '').toLowerCase();
+  if (normalized === 'business') return 'starter';
+  return normalized;
 }
 
 function getPublicAppUrl(request?: NextRequest) {
@@ -171,8 +175,17 @@ async function findCompanyOwner(userId: string) {
           select: {
             stripeCustomerId: true,
           },
-        })
+      })
       : null;
+
+    if (!companyUser && process.env.NODE_ENV !== 'production') {
+      return {
+        companyId: 'demo-company',
+        stripeCustomerId: 'cus_demo_customer',
+        source: 'development_fallback' as const,
+        dbAvailable: false,
+      };
+    }
 
     return {
       companyId: companyUser?.companyId || null,
@@ -200,7 +213,9 @@ async function findCompanyOwner(userId: string) {
 // ============================================
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id') || 'demo-user';
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
 
     // Get user's company
     const companyUser = await db.companyUser.findFirst({
@@ -237,8 +252,11 @@ export async function GET(request: NextRequest) {
     }
 
     const planKey = companyPlan.plan.name.toLowerCase();
+    const publicPlan = planKey === 'starter' ? 'business' : planKey;
     return subscriptionResponse({
       plan: planKey,
+      publicPlan,
+      planLabel: (PLAN_CONFIG[planKey] || PLAN_CONFIG.free).name,
       ...(PLAN_CONFIG[planKey] || PLAN_CONFIG.free),
       status: 'active',
       currentPeriodEnd: companyPlan.validTo,
@@ -258,7 +276,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       error: 'InternalServerError',
-      message: 'Fehler beim Abrufen des Abonnements',
+      message: 'Fehler beim Abrufen des Business-Tarifs',
       code: 'INTERNAL_ERROR',
     }, { status: 500 });
   }
@@ -270,20 +288,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { plan, billingCycle: requestedBillingCycle = 'monthly' } = body;
-    const billingCycle = requestedBillingCycle === 'yearly'
-      ? 'yearly'
-      : requestedBillingCycle === 'monthly'
-        ? 'monthly'
-        : null;
-    const userId = request.headers.get('x-user-id') || 'demo-user';
+    const plan = normalizePublicPlan(body.plan);
+    const billingCycle = body.billingCycle === 'monthly' || !body.billingCycle ? 'monthly' : null;
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
     const appUrl = getPublicAppUrl(request);
 
     // Validate plan
-    if (!['starter', 'professional', 'enterprise'].includes(plan)) {
+    if (plan !== 'starter') {
       return NextResponse.json({
         error: 'ValidationError',
-        message: 'Ungültiger Plan',
+        message: 'Aktuell ist nur der Business-Tarif verfügbar.',
         code: 'INVALID_PLAN',
       }, { status: 400 });
     }
@@ -291,18 +307,9 @@ export async function POST(request: NextRequest) {
     if (!billingCycle) {
       return NextResponse.json({
         error: 'ValidationError',
-        message: 'Ungültiger Abrechnungszeitraum',
+        message: 'Business ist aktuell nur monatlich verfügbar.',
         code: 'INVALID_BILLING_CYCLE',
       }, { status: 400 });
-    }
-
-    // Enterprise requires contact
-    if (plan === 'enterprise') {
-      return NextResponse.json({
-        success: false,
-        message: 'Enterprise erfordert Kontaktaufnahme. Bitte schreiben Sie an sales@cargobit.de',
-        redirect: 'mailto:sales@cargobit.de',
-      });
     }
 
     const companyOwner = await findCompanyOwner(userId);
@@ -310,7 +317,7 @@ export async function POST(request: NextRequest) {
     if (!companyId) {
       return NextResponse.json({
         error: 'PermissionError',
-        message: 'Nur Firmeneigner können Abonnements abschließen',
+        message: 'Nur Firmeneigner können den Business-Tarif abschließen',
         code: 'NOT_COMPANY_OWNER',
       }, { status: 403 });
     }
@@ -326,9 +333,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    const selectedPrice = billingCycle === 'yearly'
-      ? planConfig.yearlyPrice
-      : planConfig.monthlyPrice;
+    const selectedPrice = planConfig.monthlyPrice;
 
     const session = await createStripeCheckoutSession({
       priceId,
@@ -356,7 +361,8 @@ export async function POST(request: NextRequest) {
       checkoutUrl: session.url,
       sessionId: session.id,
       checkoutProvider: session.provider,
-      plan,
+      plan: 'business',
+      internalPlan: plan,
       billingCycle,
       price: selectedPrice.netAmount,
       priceNet: selectedPrice.netAmount,

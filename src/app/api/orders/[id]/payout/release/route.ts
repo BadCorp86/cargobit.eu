@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withAdminAuth } from '@/lib/admin-rbac';
+import { getOptionalAdmin } from '@/lib/request-admin-auth';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
 import { createOrderPayoutRelease } from '@/lib/order-payout';
 import {
   getOrderPayoutReadiness,
@@ -20,67 +23,93 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       amount: fallbackAmount,
     });
 
-    if (!readiness && !isDemoOrderId(id)) {
+    if (!readiness && !canUseDemoFallback(id)) {
       return NextResponse.json(
         { error: 'NOT_FOUND', message: 'Transport not found' },
         { status: 404 },
       );
     }
 
-    return NextResponse.json(readiness || createFallbackRelease(id, fallbackAmount));
+    if (readiness) {
+      const authResult = await canReadPayoutReadiness(request, readiness);
+      if (!authResult.allowed) {
+        return NextResponse.json(
+          { error: authResult.error, message: authResult.message },
+          { status: authResult.status },
+        );
+      }
+
+      return NextResponse.json(redactReadinessForAudience(readiness, authResult.audience));
+    }
+
+    return NextResponse.json(createFallbackRelease(id, fallbackAmount));
   } catch (error) {
     console.error('[OrderPayoutReleaseAPI] GET failed:', error);
-    return NextResponse.json(createFallbackRelease(id, fallbackAmount, 'Database unavailable, using payout readiness fallback'));
+    if (canUseDemoFallback(id)) {
+      return NextResponse.json(createFallbackRelease(id, fallbackAmount, 'Database unavailable, using local payout readiness fallback'));
+    }
+
+    return NextResponse.json(
+      { error: 'SETTLEMENT_READINESS_UNAVAILABLE', message: 'Payout readiness could not be loaded.' },
+      { status: 503 },
+    );
   }
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
-  const { id } = await params;
-  const body = await request.json().catch(() => ({}));
-  const fallbackAmount = Number(body.amount || 850);
-  const role = request.headers.get('x-user-role');
-  const actorId = request.headers.get('x-user-id');
+  return withAdminAuth(request, async (admin) => {
+    const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    const fallbackAmount = Number(body.amount || 850);
 
-  if (!isPayoutAdminRole(role)) {
-    return NextResponse.json(
-      { error: 'FORBIDDEN', message: 'Manual payout release requires ADMIN or FINANCE role.' },
-      { status: 403 },
-    );
-  }
-
-  if (!body.reason || String(body.reason).trim().length < 8) {
-    return NextResponse.json(
-      { error: 'REASON_REQUIRED', message: 'Manual payout release requires an audit reason.' },
-      { status: 400 },
-    );
-  }
-
-  try {
-    const result = await releaseOrderPayout({
-      orderId: id,
-      amount: fallbackAmount,
-      riskLevel: body.riskLevel || 'green',
-      force: true,
-      actorId,
-      reason: String(body.reason),
-    });
-
-    if (!result && !isDemoOrderId(id)) {
+    if (!body.reason || String(body.reason).trim().length < 8) {
       return NextResponse.json(
-        { error: 'NOT_FOUND', message: 'Transport not found' },
-        { status: 404 },
+        { error: 'REASON_REQUIRED', message: 'Manual payout release requires an audit reason.' },
+        { status: 400 },
       );
     }
 
-    if (!result) {
-      return NextResponse.json(createFallbackRelease(id, fallbackAmount));
-    }
+    try {
+      const result = await releaseOrderPayout({
+        orderId: id,
+        amount: fallbackAmount,
+        riskLevel: body.riskLevel || 'green',
+        force: true,
+        actorId: admin.id,
+        reason: String(body.reason),
+      });
 
-    return NextResponse.json(result, { status: result.success ? 200 : 409 });
-  } catch (error) {
-    console.error('[OrderPayoutReleaseAPI] POST failed:', error);
-    return NextResponse.json(createFallbackRelease(id, fallbackAmount, 'Database unavailable, using payout release fallback'));
-  }
+      if (!result && !isDemoOrderId(id)) {
+        return NextResponse.json(
+          { error: 'NOT_FOUND', message: 'Transport not found' },
+          { status: 404 },
+        );
+      }
+
+      if (!result && canUseDemoFallback(id)) {
+        return NextResponse.json(createFallbackRelease(id, fallbackAmount));
+      }
+
+      if (!result) {
+        return NextResponse.json(
+          { error: 'NOT_FOUND', message: 'Transport not found' },
+          { status: 404 },
+        );
+      }
+
+      return NextResponse.json(result, { status: result.success ? 200 : 409 });
+    } catch (error) {
+      console.error('[OrderPayoutReleaseAPI] POST failed:', error);
+      if (canUseDemoFallback(id)) {
+        return NextResponse.json(createFallbackRelease(id, fallbackAmount, 'Database unavailable, using local payout release fallback'));
+      }
+
+      return NextResponse.json(
+        { error: 'SETTLEMENT_RELEASE_FAILED', message: 'Manual payout release failed.' },
+        { status: 503 },
+      );
+    }
+  }, ['ADMIN', 'FINANCE']);
 }
 
 function createFallbackRelease(orderId: string, amount: number, warning?: string) {
@@ -128,8 +157,98 @@ function isDemoOrderId(orderId: string) {
   return orderId.startsWith('mission_demo') || orderId.startsWith('demo') || orderId.startsWith('TR-');
 }
 
-function isPayoutAdminRole(role: string | null) {
-  return role === 'ADMIN' || role === 'FINANCE';
+function canUseDemoFallback(orderId: string) {
+  return process.env.NODE_ENV !== 'production' && isDemoOrderId(orderId);
+}
+
+async function canReadPayoutReadiness(
+  request: NextRequest,
+  readiness: Awaited<ReturnType<typeof getOrderPayoutReadiness>>,
+) {
+  if (!readiness) {
+    return {
+      allowed: false,
+      status: 404,
+      error: 'NOT_FOUND',
+      message: 'Transport not found',
+    };
+  }
+
+  const admin = await getOptionalAdmin(request);
+  if (admin && ['ADMIN', 'SUPPORT', 'FINANCE'].includes(admin.role)) {
+    return { allowed: true, audience: 'internal' as const, status: 200, error: null, message: null };
+  }
+
+  const requestUser = await getOptionalRequestUser(request);
+  const userId = requestUser?.id;
+  if (!userId) {
+    return {
+      allowed: false,
+      status: 401,
+      error: 'AUTH_REQUIRED',
+      message: 'Authentifizierung erforderlich',
+    };
+  }
+
+  if (userId === readiness.shipperUserId || userId === readiness.driverUserId) {
+    return {
+      allowed: true,
+      audience: userId === readiness.driverUserId ? 'carrier' as const : 'shipper' as const,
+      status: 200,
+      error: null,
+      message: null,
+    };
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    const devRole = request.headers.get('x-user-role') || '';
+    if (['ADMIN', 'SUPPORT', 'FINANCE'].includes(devRole)) {
+      return { allowed: true, audience: 'internal' as const, status: 200, error: null, message: null };
+    }
+  }
+
+  return {
+    allowed: false,
+    status: 403,
+    error: 'FORBIDDEN',
+    message: 'Keine Berechtigung für Settlement-Daten dieses Auftrags',
+  };
+}
+
+function redactReadinessForAudience(
+  readiness: Awaited<ReturnType<typeof getOrderPayoutReadiness>>,
+  audience?: 'internal' | 'shipper' | 'carrier',
+) {
+  if (!readiness || audience === 'internal') return readiness;
+
+  const release = readiness.release;
+  const isCarrier = audience === 'carrier';
+  const isShipper = audience === 'shipper';
+
+  return {
+    ...readiness,
+    shipperUserId: undefined,
+    driverUserId: undefined,
+    release: {
+      ...release,
+      settlement: {
+        ...release.settlement,
+        carrierWalletCredit: isCarrier ? release.settlement.carrierWalletCredit : 0,
+        platformRevenueNet: 0,
+        shipperChargeGross: isShipper ? release.settlement.shipperChargeGross : 0,
+      },
+      walletTransaction: {
+        ...release.walletTransaction,
+        reference: 'hidden',
+      },
+      nextStep: {
+        label: isCarrier ? 'Wallet' : 'Zahlungsschutz',
+        description: isCarrier
+          ? 'Freigegebene Beträge können im eigenen Wallet-Bereich ausgezahlt werden.'
+          : 'Die Zahlungsfreigabe wird nach POD, Rechnung und Prüfung automatisch gesteuert.',
+      },
+    },
+  };
 }
 
 function formatMoney(value: number, currency = 'EUR') {

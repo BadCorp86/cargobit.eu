@@ -58,6 +58,7 @@ export interface TrackingPayload {
   longitude: number;
   speed?: number;
   heading?: number;
+  accuracy?: number;
   timestamp: string;
 }
 
@@ -238,6 +239,7 @@ export async function broadcastTrackingUpdate(tracking: {
   longitude: number;
   speed?: number;
   heading?: number;
+  accuracy?: number;
 }): Promise<void> {
   const payload: TrackingPayload = {
     ...tracking,

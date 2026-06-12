@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 // ============================================
 // GET /api/wallet/transactions
@@ -12,7 +13,9 @@ import { db } from '@/lib/db';
 // ============================================
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id') || 'demo-user';
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const userId = auth.user!.id;
     const { searchParams } = new URL(request.url);
     
     const page = parseInt(searchParams.get('page') || '1');

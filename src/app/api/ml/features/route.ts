@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { withAdminAuth } from '@/lib/admin-rbac';
 import { mlFeatureStore } from '@/services/ml-featurestore.service';
 
 // ============================================
@@ -12,17 +13,7 @@ import { mlFeatureStore } from '@/services/ml-featurestore.service';
 // ============================================
 
 export async function POST(request: NextRequest) {
-  try {
-    const userRole = request.headers.get('x-user-role');
-    
-    // Only admin or system can trigger snapshot
-    if (userRole !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Admin access required' },
-        { status: 403 }
-      );
-    }
-    
+  return withAdminAuth(request, async () => {
     const body = await request.json();
     const { jobId } = body as { jobId: string };
     
@@ -48,14 +39,7 @@ export async function POST(request: NextRequest) {
       featureId: result.featureId,
       label: result.label,
     });
-    
-  } catch (error: any) {
-    console.error('[API] POST /ml/features error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to snapshot features' },
-      { status: 500 }
-    );
-  }
+  }, ['ADMIN']);
 }
 
 // ============================================
@@ -63,16 +47,7 @@ export async function POST(request: NextRequest) {
 // ============================================
 
 export async function GET(request: NextRequest) {
-  try {
-    const userRole = request.headers.get('x-user-role');
-    
-    if (userRole !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Admin access required' },
-        { status: 403 }
-      );
-    }
-    
+  return withAdminAuth(request, async () => {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '10000');
     
@@ -86,12 +61,5 @@ export async function GET(request: NextRequest) {
     const exportData = await mlFeatureStore.exportTrainingData(limit);
     
     return NextResponse.json(exportData);
-    
-  } catch (error: any) {
-    console.error('[API] GET /ml/features error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to export training data' },
-      { status: 500 }
-    );
-  }
+  }, ['ADMIN']);
 }

@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
 import { 
   SystemRole, 
   Permission, 
@@ -40,13 +41,11 @@ export interface PermissionCheckResult {
 // ============================================
 
 export async function getAuthContext(request: NextRequest): Promise<AuthContext | null> {
-  // In production, this would extract from JWT/session
-  // For now, we'll use a header-based approach for development
-  
-  const userId = request.headers.get('x-user-id');
-  if (!userId) {
+  const requestUser = await getOptionalRequestUser(request);
+  if (!requestUser) {
     return null;
   }
+  const userId = requestUser.id;
 
   // Get user with roles and company
   const user = await db.user.findUnique({

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { requireRequestUser } from '@/lib/request-user-auth';
 import { jobsService } from '@/services/jobs.service';
 import { WalletTopupRequiredError } from '@/services/wallet-reservation.service';
 
@@ -7,15 +8,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const userId = request.headers.get('x-user-id');
+  const auth = await requireRequestUser(request);
+  if (auth.response) return auth.response;
 
-  if (!userId) {
-    return NextResponse.json(
-      { error: 'UNAUTHORIZED', message: 'x-user-id is required' },
-      { status: 401 },
-    );
-  }
-
+  const userId = auth.user.id;
   const { id } = await params;
   const transport = await prisma.transport.findUnique({ where: { id } });
 
@@ -46,7 +42,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: error.code,
-          message: 'Wallet-Aufladung erforderlich, bevor der Auftrag online gehen kann.',
+          message: 'Zahlungsschutz erforderlich, bevor der Auftrag online gehen kann.',
           wallet: error.details,
         },
         { status: error.status },

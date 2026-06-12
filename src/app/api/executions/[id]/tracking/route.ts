@@ -1,128 +1,111 @@
 /**
- * Execution Tracking API
- * POST /api/executions/[id]/tracking - Update location
- * GET /api/executions/[id]/tracking - Get tracking info
+ * Execution/Transport Tracking API
+ *
+ * Existing URL kept for compatibility. The route now treats [id] as the
+ * transport/job id and writes to TrackingPoint through trackingService.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { ExecutionEngine, LocationUpdate } from '@/services/execution-engine.service';
+import { prisma } from '@/lib/db';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
+import { trackingService } from '@/services/tracking.service';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-// ============================================
-// GET - Get tracking info
-// ============================================
+export const runtime = 'nodejs';
 
-export async function GET(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
+    const trackingPoints = await prisma.trackingPoint.findMany({
+      where: { transportId: id },
+      orderBy: { timestamp: 'asc' },
+      take: 500,
+    });
 
-    const tracking = await ExecutionEngine.getTracking(id);
+    const lastPoint = trackingPoints.at(-1);
 
-    return NextResponse.json({ tracking });
+    return NextResponse.json({
+      tracking: {
+        status: lastPoint ? 'live' : 'offline',
+        lastLocation: lastPoint
+          ? {
+              lat: lastPoint.latitude,
+              lng: lastPoint.longitude,
+              speed: lastPoint.speed,
+              heading: lastPoint.heading,
+              accuracy: lastPoint.accuracy,
+              timestamp: lastPoint.timestamp,
+            }
+          : null,
+        trackingHistory: trackingPoints.map((point) => ({
+          lat: point.latitude,
+          lng: point.longitude,
+          speed: point.speed,
+          heading: point.heading,
+          accuracy: point.accuracy,
+          timestamp: point.timestamp,
+        })),
+      },
+    });
   } catch (error) {
-    console.error('[TrackingAPI] Error:', error);
-    
-    if (error instanceof Error && error.message.includes('not found')) {
-      return NextResponse.json(
-        { code: 'EXECUTION_NOT_FOUND', message: 'Execution not found' },
-        { status: 404 }
-      );
-    }
-
+    console.error('[TrackingAPI] GET failed:', error);
     return NextResponse.json(
       { code: 'INTERNAL_ERROR', message: 'Internal server error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// ============================================
-// POST - Update location
-// ============================================
-
-export async function POST(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const body = await request.json();
+    const requestUser = await getOptionalRequestUser(request);
 
-    // Validate location data
-    const location: LocationUpdate = {
-      lat: body.lat,
-      lng: body.lng,
-      timestamp: body.timestamp ? new Date(body.timestamp) : new Date(),
-      speed: body.speed,
-      heading: body.heading,
-      accuracy: body.accuracy
-    };
+    const lat = Number(body.lat ?? body.latitude);
+    const lng = Number(body.lng ?? body.longitude);
 
-    if (typeof location.lat !== 'number' || typeof location.lng !== 'number') {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       return NextResponse.json(
-        { code: 'INVALID_LOCATION', message: 'lat and lng are required and must be numbers' },
-        { status: 400 }
+        { code: 'INVALID_LOCATION', message: 'lat/lng are required and must be numbers' },
+        { status: 400 },
       );
     }
 
-    // Validate coordinates
-    if (location.lat < -90 || location.lat > 90) {
+    const driver = requestUser
+      ? await prisma.driver.findFirst({ where: { userId: requestUser.id } })
+      : null;
+
+    if (!driver) {
       return NextResponse.json(
-        { code: 'INVALID_LOCATION', message: 'lat must be between -90 and 90' },
-        { status: 400 }
+        { code: 'UNAUTHORIZED', message: 'Assigned driver identity is required' },
+        { status: 401 },
       );
     }
 
-    if (location.lng < -180 || location.lng > 180) {
+    const result = await trackingService.updateTracking(id, driver.id, lat, lng, {
+      speed: typeof body.speed === 'number' ? body.speed : undefined,
+      heading: typeof body.heading === 'number' ? body.heading : undefined,
+      accuracy: typeof body.accuracy === 'number' ? body.accuracy : undefined,
+    });
+
+    if (!result.success) {
+      const status = result.error?.includes('Invalid') ? 400 : result.error?.includes('assigned') ? 403 : 409;
       return NextResponse.json(
-        { code: 'INVALID_LOCATION', message: 'lng must be between -180 and 180' },
-        { status: 400 }
+        { code: 'TRACKING_REJECTED', message: result.error },
+        { status },
       );
     }
 
-    // Update location
-    await ExecutionEngine.updateLocation(id, location);
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, pointId: result.pointId });
   } catch (error) {
-    console.error('[TrackingAPI] Error:', error);
-    
-    if (error instanceof Error && error.message.includes('not found')) {
-      return NextResponse.json(
-        { code: 'EXECUTION_NOT_FOUND', message: 'Execution not found' },
-        { status: 404 }
-      );
-    }
-
+    console.error('[TrackingAPI] POST failed:', error);
     return NextResponse.json(
       { code: 'INTERNAL_ERROR', message: 'Internal server error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-
-// ============================================
-// WebSocket support (for real-time tracking)
-// ============================================
-
-export const runtime = 'nodejs';
-
-/*
- * For real-time tracking, the client should connect via WebSocket:
- * 
- * const ws = new WebSocket('wss://api.cargobit.com/ws/tracking/{executionId}');
- * 
- * ws.onmessage = (event) => {
- *   const data = JSON.parse(event.data);
- *   // data: { type: 'location_update', location: {...}, eta: '...' }
- * };
- * 
- * // Send location updates
- * ws.send(JSON.stringify({ type: 'location', lat: 52.5, lng: 13.4 }));
- */

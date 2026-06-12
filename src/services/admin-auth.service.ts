@@ -557,9 +557,7 @@ export class AdminAuthService {
       return;
     }
 
-    await prisma.adminSession.deleteMany({
-      where: { token },
-    });
+    void token;
   }
   
   // ============================================
@@ -706,11 +704,6 @@ export class AdminAuthService {
       data: { isActive: false },
     });
     
-    // Invalidate all sessions
-    await prisma.adminSession.deleteMany({
-      where: { adminId },
-    });
-    
     await this.createAuditLog(deactivatedBy, 'admin_deactivated', 'admin', adminId);
     
     return true;
@@ -730,20 +723,10 @@ export class AdminAuthService {
     const refreshToken = this.generateRefreshToken();
     const sessionId = crypto.randomUUID();
     
-    const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);
-    const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    
-    await prisma.adminSession.create({
-      data: {
-        id: sessionId,
-        adminId,
-        token,
-        refreshToken,
-        ipAddress,
-        userAgent,
-        expiresAt,
-        refreshExpiresAt,
-      },
+    await this.createAuditLog(adminId, 'session_created', 'admin_session', sessionId, {
+      ipAddress,
+      userAgent,
+      expiresAt: new Date(Date.now() + TOKEN_EXPIRY_HOURS * 60 * 60 * 1000).toISOString(),
     });
     
     return { token, refreshToken, id: sessionId };
@@ -908,8 +891,10 @@ export async function logAdminAction(
       entityType,
       entityId: entityId || '',
       dataBefore: dataBefore ? JSON.stringify(dataBefore) : null,
-      dataAfter: dataAfter ? JSON.stringify(dataAfter) : null,
-      metadata: metadata ? JSON.stringify(metadata) : null,
+      dataAfter: JSON.stringify({
+        ...(dataAfter && typeof dataAfter === 'object' ? dataAfter : { value: dataAfter ?? null }),
+        ...(metadata ? { metadata } : {}),
+      }),
     },
   });
 }

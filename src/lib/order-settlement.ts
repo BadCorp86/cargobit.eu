@@ -88,7 +88,7 @@ export async function issueOrderInvoice(input: IssueOrderInvoiceInput) {
           userId: transport.shipperUserId,
           type: 'INVOICE_ISSUED',
           title: 'Rechnung wurde erstellt',
-          message: `Rechnung ${invoice.invoiceNumber} fuer Auftrag ${input.orderId} wurde vorbereitet.`,
+          message: `Rechnung ${invoice.invoiceNumber} für Auftrag ${input.orderId} wurde vorbereitet.`,
           data: JSON.stringify({
             orderId: input.orderId,
             invoiceNumber: invoice.invoiceNumber,
@@ -158,11 +158,11 @@ export async function sendOrderInvoiceEmail(input: InvoiceEmailInput): Promise<I
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;max-width:640px;margin:auto;color:#06121C">
       <h1 style="margin-bottom:8px">Ihre CargoBit Rechnung</h1>
-      <p>Die Rechnung <strong>${input.invoice.invoiceNumber}</strong> fuer Auftrag <strong>${input.invoice.orderId}</strong> wurde erstellt.</p>
+      <p>Die Rechnung <strong>${input.invoice.invoiceNumber}</strong> für Auftrag <strong>${input.invoice.orderId}</strong> wurde erstellt.</p>
       <p>Gesamtbetrag: <strong>${formatMoney(input.invoice.totals.gross, input.invoice.currency)}</strong></p>
-      <p>Netto, MwSt., Plattformgebuehr und Wallet-/Zahlungsschutz sind einzeln ausgewiesen.</p>
-      <p><a href="${documentHref}" style="display:inline-block;background:#1C7ED6;color:white;padding:12px 18px;border-radius:10px;text-decoration:none">Rechnung oeffnen</a></p>
-      <p style="color:#667; font-size:12px">Auszahlung erfolgt nach POD/eCMR-Pruefung und Risk Gate.</p>
+      <p>Netto, MwSt., Plattformgebühr und Zahlungsschutz sind einzeln ausgewiesen.</p>
+      <p><a href="${documentHref}" style="display:inline-block;background:#1C7ED6;color:white;padding:12px 18px;border-radius:10px;text-decoration:none">Rechnung öffnen</a></p>
+      <p style="color:#667; font-size:12px">Auszahlung erfolgt nach POD/eCMR-Prüfung und Risk Gate.</p>
     </div>
   `;
 

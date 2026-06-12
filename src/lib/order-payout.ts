@@ -56,7 +56,7 @@ export function createOrderPayoutRelease(input: {
   });
 
   const transportLine = invoice.lineItems.find((item) => item.label === 'Transportleistung');
-  const platformLine = invoice.lineItems.find((item) => item.label === 'CargoBit Plattformgebuehr');
+  const platformLine = invoice.lineItems.find((item) => item.label === 'CargoBit Plattformgebühr');
   const walletLine = invoice.lineItems.find((item) => item.label === 'Wallet-/Zahlungsschutz');
   const riskLevel = input.riskLevel || 'green';
 
@@ -67,14 +67,14 @@ export function createOrderPayoutRelease(input: {
       status: input.hasPod ? 'passed' : 'blocked',
       detail: input.hasPod
         ? 'Abliefernachweis liegt vor.'
-        : 'Abliefernachweis fehlt oder wurde noch nicht geprueft.',
+        : 'Abliefernachweis fehlt oder wurde noch nicht geprüft.',
     },
     {
       id: 'invoice',
       label: 'Rechnung',
       status: input.invoiceIssued ? 'passed' : 'waiting',
       detail: input.invoiceIssued
-        ? 'Rechnung wurde erzeugt und ist revisionsfaehig verlinkt.'
+        ? 'Rechnung wurde erzeugt und ist revisionsfähig verlinkt.'
         : 'Rechnung muss vor Auszahlung erstellt werden.',
     },
     {
@@ -89,11 +89,11 @@ export function createOrderPayoutRelease(input: {
     },
     {
       id: 'wallet',
-      label: 'Wallet',
+      label: 'Auszahlungskonto',
       status: input.walletReady ? 'passed' : 'waiting',
       detail: input.walletReady
-        ? 'Empfaenger-Wallet ist aktiv.'
-        : 'Empfaenger-Wallet muss angelegt oder aktiviert werden.',
+        ? 'Auszahlungskonto des Empfängers ist aktiv.'
+        : 'Auszahlungskonto des Empfängers muss angelegt oder aktiviert werden.',
     },
   ];
 
@@ -121,11 +121,11 @@ export function createOrderPayoutRelease(input: {
       type: 'PAYMENT_IN',
       amount: carrierWalletCredit,
       reference: `settlement_release_${input.orderId}`,
-      description: 'Transporterloes nach POD und Rechnungsfreigabe',
+      description: 'Transporterlös nach POD und Rechnungsfreigabe',
     },
     nextStep: {
       label: 'Bankauszahlung',
-      description: 'Der Transporteur kann das freigegebene Wallet-Guthaben anschliessend per Stripe/SEPA auszahlen lassen.',
+      description: 'Der Transporteur kann den freigegebenen Betrag anschließend per Stripe/SEPA auszahlen lassen.',
     },
   };
 }

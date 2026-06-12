@@ -168,6 +168,7 @@ export function OperationsCronActions() {
             {result.action && <p className="font-mono text-xs text-white/40">{result.action}</p>}
           </div>
           {result.error && <p className="mt-2 text-sm leading-6 text-[#ffb5ab]">{result.error}</p>}
+          <AutoReleaseSummary result={result.result} />
           <pre className="mt-4 max-h-72 overflow-auto rounded-xl border border-white/[0.08] bg-black/20 p-3 text-xs leading-5 text-white/60">
             {JSON.stringify(result.result || result, null, 2)}
           </pre>
@@ -175,6 +176,87 @@ export function OperationsCronActions() {
       )}
     </section>
   );
+}
+
+function AutoReleaseSummary({ result }: { result: unknown }) {
+  const queue = extractAutoReleaseQueue(result);
+  if (!queue) return null;
+
+  return (
+    <div className="mt-4 rounded-xl border border-white/[0.08] bg-black/20 p-4">
+      <p className="text-sm font-semibold text-white">Automatische Wallet-Freigaben</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-4">
+        <SummaryMetric label="Gesamt" value={queue.total} />
+        <SummaryMetric label="Bereit" value={queue.ready} tone="green" />
+        <SummaryMetric label="Blockiert" value={queue.blocked} tone="orange" />
+        <SummaryMetric label="Freigegeben" value={queue.released} tone="cyan" />
+      </div>
+      {queue.rows?.length ? (
+        <div className="mt-4 space-y-2">
+          {queue.rows.slice(0, 5).map((row) => (
+            <div key={row.orderId} className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3 text-xs text-white/55">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <span className="font-mono text-white/70">{row.orderId}</span>
+                <span className={row.status === 'ready' ? 'text-[#8ff0b9]' : row.status === 'released' ? 'text-[#b9f4ff]' : 'text-[#ffd79a]'}>
+                  {row.status}
+                </span>
+              </div>
+              {row.releaseEligibleAt ? <p className="mt-1">Freigabe ab: {new Date(row.releaseEligibleAt).toLocaleString('de-DE')}</p> : null}
+              {row.blockers?.[0] ? <p className="mt-1 text-white/40">{row.blockers[0]}</p> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SummaryMetric({ label, value, tone = 'default' }: { label: string; value: number; tone?: 'default' | 'green' | 'orange' | 'cyan' }) {
+  const color = tone === 'green'
+    ? 'text-[#8ff0b9]'
+    : tone === 'orange'
+      ? 'text-[#ffd79a]'
+      : tone === 'cyan'
+        ? 'text-[#b9f4ff]'
+        : 'text-white';
+
+  return (
+    <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
+      <p className="text-xs uppercase tracking-[0.16em] text-white/35">{label}</p>
+      <p className={`mt-1 text-2xl font-semibold ${color}`}>{value}</p>
+    </div>
+  );
+}
+
+function extractAutoReleaseQueue(result: unknown): null | {
+  total: number;
+  ready: number;
+  blocked: number;
+  released: number;
+  rows?: Array<{
+    orderId: string;
+    status: string;
+    releaseEligibleAt?: string | null;
+    blockers?: string[];
+  }>;
+} {
+  if (!result || typeof result !== 'object') return null;
+  const value = result as Record<string, unknown>;
+  const queue = (value.autoReleaseQueue || (value.health as Record<string, unknown> | undefined)?.autoReleaseQueue) as Record<string, unknown> | undefined;
+  if (!queue || typeof queue !== 'object') return null;
+
+  return {
+    total: Number(queue.total || 0),
+    ready: Number(queue.ready || 0),
+    blocked: Number(queue.blocked || 0),
+    released: Number(queue.released || 0),
+    rows: Array.isArray(queue.rows) ? queue.rows as Array<{
+      orderId: string;
+      status: string;
+      releaseEligibleAt?: string | null;
+      blockers?: string[];
+    }> : undefined,
+  };
 }
 
 function iconClass(tone: 'cyan' | 'green' | 'orange') {
