@@ -5,6 +5,8 @@
 
 import { defineConfig, devices } from '@playwright/test';
 
+const baseURL = process.env.BASE_URL || 'http://localhost:3000';
+
 export default defineConfig({
   // Test directory
   testDir: './tests/e2e',
@@ -46,7 +48,7 @@ export default defineConfig({
   // Shared settings for all projects
   use: {
     // Base URL
-    baseURL: process.env.BASE_URL || 'http://localhost:3004',
+    baseURL,
 
     // Collect trace on failure
     trace: 'on-first-retry',
@@ -92,7 +94,7 @@ export default defineConfig({
       name: 'api',
       testMatch: /.*\.e2e\.test\.ts/,
       use: {
-        baseURL: process.env.BASE_URL || 'http://localhost:3004',
+        baseURL,
       },
     },
   ],
@@ -101,8 +103,8 @@ export default defineConfig({
   webServer: process.env.CI
     ? undefined
     : {
-        command: 'pnpm dev',
-        url: 'http://localhost:3004/api/security/health',
+        command: process.env.PLAYWRIGHT_WEB_SERVER_COMMAND || 'npm run dev',
+        url: `${baseURL}/api/security/health`,
         reuseExistingServer: !process.env.CI,
         timeout: 120000,
       },

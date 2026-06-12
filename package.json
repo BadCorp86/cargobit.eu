@@ -11,9 +11,15 @@
     "readiness": "node scripts/production-readiness.mjs",
     "readiness:json": "node scripts/production-readiness.mjs --json",
     "readiness:env": "node scripts/production-readiness.mjs --skip-db",
+    "dev:check": "node scripts/local-dev-check.mjs",
+    "plans:check": "node scripts/sync-billing-plans.mjs",
+    "plans:sync": "node scripts/sync-billing-plans.mjs --write",
     "db:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://user:pass@localhost:5432/cargobit?schema=public} prisma validate",
     "db:local:sync": "node scripts/sync-local-postgres.mjs --write-env",
     "db:seed:preview": "node scripts/seed-dispute-preview.mjs",
+    "db:seed:marketplace": "node scripts/seed-marketplace-jobs.mjs",
+    "db:seed:e2e": "node scripts/seed-order-wallet-e2e.mjs",
+    "test:e2e:order-wallet": "RUN_ORDER_E2E=true npx playwright test tests/e2e/order-wallet-settlement.e2e.test.ts --project=api",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:deploy": "prisma db push && prisma generate",
@@ -106,6 +112,7 @@
     "zustand": "^5.0.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
