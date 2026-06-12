@@ -17,7 +17,7 @@ addCheck({
   label: 'Prisma provider',
   required: true,
   ok: readFile('prisma/schema.prisma').includes('provider = "postgresql"'),
-  detail: 'prisma/schema.prisma must use provider = "postgresql" for Vercel production.',
+  detail: 'prisma/schema.prisma must use provider = "postgresql" for production.',
 });
 
 checkEnv('DATABASE_URL', {
@@ -42,12 +42,20 @@ checkEnv('ENCRYPTION_KEY', {
 checkEnv('CRON_SECRET', {
   required: true,
   minLength: 24,
-  detail: 'Required for secured Vercel Cron route calls.',
+  detail: 'Required for secured cron and worker route calls.',
 });
 
 checkEnv('ADMIN_EMAIL', { required: true });
 checkEnv('ADMIN_PASSWORD', { required: true, minLength: 12 });
 checkEnv('ADMIN_JWT_SECRET', { required: true, minLength: 24 });
+
+addCheck({
+  id: 'legal_review_confirmed',
+  label: 'LEGAL_REVIEW_CONFIRMED',
+  required: true,
+  ok: process.env.LEGAL_REVIEW_CONFIRMED === 'true',
+  detail: 'Set LEGAL_REVIEW_CONFIRMED=true only after Impressum, Datenschutz, AGB, Zahlungsschutz and partner/legal texts have been reviewed by qualified legal counsel.',
+});
 
 checkEnv('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY', {
   required: true,
@@ -71,14 +79,11 @@ checkEnv('STRIPE_PAYOUT_WEBHOOK_SECRET', {
   fallback: process.env.STRIPE_WEBHOOK_SECRET,
 });
 
-[
-  'STRIPE_PRICE_STARTER_MONTHLY',
-  'STRIPE_PRICE_STARTER_YEARLY',
-  'STRIPE_PRICE_PROFESSIONAL_MONTHLY',
-  'STRIPE_PRICE_PROFESSIONAL_YEARLY',
-  'STRIPE_PRICE_ENTERPRISE_MONTHLY',
-  'STRIPE_PRICE_ENTERPRISE_YEARLY',
-].forEach((key) => checkEnv(key, { required: true, prefix: ['price_'] }));
+checkEnv('STRIPE_PRICE_BUSINESS_MONTHLY', {
+  required: true,
+  prefix: ['price_'],
+  fallback: process.env.STRIPE_PRICE_STARTER_MONTHLY,
+});
 
 checkEnv('SENDGRID_API_KEY', {
   required: false,
@@ -250,7 +255,7 @@ function printReport(report) {
   }
 
   if (!report.ready) {
-    console.log('\nFix required checks before live Stripe/Vercel rollout.');
+    console.log('\nFix required checks before live Stripe/server rollout.');
   }
 
   if (report.warnings.length > 0) {
