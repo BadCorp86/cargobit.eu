@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { CreateTransportRequest, CreateTransportResponse, ApiErrorResponse } from '@/types/transport';
+import { requireRequestUser } from '@/lib/request-user-auth';
 import {
   assertCanCreateTransport,
   createTransportLimitResponse,
@@ -10,6 +11,9 @@ import {
 // POST /api/transports - Create a new transport
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
     const body: CreateTransportRequest = await request.json();
     
     // Validate required fields
@@ -19,6 +23,14 @@ export async function POST(request: NextRequest) {
         message: 'Missing required fields: shipperId, pickup, delivery, transportType',
         code: 'MISSING_FIELDS'
       }, { status: 400 });
+    }
+
+    if (body.shipperId !== auth.user.id) {
+      return NextResponse.json<ApiErrorResponse>({
+        error: 'ForbiddenError',
+        message: 'Cannot create transports for another shipper',
+        code: 'FORBIDDEN',
+      }, { status: 403 });
     }
 
     await assertCanCreateTransport({
@@ -125,6 +137,9 @@ export async function POST(request: NextRequest) {
 // GET /api/transports - List transports
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = parseInt(searchParams.get('pageSize') || '20');

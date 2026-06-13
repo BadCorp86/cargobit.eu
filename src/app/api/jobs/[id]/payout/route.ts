@@ -1,9 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireRequestUser(request);
+  if (auth.response) return auth.response;
+
   const { id } = await params;
 
   return NextResponse.json(

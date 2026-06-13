@@ -6,8 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { jobsService, type CreateJobInput, type JobStatus } from '@/services/jobs.service';
-import { db } from '@/lib/db';
-import { getOptionalRequestUser, requireRequestUser } from '@/lib/request-user-auth';
+import { requireRequestUser } from '@/lib/request-user-auth';
 import { createInsuranceReferralQuote } from '@/lib/insurance/referral';
 import {
   assertCanCreateTransport,
@@ -61,14 +60,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await resolveJobUser(request);
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+    const user = auth.user;
     
     const body = await request.json();
 
@@ -221,75 +215,4 @@ function parsePositiveNumber(value: unknown) {
 function parseDate(value: unknown) {
   const date = new Date(String(value || ''));
   return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-function cleanText(value: unknown, maxLength: number) {
-  return String(value || '').trim().slice(0, maxLength);
-}
-
-async function resolveJobUser(request: NextRequest) {
-  const requestUser = await getOptionalRequestUser(request);
-  if (requestUser) {
-    return db.user.findUnique({ where: { id: requestUser.id } });
-  }
-
-  const headerUserId = cleanText(request.headers.get('x-user-id'), 128);
-  const headerEmail = cleanText(request.headers.get('x-user-email'), 254).toLowerCase();
-  const headerRole = cleanText(request.headers.get('x-user-role'), 80);
-
-  if (process.env.NODE_ENV === 'production') {
-    return null;
-  }
-
-  if (headerUserId) {
-    const user = await db.user.findUnique({ where: { id: headerUserId } });
-    if (user) return user;
-  }
-
-  if (headerEmail) {
-    const user = await db.user.findUnique({ where: { email: headerEmail } });
-    if (user) return user;
-
-    return db.user.create({
-      data: {
-        ...(headerUserId ? { id: headerUserId } : {}),
-        email: headerEmail,
-        passwordHash: 'auth-store-demo-user',
-        firstName: 'CargoBit',
-        lastName: 'Nutzer',
-        status: 'ACTIVE',
-        roles: headerRole
-          ? {
-              create: {
-                role: {
-                  connectOrCreate: {
-                    where: { name: normalizeUserRole(headerRole) },
-                    create: {
-                      name: normalizeUserRole(headerRole),
-                      description: 'Auto-created from local CargoBit auth store',
-                    },
-                  },
-                },
-              },
-            }
-          : undefined,
-      },
-    });
-  }
-
-  return null;
-}
-
-function normalizeUserRole(role: string) {
-  const allowed = new Set([
-    'ADMIN',
-    'SUPPORT',
-    'SHIPPER_COMPANY',
-    'SHIPPER_PRIVATE',
-    'CARRIER',
-    'DISPATCHER',
-    'DRIVER_SELF_EMPLOYED',
-    'MARKETER',
-  ]);
-  return allowed.has(role) ? role as any : 'SHIPPER_PRIVATE';
 }

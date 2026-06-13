@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { UpdateTransportStatusRequest, UpdateTransportStatusResponse, ApiErrorResponse, TransportStatusUpdate } from '@/types/transport';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 // POST /api/transports/[id]/status - Update transport status
 export async function POST(
@@ -8,6 +9,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
     const { id: transportId } = await params;
     const body: UpdateTransportStatusRequest = await request.json();
 

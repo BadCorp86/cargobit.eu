@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getOptionalAdmin } from '@/lib/request-admin-auth';
 import { getOptionalRequestUser } from '@/lib/request-user-auth';
 import { trackingService } from '@/services/tracking.service';
 
@@ -16,9 +17,17 @@ interface RouteParams {
 
 export const runtime = 'nodejs';
 
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
+    const auth = await canReadTransportTracking(request, id);
+    if (!auth.allowed) {
+      return NextResponse.json(
+        { code: auth.code, message: auth.message },
+        { status: auth.status },
+      );
+    }
+
     const trackingPoints = await prisma.trackingPoint.findMany({
       where: { transportId: id },
       orderBy: { timestamp: 'asc' },
@@ -108,4 +117,73 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       { status: 500 },
     );
   }
+}
+
+async function canReadTransportTracking(request: NextRequest, transportId: string) {
+  if (process.env.NODE_ENV !== 'production' && isDemoTransport(transportId)) {
+    return { allowed: true, status: 200, code: null, message: null };
+  }
+
+  const admin = await getOptionalAdmin(request);
+  if (admin && ['ADMIN', 'SUPPORT'].includes(admin.role)) {
+    return { allowed: true, status: 200, code: null, message: null };
+  }
+
+  const requestUser = await getOptionalRequestUser(request);
+  if (!requestUser) {
+    return {
+      allowed: false,
+      status: 401,
+      code: 'UNAUTHORIZED',
+      message: 'Login required for transport tracking',
+    };
+  }
+
+  const transport = await prisma.transport.findUnique({
+    where: { id: transportId },
+    include: {
+      assignment: {
+        include: { driver: true },
+      },
+    },
+  });
+
+  if (!transport) {
+    return {
+      allowed: false,
+      status: 404,
+      code: 'NOT_FOUND',
+      message: 'Transport not found',
+    };
+  }
+
+  if (transport.shipperUserId === requestUser.id || transport.assignment?.driver.userId === requestUser.id) {
+    return { allowed: true, status: 200, code: null, message: null };
+  }
+
+  if (transport.assignment?.driver.companyId) {
+    const companyUser = await prisma.companyUser.findUnique({
+      where: {
+        companyId_userId: {
+          companyId: transport.assignment.driver.companyId,
+          userId: requestUser.id,
+        },
+      },
+    });
+
+    if (companyUser) {
+      return { allowed: true, status: 200, code: null, message: null };
+    }
+  }
+
+  return {
+    allowed: false,
+    status: 403,
+    code: 'FORBIDDEN',
+    message: 'You are not allowed to view this tracking stream',
+  };
+}
+
+function isDemoTransport(id: string) {
+  return id.startsWith('mission_demo') || id.startsWith('demo') || id.startsWith('TR-');
 }

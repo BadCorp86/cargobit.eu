@@ -154,10 +154,14 @@ export async function proxy(request: NextRequest) {
   // CORS headers for API routes
   if (pathname.startsWith('/api/')) {
     const response = NextResponse.next();
-    
-    response.headers.set('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGINS || '*');
+
+    const allowedOrigin = getAllowedCorsOrigin(request);
+    if (allowedOrigin) {
+      response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
+      response.headers.set('Vary', 'Origin');
+    }
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Id, X-User-Role, X-User-Roles, X-Driver-Id, X-Session-Token');
+    response.headers.set('Access-Control-Allow-Headers', getAllowedCorsHeaders());
     response.headers.set('Access-Control-Max-Age', '86400');
     
     // Handle preflight
@@ -200,9 +204,7 @@ export async function proxy(request: NextRequest) {
 
   // Authentication check
   if (config.requiresAuth) {
-    const devHeaderUserId = process.env.NODE_ENV !== 'production'
-      ? request.headers.get('x-user-id')
-      : null;
+    const devHeaderUserId = getDevHeaderUserId(request);
     const sessionToken = request.headers.get('authorization')?.replace('Bearer ', '') ||
                          request.cookies.get('session_token')?.value ||
                          request.cookies.get('user_session')?.value ||
@@ -293,9 +295,7 @@ export const config = {
 // ============================================
 
 export function getAuthUser(request: NextRequest): { userId: string; roles: string[] } | null {
-  const userId = process.env.NODE_ENV !== 'production'
-    ? request.headers.get('x-user-id')
-    : null;
+  const userId = getDevHeaderUserId(request);
   const roles = request.headers.get('x-user-roles')?.split(',') || [];
 
   if (!userId) return null;
@@ -323,4 +323,43 @@ export function requireRole(request: NextRequest, roles: string[]): { userId: st
   }
 
   return user;
+}
+
+function getDevHeaderUserId(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') return null;
+  return request.headers.get('x-user-id');
+}
+
+function getAllowedCorsHeaders() {
+  const baseHeaders = [
+    'Content-Type',
+    'Authorization',
+    'X-Session-Token',
+  ];
+
+  if (process.env.NODE_ENV !== 'production') {
+    baseHeaders.push('X-User-Id', 'X-User-Role', 'X-User-Roles', 'X-Driver-Id');
+  }
+
+  return baseHeaders.join(', ');
+}
+
+function getAllowedCorsOrigin(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  const configuredOrigins = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => process.env.NODE_ENV !== 'production' || entry !== '*')
+    .filter(Boolean);
+
+  if (configuredOrigins.length > 0) {
+    if (origin && configuredOrigins.includes(origin)) return origin;
+    return configuredOrigins[0];
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    return origin || '*';
+  }
+
+  return process.env.NEXT_PUBLIC_APP_URL || null;
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { createOrderInvoiceDraft, type OrderInvoiceDraft } from '@/lib/order-invoice';
+import { getOptionalAdmin } from '@/lib/request-admin-auth';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -12,9 +14,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const fallbackAmount = Number(searchParams.get('amount') || 850);
 
   try {
+    const admin = await getOptionalAdmin(request);
+    const requestUser = await getOptionalRequestUser(request);
     const transport = await prisma.transport.findUnique({
       where: { id },
       include: {
+        assignment: {
+          include: { driver: true },
+        },
         commissions: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -22,10 +29,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     });
 
-    if (!transport && !isDemoOrderId(id)) {
+    if (!transport && !canUseDemoFallback(id)) {
       return NextResponse.json(
         { error: 'NOT_FOUND', message: 'Transport not found' },
         { status: 404 },
+      );
+    }
+
+    if (transport && !canReadOrder(transport, requestUser?.id, admin?.role)) {
+      return NextResponse.json(
+        { error: requestUser || admin ? 'FORBIDDEN' : 'AUTH_REQUIRED', message: 'Keine Berechtigung für das Rechnungsdokument dieses Auftrags' },
+        { status: requestUser || admin ? 403 : 401 },
       );
     }
 
@@ -39,6 +53,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return htmlResponse(renderInvoiceDocument(invoice));
   } catch (error) {
     console.error('[OrderInvoiceDocumentAPI] Failed:', error);
+
+    if (!canUseDemoFallback(id)) {
+      return NextResponse.json(
+        { error: 'INVOICE_DOCUMENT_UNAVAILABLE', message: 'Rechnungsdokument konnte nicht geladen werden.' },
+        { status: 503 },
+      );
+    }
 
     const invoice = createOrderInvoiceDraft({
       orderId: id,
@@ -150,6 +171,20 @@ function renderInvoiceDocument(invoice: OrderInvoiceDraft, label = 'CargoBit Rec
 
 function isDemoOrderId(orderId: string) {
   return orderId.startsWith('mission_demo') || orderId.startsWith('demo') || orderId.startsWith('TR-');
+}
+
+function canUseDemoFallback(orderId: string) {
+  return process.env.NODE_ENV !== 'production' && isDemoOrderId(orderId);
+}
+
+function canReadOrder(
+  transport: { shipperUserId: string; assignment?: { driver?: { userId: string } | null } | null },
+  userId?: string,
+  adminRole?: string,
+) {
+  if (adminRole && ['ADMIN', 'SUPPORT', 'FINANCE'].includes(adminRole)) return true;
+  if (!userId) return false;
+  return transport.shipperUserId === userId || transport.assignment?.driver?.userId === userId;
 }
 
 function formatMoney(value: number, currency = 'EUR') {

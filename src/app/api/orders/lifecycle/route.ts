@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getOptionalAdmin } from '@/lib/request-admin-auth';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
 import {
   buildLifecycleFromTransport,
   lifecycleBlueprint,
@@ -19,11 +21,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const admin = await getOptionalAdmin(request);
+    const requestUser = await getOptionalRequestUser(request);
     const transport = await prisma.transport.findUnique({
       where: { id: orderId },
       include: {
         offers: true,
-        assignment: true,
+        assignment: { include: { driver: true } },
         documents: true,
         commissions: true,
         statusHistory: {
@@ -59,6 +63,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: 'NOT_FOUND', message: 'Transport not found' },
         { status: 404 },
+      );
+    }
+
+    if (!canReadLifecycle(transport, requestUser?.id, admin?.role)) {
+      return NextResponse.json(
+        { error: requestUser || admin ? 'FORBIDDEN' : 'AUTH_REQUIRED', message: 'Keine Berechtigung für diesen Auftragsablauf.' },
+        { status: requestUser || admin ? 403 : 401 },
       );
     }
 
@@ -114,6 +125,16 @@ export async function GET(request: NextRequest) {
 
 function isDemoOrderId(orderId: string) {
   return orderId.startsWith('mission_demo') || orderId.startsWith('demo') || orderId.startsWith('TR-');
+}
+
+function canReadLifecycle(
+  transport: { shipperUserId: string; assignment?: { driver?: { userId: string } | null } | null },
+  userId?: string,
+  adminRole?: string,
+) {
+  if (adminRole && ['ADMIN', 'SUPPORT', 'FINANCE'].includes(adminRole)) return true;
+  if (!userId) return false;
+  return transport.shipperUserId === userId || transport.assignment?.driver?.userId === userId;
 }
 
 function enrichLifecycle(lifecycle: LifecycleStage[], transport: any): LifecycleStage[] {

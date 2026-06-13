@@ -1,6 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const auth = await requireRequestUser(request);
+  if (auth.response) return auth.response;
+
   return NextResponse.json({
     success: false,
     error: 'LEGACY_STRIPE_PAYOUT_DISABLED',

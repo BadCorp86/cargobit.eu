@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireRequestUser } from '@/lib/request-user-auth';
 import { getVerificationProviderOverview } from '@/services/verification/providers';
 import type { VerificationRole } from '@/services/verification-workflow.service';
 
@@ -14,6 +15,9 @@ const VALID_ROLES: VerificationRole[] = [
 ];
 
 export async function GET(request: NextRequest) {
+  const auth = await requireRequestUser(request);
+  if (auth.response) return auth.response;
+
   const { searchParams } = new URL(request.url);
   const role = normalizeRole(searchParams.get('role'));
 

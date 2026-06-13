@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { requireRequestUser, requestUserHasAnyRole } from '@/lib/request-user-auth';
 import {
   getJob,
   getCandidateTransporters,
@@ -34,6 +35,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
     const { id: jobId } = await params;
     
     // Python: job = get_job(db, job_id)
@@ -44,6 +48,13 @@ export async function GET(
       return NextResponse.json(
         { error: 'Job not found' },
         { status: 404 }
+      );
+    }
+
+    if (transport.shipperUserId !== auth.user.id && !requestUserHasAnyRole(auth.user, ['ADMIN', 'SUPPORT'])) {
+      return NextResponse.json(
+        { error: 'Forbidden', message: 'Keine Berechtigung für Matching-Daten dieses Auftrags.' },
+        { status: 403 },
       );
     }
     

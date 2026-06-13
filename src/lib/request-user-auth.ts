@@ -16,9 +16,8 @@ export async function getOptionalRequestUser(request: NextRequest): Promise<Requ
     }
   }
 
-  const headerUserId = request.headers.get('x-user-id');
-  if (headerUserId && process.env.NODE_ENV !== 'production') {
-    return loadRequestUser(headerUserId);
+  if (process.env.NODE_ENV !== 'production') {
+    return resolveDevRequestUser(request);
   }
 
   return null;
@@ -75,6 +74,86 @@ async function loadRequestUser(userId: string): Promise<RequestUser | null> {
     email: user.email,
     roles: user.roles.map((userRole) => userRole.role.name),
   };
+}
+
+async function resolveDevRequestUser(request: NextRequest): Promise<RequestUser | null> {
+  const headerUserId = cleanHeader(request.headers.get('x-user-id'), 128);
+  const headerEmail = cleanHeader(request.headers.get('x-user-email'), 254).toLowerCase();
+  const headerRole = cleanHeader(
+    request.headers.get('x-user-role') || request.headers.get('x-user-roles'),
+    80,
+  );
+
+  if (headerUserId) {
+    const user = await loadRequestUser(headerUserId);
+    if (user) return user;
+  }
+
+  if (!headerEmail) return null;
+
+  const existingUser = await db.user.findUnique({
+    where: { email: headerEmail },
+    include: { roles: { include: { role: true } } },
+  });
+
+  if (existingUser) {
+    return {
+      id: existingUser.id,
+      email: existingUser.email,
+      roles: existingUser.roles.map((userRole) => userRole.role.name),
+    };
+  }
+
+  const roleName = normalizeDevUserRole(headerRole);
+  const createdUser = await db.user.create({
+    data: {
+      ...(headerUserId ? { id: headerUserId } : {}),
+      email: headerEmail,
+      passwordHash: 'auth-store-demo-user',
+      firstName: 'CargoBit',
+      lastName: 'Nutzer',
+      status: 'ACTIVE',
+      roles: {
+        create: {
+          role: {
+            connectOrCreate: {
+              where: { name: roleName },
+              create: {
+                name: roleName,
+                description: 'Auto-created from local CargoBit auth store',
+              },
+            },
+          },
+        },
+      },
+    },
+    include: { roles: { include: { role: true } } },
+  });
+
+  return {
+    id: createdUser.id,
+    email: createdUser.email,
+    roles: createdUser.roles.map((userRole) => userRole.role.name),
+  };
+}
+
+function cleanHeader(value: string | null, maxLength: number) {
+  return String(value || '').trim().slice(0, maxLength);
+}
+
+function normalizeDevUserRole(role: string) {
+  const firstRole = role.split(',')[0]?.trim() || '';
+  const allowed = new Set([
+    'ADMIN',
+    'SUPPORT',
+    'SHIPPER_COMPANY',
+    'SHIPPER_PRIVATE',
+    'CARRIER',
+    'DISPATCHER',
+    'DRIVER_SELF_EMPLOYED',
+    'MARKETER',
+  ]);
+  return allowed.has(firstRole) ? firstRole as any : 'SHIPPER_PRIVATE';
 }
 
 async function validateUserSession(token: string): Promise<{ userId: string; sessionId: string } | null> {

@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ExecutionEngine, CreateExecutionInput } from '@/services/execution-engine.service';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 // ============================================
 // GET /api/executions - List executions
@@ -17,6 +18,9 @@ import { ExecutionEngine, CreateExecutionInput } from '@/services/execution-engi
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
     const { searchParams } = new URL(request.url);
     const carrierId = searchParams.get('carrierId');
     const orderId = searchParams.get('orderId');
@@ -67,6 +71,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
     const body = await request.json();
 
     // Validate input

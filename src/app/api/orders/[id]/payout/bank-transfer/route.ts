@@ -1,10 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-export async function POST(_request: Request, { params }: RouteParams) {
+export async function POST(request: NextRequest, { params }: RouteParams) {
+  const auth = await requireRequestUser(request);
+  if (auth.response) return auth.response;
+
   const { id } = await params;
 
   return NextResponse.json({

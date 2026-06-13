@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { calculateSubscriptionPrice, getBillingPlan } from '@/lib/billing/plans';
+import { getOptionalRequestUser } from '@/lib/request-user-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const userId = request.headers.get('x-user-id') || 'demo-user';
+  const requestUser = await getOptionalRequestUser(request);
+  const userId = requestUser?.id || 'demo-user';
   const body = await request.json().catch(() => ({}));
   const sessionId = String(body.sessionId || `cs_mock_${Date.now()}`);
   const businessPlan = getBillingPlan('STARTER');

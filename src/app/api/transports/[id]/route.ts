@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { ApiErrorResponse } from '@/types/transport';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 // GET /api/transports/[id] - Get transport details
 export async function GET(
@@ -8,6 +9,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
     const { id } = await params;
 
     const transport = await db.transport.findUnique({

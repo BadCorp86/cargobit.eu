@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ExecutionEngine, ExecutionStatus } from '@/services/execution-engine.service';
+import { requireRequestUser } from '@/lib/request-user-auth';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -20,6 +21,9 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
     const { id } = await params;
 
     const timeline = await ExecutionEngine.getStatusTimeline(id);
@@ -43,6 +47,9 @@ export async function POST(
   { params }: RouteParams
 ) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
     const { id } = await params;
     const body = await request.json();
 

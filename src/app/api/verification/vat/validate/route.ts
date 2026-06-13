@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireRequestUser } from '@/lib/request-user-auth';
 import { validateEuVatNumber } from '@/services/verification/vies.service';
 
 export async function GET(request: NextRequest) {
+  const auth = await requireRequestUser(request);
+  if (auth.response) return auth.response;
+
   const { searchParams } = new URL(request.url);
   const result = await validateEuVatNumber({
     country: searchParams.get('country') || undefined,
@@ -16,6 +20,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireRequestUser(request);
+    if (auth.response) return auth.response;
+
     const body = await request.json();
     const result = await validateEuVatNumber({
       country: body.country,
