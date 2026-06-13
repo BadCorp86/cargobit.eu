@@ -1,17 +1,6 @@
 name: Task5 CI - Reports Module
 on:
-  push:
-    branches:
-      - main
-      - 'feat/**'
-    paths:
-      - 'src/reports/**'
-      - 'migrations/**export_jobs**'
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'src/reports/**'
+  workflow_dispatch:
 
 jobs:
   build-test:

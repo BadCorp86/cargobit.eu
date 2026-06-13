@@ -7,14 +7,6 @@
 name: Build and Push Images
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'prisma/**'
-      - 'package*.json'
-      - 'Dockerfile.backend'
-      - 'Dockerfile.worker'
   workflow_dispatch:
     inputs:
       tag:

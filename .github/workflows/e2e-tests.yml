@@ -22,10 +22,6 @@ on:
         description: 'Max number of tests to run'
         required: false
         default: ''
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
 
 env:
   NODE_VERSION: '24'
@@ -204,11 +200,14 @@ jobs:
   # =========================================================================
   notify-failure:
     needs: [postman-e2e]
-    if: failure() && github.ref == 'refs/heads/main' && secrets.SLACK_WEBHOOK_URL != ''
+    if: failure() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
     steps:
       - name: Notify Slack
+        if: env.SLACK_WEBHOOK_URL != ''
         uses: 8398a7/action-slack@v3
         with:
           status: failure

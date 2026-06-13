@@ -1,14 +1,6 @@
 name: Database Schema Deploy
 
 on:
-  push:
-    branches: [main, develop]
-    paths:
-      - 'prisma/schema.prisma'
-      - 'prisma/migrations/**'
-      - 'scripts/production-readiness.mjs'
-      - 'src/lib/database-readiness.ts'
-      - 'package*.json'
   workflow_dispatch:
     inputs:
       environment:
@@ -116,9 +108,5 @@ jobs:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_SUBSCRIPTION_WEBHOOK_SECRET: ${{ secrets.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET }}
           STRIPE_PAYOUT_WEBHOOK_SECRET: ${{ secrets.STRIPE_PAYOUT_WEBHOOK_SECRET }}
-          STRIPE_PRICE_STARTER_MONTHLY: ${{ secrets.STRIPE_PRICE_STARTER_MONTHLY }}
-          STRIPE_PRICE_STARTER_YEARLY: ${{ secrets.STRIPE_PRICE_STARTER_YEARLY }}
-          STRIPE_PRICE_PROFESSIONAL_MONTHLY: ${{ secrets.STRIPE_PRICE_PROFESSIONAL_MONTHLY }}
-          STRIPE_PRICE_PROFESSIONAL_YEARLY: ${{ secrets.STRIPE_PRICE_PROFESSIONAL_YEARLY }}
-          STRIPE_PRICE_ENTERPRISE_MONTHLY: ${{ secrets.STRIPE_PRICE_ENTERPRISE_MONTHLY }}
-          STRIPE_PRICE_ENTERPRISE_YEARLY: ${{ secrets.STRIPE_PRICE_ENTERPRISE_YEARLY }}
+          STRIPE_PRICE_BUSINESS_MONTHLY: ${{ secrets.STRIPE_PRICE_BUSINESS_MONTHLY }}
+          LEGAL_REVIEW_CONFIRMED: ${{ vars.LEGAL_REVIEW_CONFIRMED }}

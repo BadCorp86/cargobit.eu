@@ -6,23 +6,6 @@
 name: E2E Payouts Tests
 
 on:
-  push:
-    branches: [main, develop]
-    paths:
-      - 'src/app/api/admin/payouts/**'
-      - 'src/app/api/stripe/webhook/payouts/**'
-      - 'src/app/api/cron/payouts/**'
-      - 'src/services/payout-*.ts'
-      - 'prisma/schema.prisma'
-      - 'scripts/collections/payouts-e2e.postman_collection.json'
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - 'src/app/api/admin/payouts/**'
-      - 'src/app/api/stripe/webhook/payouts/**'
-      - 'src/app/api/cron/payouts/**'
-      - 'src/services/payout-*.ts'
-      - 'prisma/schema.prisma'
   workflow_dispatch:
     inputs:
       environment:

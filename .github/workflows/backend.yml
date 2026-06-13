@@ -1,25 +1,7 @@
 name: Backend CI/CD
 
 on:
-  push:
-    branches: [main, develop]
-    paths:
-      - 'prisma/**'
-      - 'src/app/api/**'
-      - 'src/lib/**'
-      - 'src/services/**'
-      - 'scripts/production-readiness.mjs'
-      - 'package*.json'
-      - '.github/workflows/backend.yml'
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - 'prisma/**'
-      - 'src/app/api/**'
-      - 'src/lib/**'
-      - 'src/services/**'
-      - 'scripts/production-readiness.mjs'
-      - 'package*.json'
+  workflow_dispatch:
 
 env:
   NODE_VERSION: '24.x'

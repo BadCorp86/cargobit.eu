@@ -1,21 +1,6 @@
 name: Reconciliation E2E Tests
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'src/reconciliation/**'
-      - 'src/app/api/admin/reconciliation/**'
-      - 'postman/postman_reconciliation.json'
-      - '.github/workflows/reconciliation-e2e.yml'
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'src/reconciliation/**'
-      - 'src/app/api/admin/reconciliation/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -26,9 +11,6 @@ on:
         options:
           - staging
           - production
-  schedule:
-    # Run every 6 hours after reconciliation cron
-    - cron: '15 */6 * * *'
 
 env:
   NODE_VERSION: '24'

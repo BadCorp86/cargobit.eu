@@ -1,100 +1,49 @@
-# =============================================================================
-# CargoBit CI/CD Pipeline
-# =============================================================================
-# 
-# Stages:
-# 1. Test (Unit + Integration)
-# 2. Build (Docker Images)
-# 3. Security Scan
-# 4. Deploy (Staging -> Production)
-#
-# Triggered on: push to main/develop, PRs, releases
-
-name: CargoBit CI/CD
+name: CargoBit Beta CI
 
 on:
   push:
-    branches: [main, develop]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
+    branches: [main]
   pull_request:
-    branches: [main, develop]
-  release:
-    types: [published]
+    branches: [main]
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Deployment environment'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-          - staging
-          - production
+      run_order_e2e:
+        description: 'Run the order wallet settlement E2E test'
+        required: false
+        default: false
+        type: boolean
 
 env:
   NODE_VERSION: '24'
-  PYTHON_VERSION: '3.11'
-  GO_VERSION: '1.21'
+  DATABASE_URL: postgresql://test:test@localhost:5432/cargobit_test?schema=public
+  REDIS_URL: redis://localhost:6379
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+  NEXT_PUBLIC_URL: http://localhost:3000
+  ENCRYPTION_KEY: ci-encryption-key-minimum-24-chars
+  CRON_SECRET: ci-cron-secret-minimum-24-chars
+  ADMIN_EMAIL: admin@cargobit.test
+  ADMIN_PASSWORD: ci-admin-password
+  ADMIN_JWT_SECRET: ci-admin-jwt-secret-minimum-24-chars
+  LEGAL_REVIEW_CONFIRMED: 'false'
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+  STRIPE_SECRET_KEY: sk_test_placeholder
+  STRIPE_WEBHOOK_SECRET: whsec_placeholder
+  STRIPE_SUBSCRIPTION_WEBHOOK_SECRET: whsec_placeholder
+  STRIPE_PAYOUT_WEBHOOK_SECRET: whsec_placeholder
+  STRIPE_PRICE_BUSINESS_MONTHLY: price_placeholder
+  MAP_PROVIDER: mock
+  CI: true
 
 permissions:
   contents: read
-  security-events: write
-  packages: write
 
 jobs:
-  # ===========================================================================
-  # JOB: Code Quality
-  # ===========================================================================
-  code-quality:
-    name: Code Quality
+  beta-ci:
+    name: Lint, Typecheck and Build
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci || npm install
-
-      - name: Run ESLint
-        run: npm run lint --if-present || echo "No lint script"
-
-      - name: Run TypeScript Check
-        run: npx tsc --noEmit || echo "TypeScript check completed with warnings"
-        continue-on-error: true
-
-      - name: Check Formatting
-        run: npm run format:check --if-present || echo "No format check script"
-
-  # ===========================================================================
-  # JOB: Python Tests
-  # ===========================================================================
-  python-tests:
-    name: Python Tests
-    runs-on: ubuntu-latest
-    needs: code-quality
-    if: hashFiles('config-service/requirements.txt') != ''
-    
     services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
       postgres:
-        image: postgres:15-alpine
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -106,350 +55,148 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r config-service/requirements.txt || echo "No requirements.txt"
-          pip install pytest pytest-cov pytest-asyncio pytest-timeout pytest-xdist || true
-
-      - name: Run Unit Tests
-        if: hashFiles('tests/unit') != ''
-        env:
-          TEST_REDIS_URL: redis://localhost:6379/15
-          TEST_DATABASE_URL: postgresql://test:test@localhost:5432/cargobit_test
-        run: |
-          pytest tests/unit -v --cov=config_service --cov-report=xml:coverage-unit.xml || echo "No unit tests"
-
-      - name: Run Integration Tests
-        if: hashFiles('tests/integration') != ''
-        env:
-          TEST_REDIS_URL: redis://localhost:6379/15
-          TEST_DATABASE_URL: postgresql://test:test@localhost:5432/cargobit_test
-        run: |
-          pytest tests/integration -v --cov=config_service --cov-report=xml:coverage-integration.xml -m integration || echo "No integration tests"
-
-      - name: Upload Coverage
-        uses: codecov/codecov-action@v5
-        if: hashFiles('coverage-unit.xml') != '' || hashFiles('coverage-integration.xml') != ''
-        with:
-          files: coverage-unit.xml,coverage-integration.xml
-          fail_ci_if_error: false
-
-  # ===========================================================================
-  # JOB: Frontend Tests
-  # ===========================================================================
-  frontend-tests:
-    name: Frontend Tests
-    runs-on: ubuntu-latest
-    needs: code-quality
-
-    steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v5
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: npm
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
 
-      - name: Run Unit Tests
-        run: npm run test:unit --if-present || echo "No unit tests"
+      - name: Validate Prisma schema
+        run: npm run db:validate
 
-      - name: Run E2E Tests
-        run: npm run test:e2e --if-present || echo "No e2e tests"
+      - name: Generate Prisma Client
+        run: npx prisma generate
 
-      - name: Upload Test Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: |
-            coverage/
-            test-results/
-            playwright-report/
-          retention-days: 7
-          if-no-files-found: ignore
+      - name: Prepare test database
+        run: npx prisma db push --skip-generate
 
-  # ===========================================================================
-  # JOB: Security Scan
-  # ===========================================================================
-  security-scan:
-    name: Security Scan
+      - name: TypeScript check
+        run: npx tsc --noEmit --pretty false
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  readiness-env:
+    name: Readiness Env Check (expected red until beta secrets exist)
     runs-on: ubuntu-latest
-    needs: [python-tests, frontend-tests]
-    if: always() && (needs.python-tests.result == 'success' || needs.python-tests.result == 'skipped') && (needs.frontend-tests.result == 'success' || needs.frontend-tests.result == 'skipped')
-
+    needs: beta-ci
+    continue-on-error: true
+    env:
+      DATABASE_URL: postgresql://USER:PASSWORD@HOST:5432/DATABASE?schema=public
+      NEXT_PUBLIC_APP_URL: ''
+      ENCRYPTION_KEY: ''
+      CRON_SECRET: ''
+      ADMIN_EMAIL: admin@cargobit.eu
+      ADMIN_PASSWORD: ''
+      ADMIN_JWT_SECRET: ''
+      LEGAL_REVIEW_CONFIRMED: 'false'
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ''
+      STRIPE_SECRET_KEY: ''
+      STRIPE_SUBSCRIPTION_WEBHOOK_SECRET: ''
+      STRIPE_PAYOUT_WEBHOOK_SECRET: ''
+      STRIPE_PRICE_BUSINESS_MONTHLY: ''
+      READINESS_SKIP_DB: 'true'
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@latest
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
 
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v4
-        if: hashFiles('trivy-results.sarif') != ''
-        with:
-          sarif_file: 'trivy-results.sarif'
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Run Snyk security scan
-        if: ${{ secrets.SNYK_TOKEN != '' }}
-        uses: snyk/actions/node@master
+      - name: Run static readiness check
+        run: npm run readiness:env
+
+  order-wallet-e2e:
+    name: Order Wallet Settlement E2E
+    runs-on: ubuntu-latest
+    needs: beta-ci
+    if: github.event_name == 'workflow_dispatch' && inputs.run_order_e2e == true
+    services:
+      postgres:
+        image: postgres:16-alpine
         env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high
-        continue-on-error: true
-
-  # ===========================================================================
-  # JOB: Build Docker Images
-  # ===========================================================================
-  build:
-    name: Build Docker Images
-    runs-on: ubuntu-latest
-    needs: [security-scan]
-    if: github.event_name != 'pull_request'
-
-    outputs:
-      config-service-tag: ${{ steps.config-service.outputs.tag }}
-      api-gateway-tag: ${{ steps.api-gateway.outputs.tag }}
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: cargobit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Check for Dockerfiles
-        id: check-docker
-        run: |
-          echo "has-config-service=$([[ -f ./config-service/Dockerfile ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
-          echo "has-api-gateway=$([[ -f ./mini-services/api-gateway/Dockerfile ]] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
-
-      - name: Set up Docker Buildx
-        if: steps.check-docker.outputs.has-config-service == 'true' || steps.check-docker.outputs.has-api-gateway == 'true'
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Container Registry
-        if: steps.check-docker.outputs.has-config-service == 'true' || steps.check-docker.outputs.has-api-gateway == 'true'
-        uses: docker/login-action@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
 
-      - name: Extract metadata
-        id: meta
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare test database
+        run: npx prisma db push
+
+      - name: Seed E2E users and wallets
+        id: seed
         run: |
-          echo "version=$(cat config/scoring-config.yaml 2>/dev/null | grep 'version:' | head -1 | awk '{print $2}' || echo 'latest')" >> $GITHUB_OUTPUT
-          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          node scripts/seed-order-wallet-e2e.mjs | tee seed-output.log
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('node:fs');
+          const output = fs.readFileSync('seed-output.log', 'utf8');
+          const match = output.match(/\{[\s\S]*?\n\}/);
+          if (!match) throw new Error('Seed JSON output not found');
+          const seed = JSON.parse(match[0]);
+          console.log(`shipper_token=${seed.shipperToken}`);
+          console.log(`carrier_token=${seed.carrierToken}`);
+          NODE
 
-      # Config Service
-      - name: Build & Push Config Service
-        if: steps.check-docker.outputs.has-config-service == 'true'
-        id: config-service
-        uses: docker/build-push-action@v6
-        with:
-          context: ./config-service
-          file: ./config-service/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/config-service:${{ steps.meta.outputs.sha_short }}
-            ghcr.io/${{ github.repository }}/config-service:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # API Gateway
-      - name: Build & Push API Gateway
-        if: steps.check-docker.outputs.has-api-gateway == 'true'
-        id: api-gateway
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./mini-services/api-gateway/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/api-gateway:${{ steps.meta.outputs.sha_short }}
-            ghcr.io/${{ github.repository }}/api-gateway:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ===========================================================================
-  # JOB: Deploy to Staging
-  # ===========================================================================
-  deploy-staging:
-    name: Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/develop' && needs.build.result == 'success'
-    environment:
-      name: staging
-      url: https://staging.cargobit.io
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Check AWS credentials
-        id: check-aws
-        run: |
-          if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
-            echo "has-aws=true" >> $GITHUB_OUTPUT
-          else
-            echo "has-aws=false" >> $GITHUB_OUTPUT
-            echo "AWS credentials not configured - skipping deployment"
-          fi
-
-      - name: Setup kubectl
-        if: steps.check-aws.outputs.has-aws == 'true'
-        uses: azure/setup-kubectl@v4
-
-      - name: Configure AWS credentials
-        if: steps.check-aws.outputs.has-aws == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-central-1
-
-      - name: Update kubeconfig
-        if: steps.check-aws.outputs.has-aws == 'true'
-        run: aws eks update-kubeconfig --name cargobit-staging || echo "EKS cluster not found"
-
-      - name: Deploy Config Service
-        if: steps.check-aws.outputs.has-aws == 'true'
-        run: |
-          helm upgrade --install config-service ./helm/core/config-service \
-            --namespace cargobit \
-            --set image.tag=${{ needs.build.outputs.config-service-tag }} \
-            --set replicaCount=2 \
-            --values helm/core/config-service/values-staging.yaml || echo "Helm deployment skipped"
-
-      - name: Wait for deployment
-        if: steps.check-aws.outputs.has-aws == 'true'
-        run: |
-          kubectl rollout status deployment/config-service -n cargobit --timeout=300s || echo "Deployment status check skipped"
-
-      - name: Run smoke tests
-        if: steps.check-aws.outputs.has-aws == 'true'
-        run: |
-          curl -f https://staging.cargobit.io/health || echo "Smoke test skipped"
-
-  # ===========================================================================
-  # JOB: Deploy to Production
-  # ===========================================================================
-  deploy-production:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'release' && needs.build.result == 'success'
-    environment:
-      name: production
-      url: https://cargobit.io
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Check AWS credentials
-        id: check-aws
-        run: |
-          if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
-            echo "has-aws=true" >> $GITHUB_OUTPUT
-          else
-            echo "has-aws=false" >> $GITHUB_OUTPUT
-            echo "AWS credentials not configured - skipping deployment"
-          fi
-
-      - name: Setup kubectl
-        if: steps.check-aws.outputs.has-aws == 'true'
-        uses: azure/setup-kubectl@v4
-
-      - name: Configure AWS credentials
-        if: steps.check-aws.outputs.has-aws == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-central-1
-
-      - name: Update kubeconfig
-        if: steps.check-aws.outputs.has-aws == 'true'
-        run: aws eks update-kubeconfig --name cargobit-production || echo "EKS cluster not found"
-
-      - name: Deploy Config Service (Canary)
-        if: steps.check-aws.outputs.has-aws == 'true'
-        run: |
-          helm upgrade --install config-service ./helm/core/config-service \
-            --namespace cargobit \
-            --set image.tag=${{ needs.build.outputs.config-service-tag }} \
-            --set replicaCount=3 \
-            --set canary.enabled=true \
-            --values helm/core/config-service/values-production.yaml || echo "Helm deployment skipped"
-
-      - name: Monitor Canary
-        if: steps.check-aws.outputs.has-aws == 'true'
-        run: |
-          sleep 300
-          ./scripts/check-canary-health.sh || echo "Canary health check skipped"
-
-      - name: Promote to Full Production
-        if: steps.check-aws.outputs.has-aws == 'true'
-        run: |
-          kubectl patch deployment config-service \
-            -n cargobit \
-            -p '{"spec":{"replicas":5}}' || echo "Production promotion skipped"
-
-      - name: Verify Production
-        if: steps.check-aws.outputs.has-aws == 'true'
-        run: |
-          curl -f https://cargobit.io/health || echo "Production verification skipped"
-
-  # ===========================================================================
-  # JOB: Notify
-  # ===========================================================================
-  notify:
-    name: Notify
-    runs-on: ubuntu-latest
-    needs: [deploy-staging, deploy-production]
-    if: always() && secrets.SLACK_WEBHOOK_URL != ''
-
-    steps:
-      - name: Slack Notification
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "CargoBit Deployment",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Deployment Status: ${{ job.status }}*\n\nRepository: ${{ github.repository }}\nBranch: ${{ github.ref_name }}\nCommit: ${{ github.sha }}\nAuthor: ${{ github.actor }}"
-                  }
-                }
-              ]
-            }
+      - name: Run order wallet settlement E2E
+        env:
+          RUN_ORDER_E2E: 'true'
+          BASE_URL: http://localhost:3000
+          E2E_SHIPPER_TOKEN: ${{ steps.seed.outputs.shipper_token }}
+          E2E_CARRIER_TOKEN: ${{ steps.seed.outputs.carrier_token }}
+          E2E_SETTLEMENT_READY_JOB_ID: e2e_settlement_ready_transport
+          E2E_CARRIER_PAYOUT_METHOD_ID: e2e_carrier_payout_method
+        run: npm run test:e2e:order-wallet

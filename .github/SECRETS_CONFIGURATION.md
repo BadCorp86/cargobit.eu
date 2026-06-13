@@ -1,185 +1,108 @@
-# GitHub Secrets Configuration Guide
+# GitHub Secrets Configuration
 
-## Required Secrets for Load Test Workflows
+CargoBit nutzt GitHub Actions aktuell für Beta-Readiness, manuelle Prüfungen und optionale Betriebsjobs. Vercel ist keine Produktionspflicht. Der Zielbetrieb bleibt ein eigener Server mit Docker Compose, PostgreSQL, Redis und Reverse Proxy.
 
-Set these secrets in GitHub Repository Settings → Secrets and variables → Actions
+## Primärer CI-Workflow
 
----
+Der automatische Workflow auf `main` ist:
 
-## Required Secrets
+- `.github/workflows/ci.yml`
+- nutzt `npm ci`, `package-lock.json`, Prisma, TypeScript, ESLint und Next.js Build
+- erwartet keine Slack-, Docker-, AWS- oder Vercel-Secrets
+- führt `readiness:env` separat als dokumentierten Readiness-Job aus
 
-| Secret Name | Description | Environment |
-|-------------|-------------|-------------|
-| `STAGING_BASE_URL` | Staging API base URL | Staging |
-| `STAGING_ADMIN_JWT` | Admin JWT for Staging | Staging |
-| `PROD_BASE_URL` | Production API base URL | Production |
-| `PROD_ADMIN_JWT` | Admin JWT for Production | Production |
+Alle älteren Spezial-Workflows für Loadtests, Docker Images, ML, Security Gateway, E2E-Sonderfälle und Secret Rotation sind manuell oder optional.
 
----
+## Required Environment Secrets
 
-## CargoBit Production Readiness Secrets
+Diese Secrets gehören in die GitHub Environments `staging` und `production`, falls der manuelle Workflow `Production Readiness` genutzt wird.
 
-The `Production Readiness` workflow uses GitHub Environments named `staging` and `production`.
-Create the same secret names inside each environment so the workflow can verify the selected target.
+| Secret Name | Beschreibung |
+|-------------|--------------|
+| `DATABASE_URL` | PostgreSQL-Verbindung der Zielumgebung |
+| `ENCRYPTION_KEY` | Langer zufälliger Verschlüsselungs-Key |
+| `CRON_SECRET` | Secret für Cron-/Worker-Endpunkte |
+| `ADMIN_EMAIL` | Admin-Login-E-Mail |
+| `ADMIN_PASSWORD` | Admin-Login-Passwort |
+| `ADMIN_JWT_SECRET` | Langer zufälliger Admin-JWT-Secret |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe Publishable Key der Umgebung |
+| `STRIPE_SECRET_KEY` | Stripe Secret Key der Umgebung |
+| `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET` | Stripe Webhook Signing Secret für Business-Abos |
+| `STRIPE_PAYOUT_WEBHOOK_SECRET` | Stripe Webhook Signing Secret für Auszahlungen |
+| `STRIPE_PRICE_BUSINESS_MONTHLY` | Stripe Price ID für Business 89 EUR netto/Monat |
 
-| Secret Name | Description |
-|-------------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string for the selected environment |
-| `ENCRYPTION_KEY` | Long random application encryption key |
-| `CRON_SECRET` | Long random secret for Vercel/GitHub cron route calls |
-| `ADMIN_EMAIL` | Admin login email |
-| `ADMIN_PASSWORD` | Admin login password |
-| `ADMIN_JWT_SECRET` | Long random admin JWT secret |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
-| `STRIPE_SECRET_KEY` | Stripe secret key |
-| `STRIPE_SUBSCRIPTION_WEBHOOK_SECRET` | Stripe subscription webhook signing secret |
-| `STRIPE_PAYOUT_WEBHOOK_SECRET` | Stripe payout webhook signing secret |
-| `STRIPE_PRICE_STARTER_MONTHLY` | Stripe Price ID for Starter monthly |
-| `STRIPE_PRICE_STARTER_YEARLY` | Stripe Price ID for Starter yearly |
-| `STRIPE_PRICE_PROFESSIONAL_MONTHLY` | Stripe Price ID for Professional monthly |
-| `STRIPE_PRICE_PROFESSIONAL_YEARLY` | Stripe Price ID for Professional yearly |
-| `STRIPE_PRICE_ENTERPRISE_MONTHLY` | Stripe Price ID for Enterprise monthly |
-| `STRIPE_PRICE_ENTERPRISE_YEARLY` | Stripe Price ID for Enterprise yearly |
-| `SENDGRID_API_KEY` | Optional, required for real email sending |
-| `SENDGRID_FROM_EMAIL` | Sender address for system and invoice emails |
+## Required Environment Variables
 
-Environment variable:
+Diese Werte gehören unter **Secrets and variables → Actions → Environments → Variables**.
 
-| Variable Name | Description |
-|---------------|-------------|
-| `NEXT_PUBLIC_APP_URL` | Public app URL, for example `https://cargobit.eu` |
-| `SENDGRID_FROM_NAME` | Sender name, for example `CargoBit` |
+| Variable Name | Beschreibung |
+|---------------|--------------|
+| `NEXT_PUBLIC_APP_URL` | Öffentliche URL der Umgebung, z. B. `https://cargobit.eu` |
+| `LEGAL_REVIEW_CONFIRMED` | Erst nach juristischer Prüfung auf `true` setzen |
 
----
+## Optional Secrets
 
-## Setting Secrets
+Diese Secrets sind nicht erforderlich, damit die Beta-CI auf `main` grün wird.
 
-### Via GitHub UI
+| Secret Name | Einsatz |
+|-------------|---------|
+| `SENDGRID_API_KEY` | Echte E-Mail-Zustellung |
+| `SENDGRID_FROM_EMAIL` | Absenderadresse für System- und Rechnungs-E-Mails |
+| `DOCKER_REGISTRY` | Manueller Docker Image Push |
+| `DOCKER_USERNAME` | Manueller Docker Image Push |
+| `DOCKER_PASSWORD` | Manueller Docker Image Push |
+| `DOCKER_NAMESPACE` | Manueller Docker Image Push |
+| `SLACK_WEBHOOK_URL` | Optionale Benachrichtigungen in manuellen Legacy-Workflows |
+| `AWS_ACCESS_KEY_ID` | Optionale ML-/S3-Workflows |
+| `AWS_SECRET_ACCESS_KEY` | Optionale ML-/S3-Workflows |
+| `ML_MODELS_BUCKET` | Optionale ML-Modellablage |
+| `ML_REGISTRY_DB` | Optionale ML-Modellregistry |
 
-1. Navigate to your repository
-2. Go to **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
-4. Enter the secret name and value
-5. Click **Add secret**
+## Nicht mehr aktiv benötigte Preis-Secrets
 
-### Via GitHub CLI
+Die alten Stripe-Price-Secrets für Starter, Professional und Enterprise werden für das aktuelle Beta-Modell nicht mehr verwendet. In neuen Workflows und Environments wird nur noch der Business-Monatspreis benötigt.
 
-```bash
-# Set staging secrets
-gh secret set STAGING_BASE_URL --body "https://payments.staging.example.com"
-gh secret set STAGING_ADMIN_JWT --body "eyJhbGciOiJSUzI1NiIs..."
+Aktuelles Modell:
 
-# Set production secrets
-gh secret set PROD_BASE_URL --body "https://payments.example.com"
-gh secret set PROD_ADMIN_JWT --body "eyJhbGciOiJSUzI1NiIs..."
-```
+- Start über Provision und Zahlungsschutz
+- Business 89 EUR netto/Monat
+- Business behält CargoBit-Provision von 12 Prozent
+- öffentlich wird der Begriff `Zahlungsschutz` verwendet
 
----
+## GitHub UI
 
-## JWT Token Requirements
+1. Repository öffnen
+2. **Settings → Secrets and variables → Actions**
+3. Für echte Zielumgebungen möglichst **Environments** verwenden
+4. Secrets und Variables getrennt anlegen
+5. Keine echten Werte in Workflow-Dateien oder Dokumentation schreiben
 
-The Admin JWT must have the following permissions:
-
-- Role: `admin` or `service_account`
-- Scopes: `reports:export`, `reports:read`
-- Expiration: Recommended 24h for manual tests, 1h for CI
-
-### Generating a JWT for Testing
+## GitHub CLI Beispiele
 
 ```bash
-# Example using your auth service
-curl -X POST https://auth.example.com/oauth/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials" \
-  -d "client_id=$CLIENT_ID" \
-  -d "client_secret=$CLIENT_SECRET" \
-  -d "scope=reports:export reports:read"
+gh secret set DATABASE_URL --env staging --body "postgresql://..."
+gh secret set ENCRYPTION_KEY --env staging --body "..."
+gh secret set CRON_SECRET --env staging --body "..."
+gh secret set ADMIN_JWT_SECRET --env staging --body "..."
+gh secret set STRIPE_SECRET_KEY --env staging --body "sk_test_..."
+gh secret set STRIPE_PRICE_BUSINESS_MONTHLY --env staging --body "price_..."
+
+gh variable set NEXT_PUBLIC_APP_URL --env staging --body "https://staging.cargobit.eu"
+gh variable set LEGAL_REVIEW_CONFIRMED --env staging --body "false"
 ```
 
----
+## Vor Beta-Freigabe
 
-## Security Best Practices
+`npm run readiness:env` darf erst grün werden, wenn echte Werte gesetzt sind und die Rechtsprüfung bestätigt wurde. Bis dahin ist ein roter Readiness-Status korrekt und gewollt.
 
-1. **Rotate JWT tokens regularly** - Set up automated rotation
-2. **Use short-lived tokens** - Max 24h for staging, 1h for CI jobs
-3. **Limit scopes** - Only grant `reports:export` and `reports:read`
-4. **Monitor usage** - Track JWT usage in audit logs
-5. **Never commit tokens** - Always use GitHub Secrets
+Minimal zu prüfen:
 
----
-
-## Environment Variables Reference
-
-### k6 Workflow (`load-test-k6.yml`)
-
-| Variable | Source | Description |
-|----------|--------|-------------|
-| `BASE_URL` | Secret | API base URL |
-| `ADMIN_JWT` | Secret | Auth token |
-| `PROFILE` | Input | Test profile (small/medium/large/mixed) |
-| `K6_VUS` | Input | Virtual users |
-| `K6_DURATION` | Input | Test duration |
-
-### Enqueue Workflow (`load-test-enqueue.yml`)
-
-| Variable | Source | Description |
-|----------|--------|-------------|
-| `BASE_URL` | Secret | API base URL |
-| `ADMIN_JWT` | Secret | Auth token |
-| `CONCURRENCY` | Input | Concurrent workers |
-| `JOBS` | Input | Jobs per worker |
-| `PROFILE` | Input | Test profile |
-
----
-
-## S3 Configuration (Optional)
-
-If tests need to verify S3 uploads, ensure the worker environment has:
-
-```yaml
-# Helm values for worker
-env:
-  - name: EXPORT_BUCKET
-    value: "cargobit-exports"
-  - name: AWS_REGION
-    value: "eu-central-1"
-```
-
-**Note:** S3 bucket names should NOT be stored as secrets unless they contain sensitive information.
-
----
-
-## Workflow Dispatch Inputs
-
-### k6 Load Test
-
-| Input | Default | Options |
-|-------|---------|---------|
-| profile | large | small, medium, large, mixed |
-| vus | 100 | Any number |
-| duration | 15m | Any duration (e.g., 10m, 30m) |
-| environment | staging | staging, production |
-
-### Enqueue Load Test
-
-| Input | Default | Options |
-|-------|---------|---------|
-| concurrency | 5 | Any number |
-| jobs | 20 | Any number |
-| profile | mixed | small, medium, large, mixed |
-| environment | staging | staging, production |
-
----
-
-## Running Workflows
-
-1. Go to **Actions** tab in GitHub
-2. Select the workflow
-3. Click **Run workflow**
-4. Select inputs and environment
-5. Click **Run workflow**
-
-Results will be available in:
-- GitHub Actions summary
-- Artifacts (downloadable logs)
-- Prometheus/Grafana (if configured)
+- Stripe Test-Checkout für Business-Abo
+- Stripe Test-Topup für Zahlungsschutz
+- Stripe Webhook-Signaturprüfung
+- doppelter Webhook schreibt keine doppelte Gutschrift
+- Auftrag bis Wallet-Reservierung
+- Gebot, Annahme, POD, Rechnung, Wallet-Freigabe
+- Bankauszahlung nur aus eigenem Wallet
+- Admin-/Support-Zugriffe
+- Backup/Restore auf dem Zielserver
