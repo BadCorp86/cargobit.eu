@@ -48,15 +48,17 @@ export function startOfUtcDay(date = new Date()) {
 
 export function createAdImpressionId(campaignId: string) {
   const random = Math.random().toString(36).slice(2, 10);
-  return `adimp_${campaignId}_${Date.now()}_${random}`;
+  const encodedCampaignId = Buffer.from(campaignId, 'utf8').toString('base64url');
+  return `adimp_${encodedCampaignId}_${Date.now()}_${random}`;
 }
 
 export function parseAdImpressionId(impressionId: string) {
   const parts = String(impressionId || '').split('_');
   if (parts.length < 4 || parts[0] !== 'adimp') return null;
+  const campaignId = Buffer.from(parts[1], 'base64url').toString('utf8');
+  if (!campaignId) return null;
   return {
-    campaignId: parts[1],
+    campaignId,
     timestamp: Number(parts[2]),
   };
 }
-

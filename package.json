@@ -18,6 +18,7 @@
     "db:local:sync": "node scripts/sync-local-postgres.mjs --write-env",
     "db:seed:preview": "node scripts/seed-dispute-preview.mjs",
     "db:seed:marketplace": "node scripts/seed-marketplace-jobs.mjs",
+    "db:seed:ads": "node scripts/seed-beta-ads.mjs",
     "db:seed:e2e": "node scripts/seed-order-wallet-e2e.mjs",
     "test:e2e:order-wallet": "RUN_ORDER_E2E=true npx playwright test tests/e2e/order-wallet-settlement.e2e.test.ts --project=api",
     "db:push": "prisma db push",

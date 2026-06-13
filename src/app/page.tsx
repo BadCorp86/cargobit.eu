@@ -38,6 +38,7 @@ import {
 
 import { buildUserRequestHeaders, useAuthStore } from '@/lib/auth-store';
 import { AuthModal } from '@/components/auth/auth-modal';
+import { BannerAd } from '@/components/ads/banner-ad';
 import { Dashboard } from '@/components/dashboard/dashboard';
 import { TransportForm, type TransportFormInitialData, type TransportFormSubmitPayload } from '@/components/transport/transport-form';
 import { PartnerPortal } from '@/components/partner/partner-portal';
@@ -1118,6 +1119,12 @@ export default function Home() {
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="bg-[#06121C] px-4 py-8 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-5xl">
+            <BannerAd slot="homepage-hero" />
           </div>
         </section>
 
