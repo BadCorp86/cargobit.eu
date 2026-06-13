@@ -82,7 +82,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const allowedFields = [
       'name', 'description', 'slot', 'bannerUrl', 'bannerAlt', 'targetUrl',
       'callToAction', 'budgetEur', 'pricingModel', 'cpcEur', 'cpmEur', 'cpaEur',
-      'startDate', 'endDate', 'status',
+      'startDate', 'endDate',
     ];
 
     for (const field of allowedFields) {
@@ -105,6 +105,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
     if (body.endDate) {
       updateData.endDate = new Date(body.endDate);
+    }
+
+    if (Object.keys(updateData).length > 0 && existing.status === 'ACTIVE') {
+      updateData.status = 'PENDING';
     }
 
     const campaign = await db.partnerAdCampaign.update({

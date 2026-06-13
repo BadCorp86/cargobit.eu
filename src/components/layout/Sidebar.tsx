@@ -134,6 +134,17 @@ const DEFAULT_MENU: NavItem[] = [
     href: '/admin/payments',
   },
   {
+    id: 'ads',
+    label: 'Werbung',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H9l-5 4v-4H6a2 2 0 01-2-2V5z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 8h8M8 12h5" />
+      </svg>
+    ),
+    href: '/admin/ads',
+  },
+  {
     id: 'stripe',
     label: 'Stripe Setup',
     icon: (

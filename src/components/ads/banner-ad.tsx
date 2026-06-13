@@ -17,37 +17,18 @@ const SLOT_CONFIG = {
   'dashboard-sidebar': { width: 300, height: 250, label: '300×250 Medium Rectangle' },
 };
 
-// Mock ad data (would come from API in production)
-const MOCK_ADS: Record<string, { imageUrl: string; targetUrl: string; alt: string; provider: string }> = {
-  'homepage-hero': {
-    imageUrl: '/ads/insurance-hero.jpg',
-    targetUrl: 'https://partner.example.com/insurance',
-    alt: 'Allianz Transportversicherung - Jetzt abschließen',
-    provider: 'Allianz',
-  },
-  'marketplace-sidebar': {
-    imageUrl: '/ads/logistics-sidebar.jpg',
-    targetUrl: 'https://partner.example.com/logistics',
-    alt: 'DHL Express - Versandlösungen',
-    provider: 'DHL',
-  },
-  'order-detail-sidebar': {
-    imageUrl: '/ads/insurance-detail.jpg',
-    targetUrl: 'https://partner.example.com/insurance',
-    alt: 'Frachtversicherung ab 9,90€',
-    provider: 'HDI',
-  },
-  'dashboard-sidebar': {
-    imageUrl: '/ads/fuel-card.jpg',
-    targetUrl: 'https://partner.example.com/fuel',
-    alt: 'Tankkarte - 10% Rabatt',
-    provider: 'Shell',
-  },
-};
+interface RenderedAd {
+  adId: string;
+  imageUrl?: string | null;
+  targetUrl: string;
+  alt: string;
+  provider: string;
+  callToAction?: string | null;
+}
 
 export function BannerAd({ slot, className }: BannerAdProps) {
   const [impressionId, setImpressionId] = React.useState<string | null>(null);
-  const [ad, setAd] = React.useState<typeof MOCK_ADS[keyof typeof MOCK_ADS] | null>(null);
+  const [ad, setAd] = React.useState<RenderedAd | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
   const config = SLOT_CONFIG[slot];
@@ -61,10 +42,12 @@ export function BannerAd({ slot, className }: BannerAdProps) {
           const data = await response.json();
           setImpressionId(data.impressionId);
           setAd({
+            adId: data.adId,
             imageUrl: data.imageUrl,
             targetUrl: data.targetUrl,
             alt: data.alt || 'Advertisement',
             provider: data.provider,
+            callToAction: data.callToAction,
           });
           
           // Track impression
@@ -75,12 +58,9 @@ export function BannerAd({ slot, className }: BannerAdProps) {
               body: JSON.stringify({ impressionId: data.impressionId }),
             }).catch(() => {});
           }
-        } else {
-          // Fallback to mock
-          setAd(MOCK_ADS[slot]);
         }
       } catch {
-        setAd(MOCK_ADS[slot]);
+        setAd(null);
       } finally {
         setIsLoading(false);
       }
@@ -90,12 +70,13 @@ export function BannerAd({ slot, className }: BannerAdProps) {
   }, [slot]);
 
   const handleClick = async () => {
-    if (impressionId) {
+    const currentAd = ad;
+    if (impressionId && currentAd) {
       try {
         await fetch('/api/ads/click', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ impressionId, adId: ad?.provider }),
+          body: JSON.stringify({ impressionId, adId: currentAd.adId }),
         });
       } catch {
         // Silent fail for tracking
@@ -117,7 +98,14 @@ export function BannerAd({ slot, className }: BannerAdProps) {
     );
   }
 
-  if (!ad) return null;
+  if (!ad) {
+    return (
+      <div className={cn('rounded-lg border border-dashed border-white/[0.08] bg-white/[0.03] p-4 text-center', className)}>
+        <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/35">Anzeige</p>
+        <p className="mt-2 text-sm text-white/55">Werbefläche verfügbar</p>
+      </div>
+    );
+  }
 
   return (
     <div className={cn('relative rounded-lg overflow-hidden border bg-card', className)}>
@@ -134,16 +122,29 @@ export function BannerAd({ slot, className }: BannerAdProps) {
         onClick={handleClick}
         className="block"
       >
-        {/* Placeholder gradient for demo */}
-        <div
-          className="flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5"
-          style={{ width: '100%', aspectRatio: `${config.width}/${config.height}` }}
-        >
-          <div className="text-center p-4">
-            <div className="text-sm font-semibold text-foreground">{ad.provider}</div>
-            <div className="text-xs text-muted-foreground mt-1">{ad.alt}</div>
+        {ad.imageUrl ? (
+          <Image
+            src={ad.imageUrl}
+            alt={ad.alt}
+            width={config.width}
+            height={config.height}
+            className="h-auto w-full object-cover"
+            unoptimized
+          />
+        ) : (
+          <div
+            className="flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5"
+            style={{ width: '100%', aspectRatio: `${config.width}/${config.height}` }}
+          >
+            <div className="text-center p-4">
+              <div className="text-sm font-semibold text-foreground">{ad.provider}</div>
+              <div className="text-xs text-muted-foreground mt-1">{ad.alt}</div>
+              {ad.callToAction ? (
+                <div className="mt-3 text-xs font-semibold text-primary">{ad.callToAction}</div>
+              ) : null}
+            </div>
           </div>
-        </div>
+        )}
       </a>
     </div>
   );

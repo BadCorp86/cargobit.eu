@@ -1,55 +1,85 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { hasCampaignBudget, parseAdImpressionId, startOfUtcDay } from '@/lib/ads/ad-serving';
 
-/**
- * POST /api/ads/impression
- * 
- * Track an ad impression
- * 
- * Request Body:
- * - impressionId: string (required) - Unique impression ID from /ads/render
- * - timestamp: number (optional) - Unix timestamp
- * - viewable: boolean (optional) - Whether ad was viewable (for viewability tracking)
- * - viewDuration: number (optional) - Time in ms the ad was visible
- */
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
-    const { impressionId, timestamp, viewable, viewDuration } = body;
+    const impressionId = String(body.impressionId || '');
+    const parsed = parseAdImpressionId(impressionId);
 
-    // Validation
-    if (!impressionId) {
+    if (!parsed?.campaignId) {
       return NextResponse.json(
         {
           error: 'ValidationError',
-          message: 'Impression-ID erforderlich',
-          code: 'MISSING_IMPRESSION_ID',
+          message: 'Gültige Impression-ID erforderlich',
+          code: 'INVALID_IMPRESSION_ID',
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // In production:
-    // 1. Validate impression ID exists
-    // 2. Check for duplicate impressions (fraud prevention)
-    // 3. Store impression in analytics database
-    // 4. Update real-time dashboards
-    // 5. Deduct from campaign budget if CPM model
+    const campaign = await db.partnerAdCampaign.findUnique({
+      where: { id: parsed.campaignId },
+      select: {
+        id: true,
+        partnerId: true,
+        status: true,
+        budgetEur: true,
+        spentEur: true,
+      },
+    });
 
-    // Mock response
-    const impression = {
-      impressionId,
-      recorded: true,
-      timestamp: timestamp || Date.now(),
-      viewable: viewable ?? true,
-      viewDuration: viewDuration ?? 0,
-    };
+    if (!campaign || campaign.status !== 'ACTIVE' || !hasCampaignBudget(campaign)) {
+      return NextResponse.json(
+        {
+          error: 'AdNotTrackable',
+          message: 'Anzeige ist nicht aktiv oder Budget ist erschöpft',
+          code: 'AD_NOT_TRACKABLE',
+        },
+        { status: 409 },
+      );
+    }
+
+    const today = startOfUtcDay();
+
+    await db.$transaction([
+      db.partnerAdStat.upsert({
+        where: {
+          campaignId_date: {
+            campaignId: campaign.id,
+            date: today,
+          },
+        },
+        update: {
+          impressions: { increment: 1 },
+        },
+        create: {
+          partnerId: campaign.partnerId,
+          campaignId: campaign.id,
+          date: today,
+          impressions: 1,
+        },
+      }),
+      db.partnerAdCampaign.update({
+        where: { id: campaign.id },
+        data: {
+          totalImpressions: { increment: 1 },
+        },
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,
-      impression,
+      impression: {
+        impressionId,
+        campaignId: campaign.id,
+        recorded: true,
+        timestamp: Date.now(),
+      },
     });
-
   } catch (error) {
     console.error('Impression tracking error:', error);
     return NextResponse.json(
@@ -58,7 +88,7 @@ export async function POST(request: NextRequest) {
         message: 'Fehler beim Tracking der Impression',
         code: 'IMPRESSION_TRACKING_FAILED',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
