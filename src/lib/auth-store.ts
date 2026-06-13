@@ -24,6 +24,22 @@ export interface User {
   subscriptionPlan: 'FREE' | 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE';
 }
 
+export function buildUserRequestHeaders(
+  user: { id?: string; email?: string; role?: string } | null | undefined,
+  extraHeaders: Record<string, string> = {},
+): Record<string, string> {
+  if (!user?.id) return { ...extraHeaders };
+
+  return {
+    ...extraHeaders,
+    Authorization: `Bearer local-dev-${user.id}`,
+    'x-user-id': user.id,
+    'x-user-email': user.email || '',
+    'x-user-role': user.role || '',
+    'x-user-roles': user.role || '',
+  };
+}
+
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;

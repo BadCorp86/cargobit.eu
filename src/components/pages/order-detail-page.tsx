@@ -14,7 +14,7 @@ import { InsuranceTier } from '@/components/cargobit/insurance-widget';
 import { TransportCard } from '@/components/cargobit/transport-card';
 import { BannerAd } from '@/components/ads/banner-ad';
 import { LiveTrackingCard } from '@/components/tracking/live-tracking-card';
-import { useAuthStore, type UserRole } from '@/lib/auth-store';
+import { buildUserRequestHeaders, useAuthStore, type UserRole } from '@/lib/auth-store';
 import {
   ArrowLeft,
   BriefcaseBusiness,
@@ -238,15 +238,7 @@ function getWalletHref(viewer: OrderViewerRole) {
 }
 
 function authRequestHeaders(user: ReturnType<typeof useAuthStore.getState>['user']): Record<string, string> {
-  return user?.id
-    ? {
-        Authorization: `Bearer local-dev-${user.id}`,
-        'x-user-id': user.id,
-        'x-user-email': user.email,
-        'x-user-role': user.role,
-        'x-user-roles': user.role,
-      }
-    : {};
+  return buildUserRequestHeaders(user);
 }
 
 // ========================================
@@ -595,13 +587,11 @@ function OrderCashFlow({
   const requestHeaders = React.useMemo<Record<string, string>>(() => {
     if (!userId) return {};
 
-    return {
-      'x-user-id': userId,
-      ...(userRole ? {
-        'x-user-role': userRole,
-        'x-user-roles': userRole,
-      } : {}),
-    };
+    return buildUserRequestHeaders({
+      id: userId,
+      email: `${userId}@local.cargobit.test`,
+      role: userRole || 'SHIPPER_PRIVATE',
+    });
   }, [userId, userRole]);
 
   React.useEffect(() => {
@@ -697,9 +687,8 @@ function OrderCashFlow({
       const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/payout/release`, {
         method: 'POST',
         headers: {
+          ...requestHeaders,
           'Content-Type': 'application/json',
-          ...(userId ? { 'x-user-id': userId } : {}),
-          ...(userRole ? { 'x-user-role': userRole } : {}),
         },
         body: JSON.stringify({
           amount: invoice?.lineItems[0]?.totalNet || 850,
@@ -1822,11 +1811,7 @@ export default function OrderDetailPage({ orderId = 'TR-12345' }: OrderDetailPag
 
       try {
         const response = await fetch(`/api/jobs/${encodeURIComponent(orderId)}`, {
-          headers: {
-            'x-user-id': user.id,
-            'x-user-email': user.email,
-            'x-user-role': user.role,
-          },
+          headers: buildUserRequestHeaders(user),
         });
         const payload = await response.json();
 

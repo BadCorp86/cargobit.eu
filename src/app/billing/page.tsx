@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -15,7 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { getSubscriptionPlanConfig, type SubscriptionPlanConfig } from '@/lib/billing/plans';
-import { useAuthStore } from '@/lib/auth-store';
+import { buildUserRequestHeaders, useAuthStore, type User } from '@/lib/auth-store';
 
 interface SubscriptionState extends Partial<SubscriptionPlanConfig> {
   plan: string;
@@ -72,7 +72,12 @@ export default function BillingPage() {
   const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const userId = isAuthenticated && user?.id ? user.id : 'demo-user';
+  const requestUser = useMemo<Pick<User, 'id' | 'email' | 'role'>>(
+    () => isAuthenticated && user?.id
+      ? user
+      : { id: 'demo-user', email: 'demo@cargobit.dev', role: 'SHIPPER_PRIVATE' },
+    [isAuthenticated, user],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +85,7 @@ export default function BillingPage() {
     const loadSubscription = async () => {
       setLoading(true);
       try {
-        const headers = { 'x-user-id': userId };
+        const headers = buildUserRequestHeaders(requestUser);
         const [response, invoicesResponse] = await Promise.all([
           fetch('/api/subscriptions', { headers }),
           fetch('/api/subscriptions/invoices', { headers }),
@@ -120,7 +125,7 @@ export default function BillingPage() {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [requestUser]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -143,8 +148,7 @@ export default function BillingPage() {
         const completeResponse = await fetch('/api/subscriptions/mock-complete', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': userId,
+            ...buildUserRequestHeaders(requestUser, { 'Content-Type': 'application/json' }),
           },
           body: JSON.stringify({ sessionId }),
         });
@@ -154,7 +158,7 @@ export default function BillingPage() {
           throw new Error(completeData.message || completeData.error || 'Mock-Checkout konnte nicht abgeschlossen werden');
         }
 
-        const headers = { 'x-user-id': userId };
+        const headers = buildUserRequestHeaders(requestUser);
         const [subscriptionResponse, invoicesResponse] = await Promise.all([
           fetch('/api/subscriptions', { headers }),
           fetch('/api/subscriptions/invoices', { headers }),
@@ -185,7 +189,7 @@ export default function BillingPage() {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [requestUser]);
 
   const plans = payload?.plans || FALLBACK_PLANS;
   const currentPlan = String(payload?.subscription?.plan || 'free').toLowerCase();
@@ -203,8 +207,7 @@ export default function BillingPage() {
       const response = await fetch('/api/subscriptions', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId,
+          ...buildUserRequestHeaders(requestUser, { 'Content-Type': 'application/json' }),
         },
         body: JSON.stringify({ plan, billingCycle: 'monthly' }),
       });
@@ -234,7 +237,7 @@ export default function BillingPage() {
     try {
       const response = await fetch('/api/subscriptions/portal', {
         method: 'POST',
-        headers: { 'x-user-id': userId },
+        headers: buildUserRequestHeaders(requestUser),
       });
       const data = await response.json();
 

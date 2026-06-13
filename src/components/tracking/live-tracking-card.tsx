@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { buildUserRequestHeaders } from '@/lib/auth-store';
 import { cn } from '@/lib/utils';
 import { Clock3, Loader2, MapPin, Navigation, RadioTower, RefreshCw, Satellite } from 'lucide-react';
 
@@ -81,10 +82,11 @@ export function LiveTrackingCard({
   const loadTracking = React.useCallback(async () => {
     try {
       const response = await fetch(`/api/transports/${encodeURIComponent(transportId)}/tracking`, {
-        headers: {
-          ...(userId ? { 'x-user-id': userId } : {}),
-          ...(userRole ? { 'x-user-role': userRole } : {}),
-        },
+        headers: buildUserRequestHeaders(userId ? {
+          id: userId,
+          email: `${userId}@local.cargobit.test`,
+          role: userRole,
+        } : null),
       });
       const payload = await response.json();
 

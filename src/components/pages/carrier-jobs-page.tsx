@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { useAuthStore } from '@/lib/auth-store';
+import { buildUserRequestHeaders, useAuthStore } from '@/lib/auth-store';
 
 type CarrierJob = {
   id: string;
@@ -76,17 +76,6 @@ type CarrierPayoutStatus = NonNullable<CarrierJob['payout']>['status'];
 
 function normalizeView(value: string | null): CarrierJobsView {
   return value === 'offers' || value === 'completed' || value === 'all' ? value : 'active';
-}
-
-function authHeaders(user: ReturnType<typeof useAuthStore.getState>['user']) {
-  return user?.id
-    ? {
-        'x-user-id': user.id,
-        'x-user-email': user.email,
-        'x-user-role': user.role,
-        'x-user-roles': user.role,
-      }
-    : {};
 }
 
 function formatMoney(value?: number | null, currency = 'EUR') {
@@ -199,7 +188,7 @@ export function CarrierJobsPage({ initialView = 'active' }: { initialView?: Carr
     setError(null);
     try {
       const response = await fetch(`/api/carrier/jobs?view=${encodeURIComponent(view)}`, {
-        headers: authHeaders(user),
+        headers: buildUserRequestHeaders(user),
         cache: 'no-store',
       });
       const payload = await response.json();
@@ -230,7 +219,7 @@ export function CarrierJobsPage({ initialView = 'active' }: { initialView?: Carr
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders(user),
+          ...buildUserRequestHeaders(user),
         },
         body: JSON.stringify({ action: 'withdraw' }),
       });
@@ -276,7 +265,7 @@ export function CarrierJobsPage({ initialView = 'active' }: { initialView?: Carr
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders(user),
+          ...buildUserRequestHeaders(user),
         },
         body: JSON.stringify({
           action: 'update',
@@ -310,7 +299,7 @@ export function CarrierJobsPage({ initialView = 'active' }: { initialView?: Carr
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders(user),
+          ...buildUserRequestHeaders(user),
         },
         body: JSON.stringify({
           status: action.status,
@@ -339,7 +328,7 @@ export function CarrierJobsPage({ initialView = 'active' }: { initialView?: Carr
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders(user),
+          ...buildUserRequestHeaders(user),
         },
         body: JSON.stringify({
           action: 'submit_pod',

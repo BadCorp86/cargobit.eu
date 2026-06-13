@@ -36,7 +36,7 @@ import {
   Lightbulb,
 } from 'lucide-react';
 
-import { useAuthStore } from '@/lib/auth-store';
+import { buildUserRequestHeaders, useAuthStore } from '@/lib/auth-store';
 import { AuthModal } from '@/components/auth/auth-modal';
 import { Dashboard } from '@/components/dashboard/dashboard';
 import { TransportForm, type TransportFormInitialData, type TransportFormSubmitPayload } from '@/components/transport/transport-form';
@@ -289,12 +289,7 @@ export default function Home() {
 
     const response = await fetch('/api/jobs', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-id': user.id,
-        'x-user-email': user.email,
-        'x-user-role': user.role,
-      },
+      headers: buildUserRequestHeaders(user, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
 
@@ -778,12 +773,7 @@ export default function Home() {
     try {
       const response = await fetch('/api/feedback', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.id,
-          'x-user-email': user.email,
-          'x-user-role': user.role,
-        },
+        headers: buildUserRequestHeaders(user, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           category: feedbackForm.category,
           roleContext: feedbackForm.roleContext || user.role,

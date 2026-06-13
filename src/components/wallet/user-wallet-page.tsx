@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAuthStore, type User } from '@/lib/auth-store';
+import { buildUserRequestHeaders, useAuthStore, type User } from '@/lib/auth-store';
 import { ArrowLeft, CreditCard, Loader2, ShieldCheck, Wallet } from 'lucide-react';
 
 type WalletPurpose = 'shipper' | 'carrier' | 'driver';
@@ -44,17 +44,6 @@ interface WalletView {
     processingDays: number;
     currency: string;
   };
-}
-
-function authHeaders(user: User | null): Record<string, string> {
-  return user?.id
-    ? {
-        Authorization: `Bearer local-dev-${user.id}`,
-        'x-user-id': user.id,
-        'x-user-email': user.email,
-        'x-user-roles': user.role,
-      }
-    : {};
 }
 
 function pageCopy(purpose: WalletPurpose) {
@@ -166,7 +155,7 @@ export function UserWalletPage({
 
       try {
         const response = await fetch('/api/wallet', {
-          headers: authHeaders(user),
+          headers: buildUserRequestHeaders(user),
         });
         const payload = await response.json();
         if (cancelled) return;
@@ -212,7 +201,7 @@ export function UserWalletPage({
     if (!user?.id || !isAuthenticated || !hasWalletAccess) return;
 
     const response = await fetch('/api/wallet', {
-      headers: authHeaders(user),
+      headers: buildUserRequestHeaders(user),
     });
     const payload = await response.json();
     if (response.ok && payload.wallet) {
@@ -234,7 +223,7 @@ export function UserWalletPage({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders(user),
+          ...buildUserRequestHeaders(user),
         },
         body: JSON.stringify({
           amountCents: Math.round(requestedTopupAmount * 100),
@@ -272,7 +261,7 @@ export function UserWalletPage({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders(user),
+          ...buildUserRequestHeaders(user),
         },
         body: JSON.stringify({
           amount: requestedPayoutAmount,
@@ -313,7 +302,7 @@ export function UserWalletPage({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders(user),
+          ...buildUserRequestHeaders(user),
         },
         body: JSON.stringify({
           holderName: payoutMethodForm.holderName,

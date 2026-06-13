@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuthStore } from '@/lib/auth-store';
+import { buildUserRequestHeaders, useAuthStore } from '@/lib/auth-store';
 
 type ShipperJobsView = 'active' | 'offers' | 'drafts' | 'completed' | 'all';
 
@@ -55,17 +55,6 @@ type ShipperJob = {
 
 function normalizeView(value?: string | null): ShipperJobsView {
   return value === 'offers' || value === 'drafts' || value === 'completed' || value === 'all' ? value : 'active';
-}
-
-function authHeaders(user: ReturnType<typeof useAuthStore.getState>['user']) {
-  return user?.id
-    ? {
-        'x-user-id': user.id,
-        'x-user-email': user.email,
-        'x-user-role': user.role,
-        'x-user-roles': user.role,
-      }
-    : {};
 }
 
 function formatMoney(value?: number | null, currency = 'EUR') {
@@ -122,7 +111,7 @@ export function ShipperJobsPage({ initialView = 'active' }: { initialView?: Ship
     setError(null);
     try {
       const response = await fetch(`/api/shipper/jobs?view=${encodeURIComponent(view)}`, {
-        headers: authHeaders(user),
+        headers: buildUserRequestHeaders(user),
         cache: 'no-store',
       });
       const payload = await response.json();
@@ -153,7 +142,7 @@ export function ShipperJobsPage({ initialView = 'active' }: { initialView?: Ship
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          ...authHeaders(user),
+          ...buildUserRequestHeaders(user),
         },
         body: JSON.stringify({ bid_id: offerId }),
       });

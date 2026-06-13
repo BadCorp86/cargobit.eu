@@ -20,7 +20,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { getFallbackDriverMission } from '@/lib/product-operating-model';
-import { useAuthStore } from '@/lib/auth-store';
+import { buildUserRequestHeaders, useAuthStore } from '@/lib/auth-store';
 import { cn } from '@/lib/utils';
 import type { DriverMobileActionId } from '@/lib/driver-mobile';
 
@@ -61,7 +61,7 @@ export default function DriverMobilePage() {
         if (user?.id) params.set('userId', user.id);
 
         const response = await fetch(`/api/driver/mobile?${params.toString()}`, {
-          headers: user?.id ? { 'x-user-id': user.id } : undefined,
+          headers: buildUserRequestHeaders(user),
         });
         const payload = await response.json();
 
@@ -114,8 +114,8 @@ export default function DriverMobilePage() {
           const response = await fetch(`/api/executions/${encodeURIComponent(mission.id)}/tracking`, {
             method: 'POST',
             headers: {
+              ...buildUserRequestHeaders(user),
               'Content-Type': 'application/json',
-              ...(user?.id ? { 'x-user-id': user.id } : {}),
               ...(mission.driver?.id ? { 'x-driver-id': mission.driver.id } : {}),
             },
             body: JSON.stringify({
@@ -171,8 +171,8 @@ export default function DriverMobilePage() {
       const response = await fetch('/api/driver/mobile/action', {
         method: 'POST',
         headers: {
+          ...buildUserRequestHeaders(user),
           'Content-Type': 'application/json',
-          ...(user?.id ? { 'x-user-id': user.id } : {}),
         },
         body: JSON.stringify({
           action,

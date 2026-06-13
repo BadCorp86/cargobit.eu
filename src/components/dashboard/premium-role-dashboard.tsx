@@ -42,6 +42,7 @@ import {
   getRoleNextSteps,
   type RoleNextStep,
 } from '@/lib/product-operating-model';
+import { buildUserRequestHeaders } from '@/lib/auth-store';
 
 interface PremiumRoleDashboardProps {
   user?: RoleDashboardUser;
@@ -211,10 +212,7 @@ export function PremiumRoleDashboard({
     const load = async () => {
       try {
         const response = await fetch(`/api/dashboard/role?${roleApiParams(role, user)}`, {
-          headers: {
-            ...(user?.id ? { 'x-user-id': user.id } : {}),
-            ...(user?.email ? { 'x-user-email': user.email } : {}),
-          },
+          headers: buildUserRequestHeaders(user),
         });
         if (!response.ok) {
           throw new Error('Dashboard API failed');
