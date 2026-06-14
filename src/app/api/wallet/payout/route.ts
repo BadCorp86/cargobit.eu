@@ -5,7 +5,7 @@
 // ============================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { PayoutStatus } from '@prisma/client';
+import { PayoutStatus, type Payout } from '@prisma/client';
 import { db } from '@/lib/db';
 import { 
   performHybridSecurityCheck,
@@ -24,6 +24,7 @@ interface PayoutRequest {
   currency: string;
   payoutMethodId: string;
   description?: string;
+  idempotencyKey?: string;
 }
 
 interface PayoutResponse {
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
   try {
     const body: PayoutRequest = await request.json();
     const payoutLimits = await getPayoutLimits();
+    const requestedCurrency = body.currency || payoutLimits.currency;
 
     // Validate amount
     if (!body.amount || body.amount <= 0) {
@@ -77,7 +79,7 @@ export async function POST(request: NextRequest) {
     if (body.amount < payoutLimits.minAmount) {
       return NextResponse.json({
         error: 'ValidationError',
-        message: `Mindestbetrag für Bankauszahlungen ist ${formatMoney(payoutLimits.minAmount, body.currency || payoutLimits.currency)}.`,
+        message: `Mindestbetrag für Bankauszahlungen ist ${formatMoney(payoutLimits.minAmount, requestedCurrency)}.`,
         code: 'PAYOUT_AMOUNT_TOO_LOW',
         minAmount: payoutLimits.minAmount,
       }, { status: 400 });
@@ -86,7 +88,7 @@ export async function POST(request: NextRequest) {
     if (body.amount > payoutLimits.maxAmount) {
       return NextResponse.json({
         error: 'ValidationError',
-        message: `Maximalbetrag pro Bankauszahlung ist ${formatMoney(payoutLimits.maxAmount, body.currency || payoutLimits.currency)}.`,
+        message: `Maximalbetrag pro Bankauszahlung ist ${formatMoney(payoutLimits.maxAmount, requestedCurrency)}.`,
         code: 'PAYOUT_AMOUNT_TOO_HIGH',
         maxAmount: payoutLimits.maxAmount,
       }, { status: 400 });
@@ -96,6 +98,37 @@ export async function POST(request: NextRequest) {
     if (auth.response) return auth.response;
 
     const userId = auth.user.id;
+    const idempotencyKey = normalizeIdempotencyKey(
+      request.headers.get('Idempotency-Key') || body.idempotencyKey,
+      userId
+    );
+
+    if (!idempotencyKey) {
+      return NextResponse.json({
+        error: 'ValidationError',
+        message: 'Idempotency-Key ist für Bankauszahlungen erforderlich.',
+        code: 'IDEMPOTENCY_KEY_REQUIRED',
+      }, { status: 400 });
+    }
+
+    const existingPayout = await db.payout.findUnique({
+      where: { idempotencyKey },
+    });
+
+    if (existingPayout) {
+      if (existingPayout.userId !== userId) {
+        return NextResponse.json({
+          error: 'ForbiddenError',
+          message: 'Diese Auszahlungsanforderung gehört zu einem anderen Nutzer.',
+          code: 'IDEMPOTENCY_KEY_FORBIDDEN',
+        }, { status: 403 });
+      }
+
+      return NextResponse.json(buildDuplicatePayoutResponse(existingPayout, payoutLimits), {
+        status: 200,
+        headers: { 'X-Idempotent-Replay': 'true' },
+      });
+    }
 
     // Get user with wallet and payout method
     const user = await db.user.findUnique({
@@ -136,7 +169,7 @@ export async function POST(request: NextRequest) {
       }, { status: 403 });
     }
 
-    if ((body.currency || 'EUR') !== user.wallet.currency) {
+    if (requestedCurrency !== user.wallet.currency) {
       return NextResponse.json({
         error: 'ValidationError',
         message: `Auszahlungen sind nur in ${user.wallet.currency} möglich.`,
@@ -229,7 +262,7 @@ export async function POST(request: NextRequest) {
       resourceId: user.wallet.id,
       transactionContext: {
         amount: body.amount,
-        currency: body.currency || 'EUR',
+        currency: requestedCurrency,
         isNewIban,
       },
     };
@@ -309,7 +342,7 @@ export async function POST(request: NextRequest) {
         data: {
           userId,
           amountCents: Math.round(body.amount * 100),
-          currency: body.currency || 'EUR',
+          currency: requestedCurrency,
           status: status === 'DELAYED' ? PayoutStatus.PENDING : PayoutStatus.PROCESSING,
           payoutMethodId: payoutMethod.id,
           ibanLast4: payoutMethod.iban.slice(-4),
@@ -318,7 +351,7 @@ export async function POST(request: NextRequest) {
           riskFactors: JSON.stringify(securityResult.riskCheck?.factors || []),
           delayedUntil: status === 'DELAYED' ? availableAt : undefined,
           delayReason: status === 'DELAYED' ? mitigations.join('; ') || 'Risk mitigation delay' : undefined,
-          idempotencyKey: `wallet_payout_${user.wallet!.id}_${Date.now()}`,
+          idempotencyKey,
         },
       });
 
@@ -327,8 +360,8 @@ export async function POST(request: NextRequest) {
           walletId: user.wallet!.id,
           type: 'PAYOUT',
           amount: -body.amount,
-          currency: body.currency || 'EUR',
-          description: body.description || 'Auszahlung',
+          currency: requestedCurrency,
+          description: body.description || 'Bankauszahlung aus eigenem Wallet',
           payoutId: payout.id,
           processedAt: status === 'DELAYED' ? null : new Date(),
         },
@@ -377,6 +410,7 @@ export async function POST(request: NextRequest) {
           payoutId: payoutWrite.payout.id,
           amount: body.amount,
           status,
+          idempotencyKey,
           availableAt,
         }),
       },
@@ -450,4 +484,61 @@ function formatMoney(value: number, currency = 'EUR') {
     style: 'currency',
     currency,
   }).format(value);
+}
+
+function normalizeIdempotencyKey(value: string | null | undefined, userId: string) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  const safe = raw.replace(/[^a-zA-Z0-9:_-]/g, '').slice(0, 120);
+  if (safe.length < 12) return null;
+
+  return safe.startsWith(`wallet_payout:${userId}:`)
+    ? safe
+    : `wallet_payout:${userId}:${safe}`;
+}
+
+function buildDuplicatePayoutResponse(
+  payout: Payout,
+  payoutLimits: Awaited<ReturnType<typeof getPayoutLimits>>
+): PayoutResponse & { duplicate: true } {
+  const responseStatus: PayoutResponse['status'] =
+    payout.status === PayoutStatus.PAID
+      ? 'COMPLETED'
+      : payout.status === PayoutStatus.FAILED || payout.status === PayoutStatus.CANCELLED
+        ? 'BLOCKED'
+        : payout.delayedUntil
+          ? 'DELAYED'
+          : 'PROCESSING';
+
+  return {
+    success: payout.status !== PayoutStatus.FAILED && payout.status !== PayoutStatus.CANCELLED,
+    duplicate: true,
+    message: 'Diese Auszahlung wurde bereits angelegt. Es wurde keine zweite Abbuchung erstellt.',
+    payoutId: payout.id,
+    status: responseStatus,
+    availableAt: payout.delayedUntil || undefined,
+    payoutLimits,
+    riskAnalysis: payout.riskScore !== null || payout.riskLevel
+      ? {
+          score: payout.riskScore || 0,
+          level: payout.riskLevel || 'unknown',
+          userScore: 0,
+          companyScore: 0,
+          transactionScore: 0,
+          factors: safeJsonArray(payout.riskFactors),
+        }
+      : undefined,
+  };
+}
+
+function safeJsonArray(value: string | null | undefined) {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
 }

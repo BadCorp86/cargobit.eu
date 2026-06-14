@@ -124,6 +124,7 @@ export function UserWalletPage({
   const [topupLoading, setTopupLoading] = React.useState(false);
   const [payoutMessage, setPayoutMessage] = React.useState<string | null>(null);
   const [payoutLoading, setPayoutLoading] = React.useState(false);
+  const payoutIdempotencyKeyRef = React.useRef(createPayoutIdempotencyKey());
   const [payoutMethodForm, setPayoutMethodForm] = React.useState({
     holderName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '',
     iban: '',
@@ -185,6 +186,7 @@ export function UserWalletPage({
   const requestedPayoutAmount = Number(payoutAmount.replace(',', '.')) || 0;
   const requestedTopupAmount = Number(topupAmount.replace(',', '.')) || 0;
   const payoutLimits = wallet?.payoutLimits || { minAmount: 50, maxAmount: 25000, processingDays: 3, currency: 'EUR' };
+  const isLocalPreview = process.env.NODE_ENV !== 'production';
   const payoutBlockReason = getPayoutBlockReason({
     walletPurpose,
     wallet,
@@ -261,6 +263,7 @@ export function UserWalletPage({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Idempotency-Key': payoutIdempotencyKeyRef.current,
           ...buildUserRequestHeaders(user),
         },
         body: JSON.stringify({
@@ -268,6 +271,7 @@ export function UserWalletPage({
           currency: wallet.currency,
           payoutMethodId: verifiedPayoutMethod.id,
           description: walletPurpose === 'driver' ? 'Fahrer-Auszahlung' : 'Transporteur-Auszahlung',
+          idempotencyKey: payoutIdempotencyKeyRef.current,
         }),
       });
       const payload = await response.json();
@@ -277,9 +281,14 @@ export function UserWalletPage({
       }
 
       await refreshWallet();
+      if (!payload.duplicate) {
+        payoutIdempotencyKeyRef.current = createPayoutIdempotencyKey();
+      }
       setPayoutMessage(payload.status === 'DELAYED'
         ? `Auszahlung vorgemerkt und verzögert: ${payload.message}`
-        : `Auszahlung gestartet: ${payload.payoutId || payload.status || 'processing'}`);
+        : payload.duplicate
+          ? `Auszahlung bereits angelegt: ${payload.payoutId || payload.status || 'processing'}`
+          : `Auszahlung gestartet: ${payload.payoutId || payload.status || 'processing'}`);
     } catch {
       setPayoutMessage('Auszahlung konnte lokal nicht gestartet werden.');
     } finally {
@@ -309,7 +318,7 @@ export function UserWalletPage({
           iban: payoutMethodForm.iban,
           bic: payoutMethodForm.bic,
           isDefault: true,
-          simulateVerification: true,
+          simulateVerification: isLocalPreview,
         }),
       });
       const payload = await response.json();
@@ -449,10 +458,22 @@ export function UserWalletPage({
                       <p className="mt-2 text-xs text-white/45">
                         Mindestbetrag {formatMoney(payoutLimits.minAmount, wallet.currency)} · Maximalbetrag {formatMoney(payoutLimits.maxAmount, wallet.currency)} · übliche Bearbeitung {payoutLimits.processingDays} Werktage
                       </p>
+                      {wallet.payoutMethods.length ? (
+                        <div className="mt-3 space-y-2">
+                          {wallet.payoutMethods.map((method) => (
+                            <div key={method.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/55">
+                              <span>{method.holderName} · IBAN endet {method.iban.slice(-4)}</span>
+                              <Badge className={method.verified ? 'bg-[#2ECC71]/15 text-[#8ff0b9]' : 'bg-[#F39C12]/15 text-[#ffd79a]'}>
+                                {method.verified ? 'verifiziert' : 'in Prüfung'}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                     {!verifiedPayoutMethod ? (
                       <div className="rounded-2xl border border-[#F39C12]/20 bg-[#F39C12]/10 p-4 text-sm text-white/65">
-                        Hinterlege zuerst eine Auszahlungsmethode. Lokal wird sie für Tests automatisch verifiziert; live muss sie geprüft werden.
+                        Hinterlege zuerst eine Auszahlungsmethode. In der lokalen Preview kann sie automatisch verifiziert werden; im Livebetrieb bleibt sie bis zur Prüfung gesperrt.
                       </div>
                     ) : null}
                     <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -633,4 +654,12 @@ function canAccessWalletPurpose(role: User['role'] | undefined, purpose: WalletP
   }
 
   return role === 'CARRIER' || role === 'DISPATCHER' || role === 'DRIVER_SELF_EMPLOYED';
+}
+
+function createPayoutIdempotencyKey() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `client:${crypto.randomUUID()}`;
+  }
+
+  return `client:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 }

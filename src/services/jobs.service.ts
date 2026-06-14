@@ -19,7 +19,7 @@ import { TransportType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { matchTransportersForJob, type JobRequirements } from './matching-ml.service';
 import { broadcastJobStatus, notifyUser, broadcastNewBid } from './redis-publisher.service';
-import { reserveTransportBudget } from './wallet-reservation.service';
+import { releaseTransportReservation, reserveTransportBudget } from './wallet-reservation.service';
 import { mapService } from './map.service';
 
 // ============================================
@@ -733,8 +733,8 @@ export async function cancelJob(
   }
   
   // If job was booked, handle refund
-  if (transport.assignment && transport.agreedPrice) {
-    await handleCancellationRefund(jobId, transport.agreedPrice);
+  if (transport.assignment || transport.status === 'PUBLISHED') {
+    await handleCancellationRefund(jobId, transport.shipperUserId);
   }
   
   // Update status
@@ -760,72 +760,24 @@ async function handleJobCompletion(jobId: string): Promise<void> {
   });
   
   if (!transport?.assignment) return;
-  
-  // Release pending payment to transporter
-  const pendingTx = await prisma.walletTransaction.findFirst({
-    where: {
-      relatedTransportId: jobId,
-      type: 'PAYMENT_IN',
-      description: { contains: 'pending' },
-    },
-  });
-  
-  if (pendingTx) {
-    // Update transaction to completed
-    await prisma.walletTransaction.update({
-      where: { id: pendingTx.id },
-      data: {
-        description: pendingTx.description?.replace('pending', 'completed'),
-        processedAt: new Date(),
-      },
-    });
-    
-    console.log(`[Jobs] Released pending payment for job ${jobId}`);
-  }
-  
-  // Trigger payout if transporter has Stripe Connect
-  // This would call the payout service
+
+  console.log(
+    `[Jobs] Job ${jobId} completed. Wallet release is handled by order-payout-release after POD, risk gates and the 24 working-hour window.`
+  );
 }
 
 // ============================================
 // HANDLE CANCELLATION REFUND
 // ============================================
 
-async function handleCancellationRefund(jobId: string, amount: number): Promise<void> {
+async function handleCancellationRefund(jobId: string, shipperUserId: string): Promise<void> {
   console.log(`[Jobs] Processing refund for canceled job ${jobId}`);
-  
-  // Find and reverse wallet transactions
-  const transactions = await prisma.walletTransaction.findMany({
-    where: { relatedTransportId: jobId },
+
+  await releaseTransportReservation({
+    transportId: jobId,
+    shipperUserId,
+    reason: `Reservierung wegen storniertem Auftrag ${jobId} freigegeben`,
   });
-  
-  // Create refund transactions
-  for (const tx of transactions) {
-    if (tx.type === 'PAYMENT_OUT') {
-      // Refund to shipper
-      const shipperWallet = await prisma.wallet.findFirst({
-        where: { ownerUserId: tx.walletId }, // This needs proper lookup
-      });
-      
-      if (shipperWallet) {
-        await prisma.walletTransaction.create({
-          data: {
-            walletId: shipperWallet.id,
-            type: 'REFUND',
-            amount: tx.amount,
-            currency: tx.currency,
-            relatedTransportId: jobId,
-            description: `Refund for canceled job ${jobId}`,
-          },
-        });
-        
-        await prisma.wallet.update({
-          where: { id: shipperWallet.id },
-          data: { balance: { increment: tx.amount } },
-        });
-      }
-    }
-  }
 }
 
 // ============================================

@@ -158,16 +158,27 @@ test.describe('CargoBit Auftrag bis Auszahlung E2E', () => {
     expect(typeof available).toBe('number');
     expect(available).toBeGreaterThanOrEqual(820);
 
+    const payoutIdempotencyKey = `e2e-carrier-payout-${Date.now()}`;
+    const payoutRequest = {
+      amount: 100,
+      currency: 'EUR',
+      payoutMethodId: carrierPayoutMethodId,
+      description: 'E2E Bankauszahlung aus Transporteur-Wallet',
+      idempotencyKey: payoutIdempotencyKey,
+    };
     const payout = await request.post(`${BASE_URL}/api/wallet/payout`, {
       headers: authHeaders(carrierToken),
-      data: {
-        amount: 100,
-        currency: 'EUR',
-        payoutMethodId: carrierPayoutMethodId,
-        description: 'E2E Bankauszahlung aus Transporteur-Wallet',
-      },
+      data: payoutRequest,
     });
     expect(payout.status()).toBe(200);
+
+    const duplicatePayout = await request.post(`${BASE_URL}/api/wallet/payout`, {
+      headers: authHeaders(carrierToken),
+      data: payoutRequest,
+    });
+    expect(duplicatePayout.status()).toBe(200);
+    const duplicatePayoutBody = await duplicatePayout.json();
+    expect(duplicatePayoutBody.duplicate).toBe(true);
 
     const shipperPayoutAttempt = await request.post(`${BASE_URL}/api/wallet/payout`, {
       headers: authHeaders(shipperToken),
@@ -176,6 +187,7 @@ test.describe('CargoBit Auftrag bis Auszahlung E2E', () => {
         currency: 'EUR',
         payoutMethodId: carrierPayoutMethodId,
         description: 'E2E Fremd-Wallet-Auszahlung muss blockiert werden',
+        idempotencyKey: `e2e-shipper-payout-blocked-${Date.now()}`,
       },
     });
     expect([403, 404]).toContain(shipperPayoutAttempt.status());
