@@ -63,6 +63,7 @@ interface SubscriptionInvoice {
 
 const FALLBACK_PLANS = getSubscriptionPlanConfig();
 const PLAN_ORDER = ['free', 'starter'];
+const IS_LOCAL_PREVIEW = process.env.NODE_ENV !== 'production';
 
 export default function BillingPage() {
   const { user, isAuthenticated } = useAuthStore();
@@ -114,6 +115,7 @@ export default function BillingPage() {
             source: 'client_fallback',
           });
           setInvoices([]);
+          setMessage('Business-Daten konnten nicht geladen werden. Die Seite zeigt vorübergehend den kostenlosen Einstieg; echte Zahlungen laufen nur über Stripe.');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -134,7 +136,7 @@ export default function BillingPage() {
     const checkout = params.get('checkout');
     const sessionId = params.get('session_id');
 
-    if (checkout !== 'mock_success' || !sessionId) return;
+    if (!IS_LOCAL_PREVIEW || checkout !== 'mock_success' || !sessionId) return;
 
     const storageKey = `cargobit_mock_checkout_${sessionId}`;
     if (window.sessionStorage.getItem(storageKey) === 'done') return;
@@ -142,7 +144,7 @@ export default function BillingPage() {
     let cancelled = false;
 
     const completeMockCheckout = async () => {
-      setMessage('Lokaler Business-Checkout wird aktiviert...');
+      setMessage('Lokaler Preview-Checkout wird aktiviert...');
 
       try {
         const completeResponse = await fetch('/api/subscriptions/mock-complete', {
@@ -175,7 +177,7 @@ export default function BillingPage() {
           window.history.replaceState(null, '', '/billing');
           setPayload(subscriptionData);
           setInvoices(Array.isArray(invoiceData.invoices) ? invoiceData.invoices : []);
-          setMessage('Business-Tarif wurde lokal aktiviert.');
+          setMessage('Business-Tarif wurde lokal für die Preview aktiviert.');
         }
       } catch (error) {
         if (!cancelled) {

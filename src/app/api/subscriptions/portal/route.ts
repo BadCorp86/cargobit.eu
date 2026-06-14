@@ -75,14 +75,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (!process.env.STRIPE_SECRET_KEY || !stripeCustomerId.startsWith('cus_')) {
-      if (process.env.NODE_ENV !== 'production') {
-        return NextResponse.json({
-          success: true,
-          provider: 'mock',
-          portalUrl: `${appUrl}/billing?portal=mock`,
-        });
-      }
-
       return NextResponse.json(
         {
           error: 'StripeConfigurationError',
@@ -106,15 +98,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[SubscriptionPortal] Failed to create customer portal session:', error);
-
-    if (process.env.NODE_ENV !== 'production') {
-      return NextResponse.json({
-        success: true,
-        provider: 'mock',
-        portalUrl: `${appUrl}/billing?portal=mock`,
-        source: 'development_fallback',
-      });
-    }
 
     return NextResponse.json(
       {

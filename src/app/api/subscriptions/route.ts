@@ -20,22 +20,10 @@ const PLAN_CONFIG = getSubscriptionPlanConfig();
 
 type BillingCycle = 'monthly' | 'yearly';
 
-// Mock Stripe Checkout
-const mockStripeCheckout = {
-  sessions: {
-    create: async (params: any) => ({
-      id: `cs_mock_${Date.now()}`,
-      url: `https://checkout.stripe.com/mock/${Date.now()}`,
-      client_reference_id: params.client_reference_id,
-      metadata: params.metadata,
-    }),
-  },
-};
-
 function getStripePriceId(plan: string, billingCycle: 'monthly' | 'yearly') {
   const envKey = STRIPE_PRICE_ENV_KEYS[plan]?.[billingCycle];
   if (envKey) {
-    return process.env[envKey] || `price_${plan}_${billingCycle}_mock`;
+    return process.env[envKey];
   }
 
   return undefined;
@@ -66,32 +54,8 @@ async function createStripeCheckoutSession(params: {
   billingCycle: BillingCycle;
   metadata: Record<string, string | number>;
   appUrl: string;
-  forceMock?: boolean;
 }) {
   const appUrl = params.appUrl;
-
-  if (params.forceMock || !process.env.STRIPE_SECRET_KEY || params.priceId.includes('_mock')) {
-    const sessionId = `cs_mock_${Date.now()}`;
-    const session = await mockStripeCheckout.sessions.create({
-      mode: 'subscription',
-      payment_method_types: ['card', 'sepa_debit'],
-      line_items: [{
-        price: params.priceId,
-        quantity: 1,
-      }],
-      success_url: `${appUrl}/billing?checkout=mock_success&session_id=${sessionId}`,
-      cancel_url: `${appUrl}/billing?checkout=cancel`,
-      client_reference_id: params.userId,
-      metadata: params.metadata,
-    });
-
-    return {
-      ...session,
-      id: sessionId,
-      url: `${appUrl}/billing?checkout=mock_success&session_id=${sessionId}`,
-      provider: 'mock',
-    };
-  }
 
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const metadata = Object.fromEntries(
@@ -326,9 +290,17 @@ export async function POST(request: NextRequest) {
     if (!priceId) {
       return NextResponse.json({
         error: 'ConfigurationError',
-        message: 'Preiskonfiguration nicht gefunden',
-        code: 'PRICE_NOT_FOUND',
-      }, { status: 500 });
+        message: 'Stripe Business-Preis ist nicht konfiguriert. Bitte STRIPE_PRICE_BUSINESS_MONTHLY setzen.',
+        code: 'STRIPE_PRICE_NOT_CONFIGURED',
+      }, { status: 503 });
+    }
+
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return NextResponse.json({
+        error: 'ConfigurationError',
+        message: 'Stripe Secret Key ist nicht konfiguriert. Business-Checkout kann noch nicht gestartet werden.',
+        code: 'STRIPE_SECRET_NOT_CONFIGURED',
+      }, { status: 503 });
     }
 
     const selectedPrice = planConfig.monthlyPrice;
@@ -341,7 +313,6 @@ export async function POST(request: NextRequest) {
       plan,
       billingCycle,
       appUrl,
-      forceMock: !companyOwner.dbAvailable,
       metadata: {
         userId,
         companyId,

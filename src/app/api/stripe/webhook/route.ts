@@ -720,20 +720,20 @@ async function handlePaymentIntentSucceeded(event: StripeWebhookEvent): Promise<
         },
       });
     });
-  }
 
-  await db.notification.create({
-    data: {
-      userId: metadata.userId,
-      type: 'WALLET_TOPUP',
-      title: 'Zahlungsschutz aufgeladen',
-      message: `Ihr Zahlungsschutz-Konto wurde um ${formatMoney(paymentIntent.amount / 100, paymentIntent.currency || 'EUR')} aufgeladen.`,
-      data: JSON.stringify({
-        paymentIntentId: paymentIntent.id,
-        eventId: event.id,
-      }),
-    },
-  });
+    await db.notification.create({
+      data: {
+        userId: metadata.userId,
+        type: 'WALLET_TOPUP',
+        title: 'Zahlungsschutz aufgeladen',
+        message: `Ihr Zahlungsschutz-Konto wurde um ${formatMoney(paymentIntent.amount / 100, paymentIntent.currency || 'EUR')} aufgeladen.`,
+        data: JSON.stringify({
+          paymentIntentId: paymentIntent.id,
+          eventId: event.id,
+        }),
+      },
+    });
+  }
 
   return {
     success: true,
