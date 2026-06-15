@@ -8,6 +8,7 @@ Diese Checkliste ist der harte Gate vor einer kontrollierten Beta. Vercel kann w
 - `ENCRYPTION_KEY`, `CRON_SECRET` und `ADMIN_JWT_SECRET` sind lange, zufällige Produktionswerte.
 - Stripe Live/Test-Keys, Webhook-Secrets und Business-Price-IDs sind gesetzt.
 - Stripe Webhooks schreiben Wallet-Guthaben nur nach verifiziertem `checkout.session.completed`.
+- Echte Bankauszahlungen bleiben blockiert, bis `STRIPE_PAYOUTS_ENABLED=true`, `STRIPE_SECRET_KEY` und ein Stripe-Connect-Zielkonto gesetzt sind.
 - `LEGAL_REVIEW_CONFIRMED=true` wird erst nach externer juristischer Prüfung gesetzt.
 - `.env` und `.env.production` enthalten echte Secrets und bleiben außerhalb von Git.
 - `npm run readiness:env` ist vor Beta grün.
@@ -27,7 +28,7 @@ Diese Checkliste ist der harte Gate vor einer kontrollierten Beta. Vercel kann w
 - `STRIPE_PRICE_BUSINESS_MONTHLY`
 - `LEGAL_REVIEW_CONFIRMED=true`
 
-`STRIPE_PAYOUT_WEBHOOK_SECRET` und `SENDGRID_API_KEY` sind Warnungen, müssen aber vor echten Auszahlungen bzw. automatischen Rechnungs-E-Mails ebenfalls geprüft werden.
+`STRIPE_PAYOUT_WEBHOOK_SECRET`, `STRIPE_PAYOUTS_ENABLED`, `DEFAULT_STRIPE_ACCOUNT_ID` und `SENDGRID_API_KEY` sind lokal Warnungen, müssen aber vor echten Auszahlungen bzw. automatischen Rechnungs-E-Mails ebenfalls geprüft werden.
 
 ## Stripe-Testschritte vor Beta
 
@@ -38,6 +39,7 @@ Diese Checkliste ist der harte Gate vor einer kontrollierten Beta. Vercel kann w
 - `checkout.session.completed` und `invoice.payment_succeeded` aus Stripe erneut senden.
 - Zahlungsschutz-Aufladung testen und doppelte Webhooks prüfen.
 - Sicherstellen, dass doppelte Webhooks kein Guthaben doppelt buchen.
+- Payout-Provider prüfen: Ohne `STRIPE_PAYOUTS_ENABLED=true` darf Production keine Auszahlung als bezahlt markieren.
 - Erst nach erfolgreichem Test und juristischer Freigabe auf Live-Keys wechseln.
 
 ## Tägliche Beta-Kontrolle

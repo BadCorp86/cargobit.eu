@@ -1,3 +1,5 @@
+import { getPayoutProviderReadiness } from '@/services/payout-worker.service';
+
 export type OperationsReadinessStatus = 'ready' | 'missing' | 'warning';
 
 export interface OperationsReadinessCheck {
@@ -43,6 +45,7 @@ const CRON_JOBS: OperationsCronJob[] = [
 ];
 
 export function getOperationsReadiness(): OperationsReadinessReport {
+  const payoutProvider = getPayoutProviderReadiness();
   const checks: OperationsReadinessCheck[] = [
     createSecretCheck(
       'CRON_SECRET',
@@ -66,6 +69,21 @@ export function getOperationsReadiness(): OperationsReadinessReport {
       required: false,
       status: process.env.NODE_ENV === 'production' ? 'ready' : 'warning',
       detail: process.env.NODE_ENV === 'production' ? undefined : 'Aktuell läuft die App nicht im Production-Modus.',
+    },
+    {
+      id: 'stripe_payout_provider',
+      label: 'Stripe Payout Provider',
+      description: 'Echte Bankauszahlungen dürfen nur laufen, wenn Stripe Payouts explizit aktiviert und ein Stripe-Connect-Zielkonto konfiguriert ist.',
+      required: process.env.NODE_ENV === 'production',
+      status: payoutProvider.ready
+        ? (payoutProvider.mode === 'local_simulation' ? 'warning' : 'ready')
+        : process.env.NODE_ENV === 'production'
+          ? 'missing'
+          : 'warning',
+      detail: payoutProvider.ready
+        ? payoutProvider.warnings[0]
+        : payoutProvider.blockers.join(' '),
+      maskedValue: payoutProvider.destinationAccountId ? maskValue(payoutProvider.destinationAccountId) : undefined,
     },
   ];
 

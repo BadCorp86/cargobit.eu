@@ -39,6 +39,8 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_SUBSCRIPTION_WEBHOOK_SECRET=whsec_...
 STRIPE_PAYOUT_WEBHOOK_SECRET=whsec_...
+STRIPE_PAYOUTS_ENABLED=false
+DEFAULT_STRIPE_ACCOUNT_ID=acct_...
 STRIPE_PRICE_BUSINESS_MONTHLY=price_...
 ```
 
@@ -129,6 +131,14 @@ Stripe verarbeitet die technische Zahlung. CargoBit zeigt gegenüber Nutzern den
 - Bankauszahlung startet nur aus dem eigenen Wallet-Bereich und nur mit verifizierter Auszahlungsmethode.
 
 Für echte Carrier-/Fahrer-Auszahlungen wird Stripe Connect oder ein gleichwertiger Payout-Provider benötigt.
+
+Bis Stripe Connect juristisch und technisch freigegeben ist, bleibt:
+
+```env
+STRIPE_PAYOUTS_ENABLED=false
+```
+
+Damit kann CargoBit Guthaben intern über den Zahlungsschutz freigeben, markiert aber in Production keine Bankauszahlung als bezahlt. Erst nach Connect-Onboarding, verifiziertem Zielkonto und Test-Webhooks wird `STRIPE_PAYOUTS_ENABLED=true` gesetzt.
 
 ## 7. Readiness vor Beta
 

@@ -4,7 +4,7 @@
 // ============================================
 
 import { db } from '@/lib/db';
-import { PayoutStatus } from '@prisma/client';
+import { Payout, PayoutStatus, TransactionType } from '@prisma/client';
 
 // ============================================
 // INTERFACES
@@ -21,23 +21,6 @@ interface PayoutJobResult {
   transferId?: string;
   error?: string;
 }
-
-// ============================================
-// STRIPE MOCK (Replace with real Stripe in production)
-// ============================================
-
-const mockStripe = {
-  transfers: {
-    create: async (params: any, options?: any) => ({
-      id: `tr_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-      amount: params.amount,
-      currency: params.currency,
-      destination: params.destination,
-      metadata: params.metadata,
-      created: Math.floor(Date.now() / 1000),
-    }),
-  },
-};
 
 // ============================================
 // PAYOUT WORKER
@@ -109,6 +92,30 @@ export class PayoutWorkerService {
         return { success: true, payoutId, transferId: payout.stripeTransferId || undefined };
       }
 
+      if (payout.status === 'CANCELLED') {
+        await this.logAttempt(payoutId, 'skipped', null, 'Payout was cancelled');
+        return { success: false, payoutId, error: 'Payout was cancelled' };
+      }
+
+      const providerReadiness = getPayoutProviderReadiness(payout);
+      if (!providerReadiness.ready) {
+        const errorMessage = providerReadiness.blockers.join('; ');
+        await db.payout.update({
+          where: { id: payoutId },
+          data: {
+            failureReason: errorMessage,
+            lastRetryAt: new Date(),
+          },
+        });
+        await this.logAttempt(payoutId, 'blocked_provider_not_configured', providerReadiness, errorMessage);
+
+        return {
+          success: false,
+          payoutId,
+          error: errorMessage,
+        };
+      }
+
       // Update status to processing
       await db.payout.update({
         where: { id: payoutId },
@@ -120,22 +127,21 @@ export class PayoutWorkerService {
         `payout_user_${payout.userId}_payout_${payout.id}_v${payout.retryCount + 1}`;
 
       // Get Stripe account for user
-      const stripeAccountId = await this.getStripeAccountForUser(payout.userId);
+      const stripeAccountId = providerReadiness.destinationAccountId;
 
       try {
-        // Create Stripe transfer
-        const transfer = await mockStripe.transfers.create({
-          amount: payout.amountCents,
-          currency: payout.currency.toLowerCase(),
-          destination: stripeAccountId,
-          metadata: {
-            payout_id: payout.id,
-            user_id: payout.userId,
-          },
-        }, { idempotencyKey });
+        const transfer = await createPayoutTransfer({
+          amountCents: payout.amountCents,
+          currency: payout.currency,
+          destinationAccountId: stripeAccountId!,
+          payoutId: payout.id,
+          userId: payout.userId,
+          idempotencyKey,
+          mode: providerReadiness.mode,
+        });
 
         // Update payout with transfer ID
-        const updatedPayout = await db.payout.update({
+        await db.payout.update({
           where: { id: payoutId },
           data: {
             stripeTransferId: transfer.id,
@@ -188,30 +194,7 @@ export class PayoutWorkerService {
         await this.logAttempt(payoutId, 'transfer_failed', null, errorMessage);
 
         // Reverse wallet debit
-        const walletTx = await db.walletTransaction.findFirst({
-          where: { payoutId, type: 'PAYOUT' },
-        });
-
-        if (walletTx) {
-          await db.walletTransaction.create({
-            data: {
-              walletId: walletTx.walletId,
-              type: 'REFUND',
-              amount: Math.abs(walletTx.amount),
-              currency: walletTx.currency,
-              payoutId,
-              description: `Rückbuchung fehlgeschlagene Auszahlung ${payoutId}`,
-              processedAt: new Date(),
-            },
-          });
-
-          await db.wallet.update({
-            where: { id: walletTx.walletId },
-            data: {
-              balance: { increment: Math.abs(walletTx.amount) },
-            },
-          });
-        }
+        await this.reverseWalletDebitIfNeeded(payoutId);
 
         // Create notification
         await db.notification.create({
@@ -263,15 +246,6 @@ export class PayoutWorkerService {
   }
 
   /**
-   * Get Stripe account ID for user
-   * In production: query user's connected Stripe account
-   */
-  private async getStripeAccountForUser(userId: string): Promise<string> {
-    // TODO: Query from user record or Stripe Connect
-    return process.env.DEFAULT_STRIPE_ACCOUNT_ID || 'acct_test_placeholder';
-  }
-
-  /**
    * Process pending payouts (called by scheduler)
    */
   async processPendingPayouts(limit: number = 100): Promise<{
@@ -282,6 +256,10 @@ export class PayoutWorkerService {
     const pendingPayouts = await db.payout.findMany({
       where: {
         status: PayoutStatus.PENDING,
+        OR: [
+          { delayedUntil: null },
+          { delayedUntil: { lte: new Date() } },
+        ],
       },
       take: limit,
       orderBy: { createdAt: 'asc' },
@@ -340,7 +318,120 @@ export class PayoutWorkerService {
 
     return { retried, successful, failed };
   }
+
+  private async reverseWalletDebitIfNeeded(payoutId: string): Promise<void> {
+    const walletTx = await db.walletTransaction.findFirst({
+      where: { payoutId, type: TransactionType.PAYOUT },
+    });
+
+    if (!walletTx) return;
+
+    const existingReversal = await db.walletTransaction.findFirst({
+      where: { payoutId, type: TransactionType.REFUND },
+    });
+
+    if (existingReversal) return;
+
+    await db.walletTransaction.create({
+      data: {
+        walletId: walletTx.walletId,
+        type: TransactionType.REFUND,
+        amount: Math.abs(walletTx.amount),
+        currency: walletTx.currency,
+        payoutId,
+        description: `Rückbuchung fehlgeschlagene Auszahlung ${payoutId}`,
+        processedAt: new Date(),
+      },
+    });
+
+    await db.wallet.update({
+      where: { id: walletTx.walletId },
+      data: {
+        balance: { increment: Math.abs(walletTx.amount) },
+      },
+    });
+  }
 }
 
 // Export singleton
 export const payoutWorker = PayoutWorkerService.getInstance();
+
+export type PayoutProviderMode = 'stripe' | 'local_simulation';
+
+export function getPayoutProviderReadiness(payout?: Pick<Payout, 'stripeAccountId'> | null): {
+  ready: boolean;
+  mode: PayoutProviderMode;
+  blockers: string[];
+  warnings: string[];
+  destinationAccountId?: string;
+} {
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+  const isProduction = process.env.NODE_ENV === 'production';
+  const payoutsEnabled = process.env.STRIPE_PAYOUTS_ENABLED === 'true';
+  const stripeSecret = process.env.STRIPE_SECRET_KEY || '';
+  const destinationAccountId = payout?.stripeAccountId || process.env.DEFAULT_STRIPE_ACCOUNT_ID || '';
+
+  if (!isProduction && !payoutsEnabled) {
+    return {
+      ready: true,
+      mode: 'local_simulation',
+      blockers,
+      warnings: ['Lokale Auszahlungssimulation aktiv. Keine echte Bankauszahlung.'],
+      destinationAccountId: destinationAccountId || 'acct_local_simulation',
+    };
+  }
+
+  if (!payoutsEnabled) {
+    blockers.push('STRIPE_PAYOUTS_ENABLED muss für echte Bankauszahlungen auf true gesetzt sein.');
+  }
+
+  if (!stripeSecret.startsWith('sk_')) {
+    blockers.push('STRIPE_SECRET_KEY fehlt oder ist kein Stripe Secret Key.');
+  }
+
+  if (!destinationAccountId.startsWith('acct_')) {
+    blockers.push('Stripe Connect Zielkonto fehlt. DEFAULT_STRIPE_ACCOUNT_ID oder payout.stripeAccountId muss gesetzt sein.');
+  }
+
+  return {
+    ready: blockers.length === 0,
+    mode: 'stripe',
+    blockers,
+    warnings,
+    destinationAccountId: destinationAccountId || undefined,
+  };
+}
+
+async function createPayoutTransfer(input: {
+  amountCents: number;
+  currency: string;
+  destinationAccountId: string;
+  payoutId: string;
+  userId: string;
+  idempotencyKey: string;
+  mode: PayoutProviderMode;
+}): Promise<{ id: string }> {
+  if (input.mode === 'local_simulation') {
+    return {
+      id: `tr_simulated_${input.payoutId}_${Date.now()}`,
+    };
+  }
+
+  const Stripe = (await import('stripe')).default;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: '2026-02-25.clover' as any,
+  });
+
+  return stripe.transfers.create({
+    amount: input.amountCents,
+    currency: input.currency.toLowerCase(),
+    destination: input.destinationAccountId,
+    metadata: {
+      payout_id: input.payoutId,
+      user_id: input.userId,
+    },
+  }, {
+    idempotencyKey: input.idempotencyKey,
+  });
+}
