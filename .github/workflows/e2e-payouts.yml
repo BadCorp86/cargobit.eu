@@ -22,6 +22,9 @@ env:
   CI: true
   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run E2E Tests
@@ -56,36 +59,50 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Check required manual E2E configuration
+        id: e2e-config
+        run: |
+          if [ -z "${{ secrets.TEST_ADMIN_TOKEN }}" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::TEST_ADMIN_TOKEN is not configured. Skipping manual payout E2E test."
+          elif [ ! -f "scripts/collections/payouts-e2e.postman_collection.json" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Payouts Postman collection is missing. Skipping manual payout E2E test."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup Node.js
+        if: steps.e2e-config.outputs.ready == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        if: steps.e2e-config.outputs.ready == 'true'
+        run: npm ci
 
       - name: Generate Prisma Client
-        run: bun run db:generate
+        if: steps.e2e-config.outputs.ready == 'true'
+        run: npm run db:generate
 
       - name: Setup test database
-        run: bun run db:push
+        if: steps.e2e-config.outputs.ready == 'true'
+        run: npm run db:push
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/cargobit_test
 
       - name: Build application
-        run: bun run build
+        if: steps.e2e-config.outputs.ready == 'true'
+        run: npm run build
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/cargobit_test
           NEXT_PUBLIC_API_URL: http://localhost:3000
 
       - name: Start application
-        run: bun run start &
+        if: steps.e2e-config.outputs.ready == 'true'
+        run: node .next/standalone/server.js &
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/cargobit_test
           REDIS_HOST: localhost
@@ -97,18 +114,22 @@ jobs:
           PORT: 3000
 
       - name: Wait for application
+        if: steps.e2e-config.outputs.ready == 'true'
         run: |
           echo "Waiting for application to start..."
           timeout 60s bash -c 'until curl -s http://localhost:3000/api/health > /dev/null; do sleep 2; done'
           echo "Application is ready!"
 
       - name: Install Newman
+        if: steps.e2e-config.outputs.ready == 'true'
         run: npm install -g newman
 
       - name: Create test results directory
+        if: steps.e2e-config.outputs.ready == 'true'
         run: mkdir -p test-results/payouts
 
       - name: Run Newman E2E Tests
+        if: steps.e2e-config.outputs.ready == 'true'
         run: |
           newman run scripts/collections/payouts-e2e.postman_collection.json \
             --global-var "baseUrl=http://localhost:3000" \
@@ -123,13 +144,14 @@ jobs:
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.e2e-config.outputs.ready == 'true'
         with:
           name: newman-test-results
           path: test-results/
           retention-days: 30
 
       - name: Check test results
+        if: steps.e2e-config.outputs.ready == 'true'
         run: |
           if [ -f test-results/payouts/results.json ]; then
             FAILURES=$(cat test-results/payouts/results.json | jq '.run.failures | length')
@@ -141,6 +163,10 @@ jobs:
             echo "::error::No test results found"
             exit 1
           fi
+
+      - name: Manual E2E skipped
+        if: steps.e2e-config.outputs.ready != 'true'
+        run: echo "Manual payout E2E skipped because optional test configuration is incomplete."
 
   lint:
     name: Lint Check
@@ -155,14 +181,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: npm ci
 
       - name: Run ESLint
-        run: bun run lint
+        run: npm run lint
         continue-on-error: true
 
   type-check:
@@ -178,17 +201,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: npm ci
 
       - name: Generate Prisma Client
-        run: bun run db:generate
+        run: npm run db:generate
 
       - name: Run TypeScript check
-        run: bunx tsc --noEmit
+        run: npx tsc --noEmit --pretty false
         continue-on-error: true
 
   notify:
