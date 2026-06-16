@@ -1,0 +1,33 @@
+.next
+.codex
+node_modules
+
+# Local/generated workspace artifacts. They are not part of the deployable Next.js app.
+download
+upload
+uploads
+db
+dist
+reports
+production-ready
+skills
+ml-pipeline
+microservices
+mini-services
+models
+grafana
+helm
+kafka
+kubernetes
+load-tests
+observability
+prometheus
+schema-registry
+systemd
+wallet-payment
+
+# Local logs and TypeScript build cache.
+*.log
+*.tsbuildinfo
+dev.out.log
+server.log
