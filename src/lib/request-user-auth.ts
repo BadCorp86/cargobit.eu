@@ -86,7 +86,12 @@ async function resolveDevRequestUser(request: NextRequest): Promise<RequestUser 
 
   if (headerUserId) {
     const user = await loadRequestUser(headerUserId);
-    if (user) return user;
+    if (user) {
+      return {
+        ...user,
+        roles: user.roles.length ? user.roles : [normalizeDevUserRole(headerRole)],
+      };
+    }
   }
 
   if (!headerEmail) return null;

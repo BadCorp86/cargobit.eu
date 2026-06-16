@@ -200,13 +200,6 @@ async function canReadPayoutReadiness(
     };
   }
 
-  if (process.env.NODE_ENV !== 'production') {
-    const devRole = request.headers.get('x-user-role') || '';
-    if (['ADMIN', 'SUPPORT', 'FINANCE'].includes(devRole)) {
-      return { allowed: true, audience: 'internal' as const, status: 200, error: null, message: null };
-    }
-  }
-
   return {
     allowed: false,
     status: 403,

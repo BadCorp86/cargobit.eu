@@ -24,7 +24,7 @@ export async function GET(
     const userId = user.id;
     
     const { id } = await params;
-    const roleHeader = resolveUserRolesForRequest(request, user);
+    const roleHeader = resolveUserRolesForRequest(user);
     const job = await jobsService.getJob(id, userId, roleHeader);
     
     if (!job) {
@@ -45,12 +45,8 @@ export async function GET(
   }
 }
 
-function resolveUserRolesForRequest(request: NextRequest, user: RequestUser) {
+function resolveUserRolesForRequest(user: RequestUser) {
   if (user.roles.length > 0) return user.roles.join(',');
-
-  if (process.env.NODE_ENV !== 'production') {
-    return request.headers.get('x-user-role') || request.headers.get('x-user-roles') || '';
-  }
 
   return '';
 }

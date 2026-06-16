@@ -27,7 +27,7 @@ export async function GET(
     if (auth.response) return auth.response;
 
     const userId = auth.user.id;
-    userRole = resolveUserRoleHeader(request, auth.user);
+    userRole = resolveUserRoleHeader(auth.user);
     
     const { id: jobId } = await params;
     const bids = await bidsService.getBidsForJob(jobId, userId);
@@ -79,7 +79,7 @@ export async function POST(
     if (auth.response) return auth.response;
 
     const userId = auth.user.id;
-    const userRole = resolveUserRoleHeader(request, auth.user);
+    const userRole = resolveUserRoleHeader(auth.user);
 
     if (!canSubmitBid(userRole)) {
       return NextResponse.json(
@@ -223,12 +223,8 @@ function normalizeUserRole(roleHeader: string) {
   return allowed.has(firstRole) ? firstRole as any : 'CARRIER';
 }
 
-function resolveUserRoleHeader(request: NextRequest, user: RequestUser) {
+function resolveUserRoleHeader(user: RequestUser) {
   if (user.roles.length > 0) return user.roles.join(',');
-
-  if (process.env.NODE_ENV !== 'production') {
-    return request.headers.get('x-user-role') || request.headers.get('x-user-roles') || '';
-  }
 
   return '';
 }
