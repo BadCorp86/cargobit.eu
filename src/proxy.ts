@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { buildCorsHeaders } from '@/lib/cors';
 
 // ============================================
 // ROUTE CONFIGURATION
@@ -155,14 +156,9 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith('/api/')) {
     const response = NextResponse.next();
 
-    const allowedOrigin = getAllowedCorsOrigin(request);
-    if (allowedOrigin) {
-      response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
-      response.headers.set('Vary', 'Origin');
+    for (const [key, value] of Object.entries(buildCorsHeaders(request))) {
+      response.headers.set(key, value);
     }
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', getAllowedCorsHeaders());
-    response.headers.set('Access-Control-Max-Age', '86400');
     
     // Handle preflight
     if (request.method === 'OPTIONS') {
@@ -328,38 +324,4 @@ export function requireRole(request: NextRequest, roles: string[]): { userId: st
 function getDevHeaderUserId(request: NextRequest) {
   if (process.env.NODE_ENV === 'production') return null;
   return request.headers.get('x-user-id');
-}
-
-function getAllowedCorsHeaders() {
-  const baseHeaders = [
-    'Content-Type',
-    'Authorization',
-    'X-Session-Token',
-  ];
-
-  if (process.env.NODE_ENV !== 'production') {
-    baseHeaders.push('X-User-Id', 'X-User-Role', 'X-User-Roles', 'X-Driver-Id');
-  }
-
-  return baseHeaders.join(', ');
-}
-
-function getAllowedCorsOrigin(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  const configuredOrigins = (process.env.ALLOWED_ORIGINS || '')
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter((entry) => process.env.NODE_ENV !== 'production' || entry !== '*')
-    .filter(Boolean);
-
-  if (configuredOrigins.length > 0) {
-    if (origin && configuredOrigins.includes(origin)) return origin;
-    return configuredOrigins[0];
-  }
-
-  if (process.env.NODE_ENV !== 'production') {
-    return origin || '*';
-  }
-
-  return process.env.NEXT_PUBLIC_APP_URL || null;
 }
