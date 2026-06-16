@@ -33,6 +33,8 @@ checkEnv('NEXT_PUBLIC_APP_URL', {
   detail: 'Public app URL for Stripe redirects.',
 });
 
+checkAllowedOrigins();
+
 checkEnv('ENCRYPTION_KEY', {
   required: true,
   minLength: 24,
@@ -149,6 +151,25 @@ function checkEnv(key, options) {
     ok: meaningful && hasPrefix && hasMinLength,
     maskedValue: meaningful && hasPrefix ? maskValue(value) : undefined,
     detail: options.detail || buildEnvDetail(key, options),
+  });
+}
+
+function checkAllowedOrigins() {
+  const value = process.env.ALLOWED_ORIGINS || '';
+  const origins = value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const usesWildcard = origins.includes('*');
+  const allOriginsAreUrls = origins.every((origin) => origin.startsWith('https://') || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'));
+
+  addCheck({
+    id: 'allowed_origins',
+    label: 'ALLOWED_ORIGINS',
+    required: false,
+    ok: origins.length > 0 && !usesWildcard && allOriginsAreUrls,
+    maskedValue: origins.length ? `${origins.length} configured` : undefined,
+    detail: 'Set comma-separated allowed frontend/admin origins. Do not use * in production.',
   });
 }
 

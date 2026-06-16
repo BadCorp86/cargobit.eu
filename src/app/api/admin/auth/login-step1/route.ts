@@ -30,6 +30,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuthService } from '@/services/admin-auth.service';
 import { LoginStep1Dto, validateDto, ErrorResponseDto } from '@/dto/admin-auth.dto';
+import { buildCorsHeaders } from '@/lib/cors';
 
 // ============================================
 // RESPONSE TYPES
@@ -161,13 +162,9 @@ function getClientIp(request: NextRequest): string {
 // OPTIONS: CORS PREFLIGHT
 // ============================================
 
-export async function OPTIONS() {
+export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, {
     status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+    headers: buildCorsHeaders(request, { methods: 'POST, OPTIONS', headers: 'Content-Type' }),
   });
 }

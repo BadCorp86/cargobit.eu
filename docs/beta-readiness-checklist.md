@@ -5,6 +5,7 @@ Diese Checkliste ist der harte Gate vor einer kontrollierten Beta. Vercel kann w
 ## Harte Blocker vor Beta
 
 - `NEXT_PUBLIC_APP_URL` zeigt auf die echte Beta-Domain.
+- `ALLOWED_ORIGINS` enthält nur erlaubte Frontend-/Admin-Domains, z. B. `https://cargobit.eu,https://www.cargobit.eu`. Kein `*` in Production.
 - `ENCRYPTION_KEY`, `CRON_SECRET` und `ADMIN_JWT_SECRET` sind lange, zufällige Produktionswerte.
 - Stripe Live/Test-Keys, Webhook-Secrets und Business-Price-IDs sind gesetzt.
 - Stripe Webhooks schreiben Wallet-Guthaben nur nach verifiziertem `checkout.session.completed`.
@@ -19,6 +20,7 @@ Diese Checkliste ist der harte Gate vor einer kontrollierten Beta. Vercel kann w
 `npm run readiness:env` darf auf lokalen Maschinen und frischen Servern rot bleiben, solange diese Werte fehlen:
 
 - `NEXT_PUBLIC_APP_URL`
+- `ALLOWED_ORIGINS`
 - `ENCRYPTION_KEY`
 - `CRON_SECRET`
 - `ADMIN_JWT_SECRET`
