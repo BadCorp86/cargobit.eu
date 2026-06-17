@@ -86,6 +86,14 @@ checkEnv('STRIPE_PRICE_BUSINESS_MONTHLY', {
   prefix: ['price_'],
 });
 
+addCheck({
+  id: 'local_mock_checkout_disabled',
+  label: 'ENABLE_LOCAL_MOCK_CHECKOUT',
+  required: true,
+  ok: process.env.ENABLE_LOCAL_MOCK_CHECKOUT !== 'true',
+  detail: 'Mock checkout must stay disabled outside explicit local development.',
+});
+
 checkEnv('SENDGRID_API_KEY', {
   required: false,
   prefix: ['SG.'],

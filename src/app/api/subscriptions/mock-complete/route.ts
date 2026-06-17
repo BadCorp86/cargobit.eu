@@ -7,11 +7,11 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' || process.env.ENABLE_LOCAL_MOCK_CHECKOUT !== 'true') {
     return NextResponse.json(
       {
         error: 'Forbidden',
-        message: 'Mock-Checkout ist in Production deaktiviert.',
+        message: 'Mock-Checkout ist deaktiviert. Für lokale Tests ENABLE_LOCAL_MOCK_CHECKOUT=true setzen.',
         code: 'MOCK_CHECKOUT_DISABLED',
       },
       { status: 403 },

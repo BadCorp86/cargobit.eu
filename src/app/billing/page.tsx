@@ -63,7 +63,6 @@ interface SubscriptionInvoice {
 
 const FALLBACK_PLANS = getSubscriptionPlanConfig();
 const PLAN_ORDER = ['free', 'starter'];
-const IS_LOCAL_PREVIEW = process.env.NODE_ENV !== 'production';
 
 export default function BillingPage() {
   const { user, isAuthenticated } = useAuthStore();
@@ -134,64 +133,15 @@ export default function BillingPage() {
 
     const params = new URLSearchParams(window.location.search);
     const checkout = params.get('checkout');
-    const sessionId = params.get('session_id');
-
-    if (!IS_LOCAL_PREVIEW || checkout !== 'mock_success' || !sessionId) return;
-
-    const storageKey = `cargobit_mock_checkout_${sessionId}`;
-    if (window.sessionStorage.getItem(storageKey) === 'done') return;
-
-    let cancelled = false;
-
-    const completeMockCheckout = async () => {
-      setMessage('Lokaler Preview-Checkout wird aktiviert...');
-
-      try {
-        const completeResponse = await fetch('/api/subscriptions/mock-complete', {
-          method: 'POST',
-          headers: {
-            ...buildUserRequestHeaders(requestUser, { 'Content-Type': 'application/json' }),
-          },
-          body: JSON.stringify({ sessionId }),
-        });
-        const completeData = await completeResponse.json();
-
-        if (!completeResponse.ok || !completeData.success) {
-          throw new Error(completeData.message || completeData.error || 'Mock-Checkout konnte nicht abgeschlossen werden');
-        }
-
-        const headers = buildUserRequestHeaders(requestUser);
-        const [subscriptionResponse, invoicesResponse] = await Promise.all([
-          fetch('/api/subscriptions', { headers }),
-          fetch('/api/subscriptions/invoices', { headers }),
-        ]);
-        const subscriptionData = await subscriptionResponse.json();
-        const invoiceData = await invoicesResponse.json().catch(() => ({ invoices: [] }));
-
-        if (!subscriptionResponse.ok || !subscriptionData.success) {
-          throw new Error(subscriptionData.message || 'Business-Tarif konnte nicht neu geladen werden');
-        }
-
-        if (!cancelled) {
-          window.sessionStorage.setItem(storageKey, 'done');
-          window.history.replaceState(null, '', '/billing');
-          setPayload(subscriptionData);
-          setInvoices(Array.isArray(invoiceData.invoices) ? invoiceData.invoices : []);
-          setMessage('Business-Tarif wurde lokal für die Preview aktiviert.');
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setMessage(error instanceof Error ? error.message : 'Mock-Checkout konnte nicht abgeschlossen werden.');
-        }
-      }
-    };
-
-    completeMockCheckout();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [requestUser]);
+    if (checkout === 'success') {
+      setMessage('Stripe-Checkout wurde abgeschlossen. Der Business-Tarif wird nach bestätigtem Stripe-Webhook aktualisiert.');
+      window.history.replaceState(null, '', '/billing');
+    }
+    if (checkout === 'cancel') {
+      setMessage('Checkout wurde abgebrochen. Es wurde kein Business-Tarif aktiviert und keine Zahlung gebucht.');
+      window.history.replaceState(null, '', '/billing');
+    }
+  }, []);
 
   const plans = payload?.plans || FALLBACK_PLANS;
   const currentPlan = String(payload?.subscription?.plan || 'free').toLowerCase();
