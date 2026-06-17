@@ -94,6 +94,14 @@ addCheck({
   detail: 'Mock checkout must stay disabled outside explicit local development.',
 });
 
+addCheck({
+  id: 'local_wallet_simulation_disabled',
+  label: 'ENABLE_LOCAL_WALLET_SIMULATION',
+  required: true,
+  ok: process.env.ENABLE_LOCAL_WALLET_SIMULATION !== 'true',
+  detail: 'Wallet credit and payout-method simulation must stay disabled outside explicit local development.',
+});
+
 checkEnv('SENDGRID_API_KEY', {
   required: false,
   prefix: ['SG.'],

@@ -186,7 +186,6 @@ export function UserWalletPage({
   const requestedPayoutAmount = Number(payoutAmount.replace(',', '.')) || 0;
   const requestedTopupAmount = Number(topupAmount.replace(',', '.')) || 0;
   const payoutLimits = wallet?.payoutLimits || { minAmount: 50, maxAmount: 25000, processingDays: 3, currency: 'EUR' };
-  const isLocalPreview = process.env.NODE_ENV !== 'production';
   const payoutBlockReason = getPayoutBlockReason({
     walletPurpose,
     wallet,
@@ -229,7 +228,6 @@ export function UserWalletPage({
         },
         body: JSON.stringify({
           amountCents: Math.round(requestedTopupAmount * 100),
-          simulateCredit: true,
           returnTo: safeReturnTo,
         }),
       });
@@ -242,9 +240,7 @@ export function UserWalletPage({
       }
 
       await refreshWallet();
-      setTopupMessage(payload.simulatedCredit
-        ? `Lokale Demo-Zahlung gebucht: ${formatMoney(payload.amount, payload.currency)}`
-        : 'Zahlung vorbereitet. Der Betrag wird nach erfolgreichem Zahlungs-Webhook für Aufträge verfügbar.');
+      setTopupMessage('Zahlung vorbereitet. Der Betrag wird nach erfolgreichem Zahlungs-Webhook für Aufträge verfügbar.');
     } catch (error) {
       setTopupMessage(error instanceof Error ? error.message : 'Aufladung konnte nicht gestartet werden.');
     } finally {
@@ -318,7 +314,6 @@ export function UserWalletPage({
           iban: payoutMethodForm.iban,
           bic: payoutMethodForm.bic,
           isDefault: true,
-          simulateVerification: isLocalPreview,
         }),
       });
       const payload = await response.json();

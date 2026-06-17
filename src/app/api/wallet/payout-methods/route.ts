@@ -62,7 +62,9 @@ export async function POST(request: NextRequest) {
       }, { status: 403 });
     }
 
-    const shouldVerifyForLocalTesting = process.env.NODE_ENV !== 'production' && body.simulateVerification === true;
+    const shouldVerifyForLocalTesting = process.env.NODE_ENV !== 'production'
+      && process.env.ENABLE_LOCAL_WALLET_SIMULATION === 'true'
+      && body.simulateVerification === true;
 
     const payoutMethod = await db.$transaction(async (tx) => {
       const existingCount = await tx.payoutMethod.count({ where: { walletId: user.wallet!.id } });

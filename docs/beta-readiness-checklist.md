@@ -10,6 +10,7 @@ Diese Checkliste ist der harte Gate vor einer kontrollierten Beta. Vercel kann w
 - Stripe Live/Test-Keys, Webhook-Secrets und Business-Price-IDs sind gesetzt.
 - Stripe Webhooks schreiben Wallet-Guthaben nur nach verifiziertem `checkout.session.completed`.
 - `ENABLE_LOCAL_MOCK_CHECKOUT=false` in jeder nicht-lokalen Umgebung.
+- `ENABLE_LOCAL_WALLET_SIMULATION=false` in jeder nicht-lokalen Umgebung.
 - Echte Bankauszahlungen bleiben blockiert, bis `STRIPE_PAYOUTS_ENABLED=true`, `STRIPE_SECRET_KEY` und ein Stripe-Connect-Zielkonto gesetzt sind.
 - `LEGAL_REVIEW_CONFIRMED=true` wird erst nach externer juristischer Prüfung gesetzt.
 - `.env` und `.env.production` enthalten echte Secrets und bleiben außerhalb von Git.

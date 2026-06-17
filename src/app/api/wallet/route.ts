@@ -94,7 +94,9 @@ export async function POST(request: NextRequest) {
     if (auth.response) return auth.response;
     const user = auth.user as RequestUser;
     const userId = user.id;
-    const shouldSimulateCredit = simulateCredit === true && process.env.NODE_ENV !== 'production';
+    const shouldSimulateCredit = simulateCredit === true
+      && process.env.NODE_ENV !== 'production'
+      && process.env.ENABLE_LOCAL_WALLET_SIMULATION === 'true';
 
     // Validate amount
     if (!amountCents || amountCents < 100) {
@@ -221,7 +223,7 @@ export async function POST(request: NextRequest) {
           type: 'DEPOSIT',
           amount,
           currency: 'EUR',
-          description: 'Lokale Demo-Gutschrift',
+          description: 'Lokale Zahlungsschutz-Testgutschrift',
           reference: paymentReference!,
           processedAt: new Date(),
         },
