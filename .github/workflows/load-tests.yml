@@ -55,20 +55,25 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v5
       
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      
       - name: Install Dependencies
-        run: bun install || npm install
+        run: npm ci
       
       - name: Run Unit Tests
-        run: bun test src/__tests__/security-gateway.unit.test.ts || echo "Unit tests skipped"
+        run: |
+          if npm pkg get scripts.test | grep -vq null; then
+            npm test -- src/__tests__/security-gateway.unit.test.ts
+          else
+            echo "Unit tests skipped because package.json has no test script."
+          fi
         continue-on-error: true
       
       - name: Run State Machine Tests
-        run: bun test src/__tests__/state-machines.test.ts || echo "State machine tests skipped"
+        run: |
+          if npm pkg get scripts.test | grep -vq null; then
+            npm test -- src/__tests__/state-machines.test.ts
+          else
+            echo "State machine tests skipped because package.json has no test script."
+          fi
         continue-on-error: true
 
   # ============================================

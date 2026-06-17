@@ -20,6 +20,11 @@ on:
           - soak
           - stress
           - chaos
+      run_full_legacy:
+        description: 'Run legacy pnpm/AWS/Kubernetes Security Gateway jobs'
+        required: false
+        default: false
+        type: boolean
 
 env:
   NODE_VERSION: '24'
@@ -83,7 +88,7 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     needs: build
-    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
+    if: inputs.run_full_legacy == true && vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
     timeout-minutes: 20
     steps:
       - name: Checkout code
@@ -144,7 +149,7 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: build
-    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
+    if: inputs.run_full_legacy == true && vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
     timeout-minutes: 30
     services:
       postgres:
@@ -231,7 +236,7 @@ jobs:
     name: Contract Tests (Pact)
     runs-on: ubuntu-latest
     needs: build
-    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
+    if: inputs.run_full_legacy == true && vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
     timeout-minutes: 20
     steps:
       - name: Checkout code
@@ -283,7 +288,7 @@ jobs:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests]
-    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
+    if: inputs.run_full_legacy == true && vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
     timeout-minutes: 45
     services:
       postgres:
@@ -363,7 +368,7 @@ jobs:
     name: Security Tests
     runs-on: ubuntu-latest
     needs: build
-    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
+    if: inputs.run_full_legacy == true && vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true'
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -459,7 +464,7 @@ jobs:
     name: Load Tests (K6)
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests]
-    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    if: inputs.run_full_legacy == true && vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
     timeout-minutes: 60
     services:
       postgres:
@@ -563,7 +568,7 @@ jobs:
     name: Chaos Tests
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests]
-    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && github.event_name == 'schedule' && github.event.schedule == '0 3 * * 0'  # Weekly
+    if: inputs.run_full_legacy == true && vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && github.event_name == 'schedule' && github.event.schedule == '0 3 * * 0'  # Weekly
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -609,7 +614,7 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests, contract-tests, e2e-tests, security-tests]
-    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && github.ref == 'refs/heads/develop'
+    if: inputs.run_full_legacy == true && vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && github.ref == 'refs/heads/develop'
     environment: staging
     timeout-minutes: 15
     steps:
@@ -658,7 +663,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests, contract-tests, e2e-tests, security-tests, load-tests]
-    if: vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && github.ref == 'refs/heads/main'
+    if: inputs.run_full_legacy == true && vars.ENABLE_SECURITY_GATEWAY_FULL_CI == 'true' && github.ref == 'refs/heads/main'
     environment: production
     timeout-minutes: 20
     steps:

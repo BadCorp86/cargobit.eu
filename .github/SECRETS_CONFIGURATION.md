@@ -13,6 +13,14 @@ Der automatische Workflow auf `main` ist:
 
 Alle älteren Spezial-Workflows für Loadtests, Docker Images, ML, Security Gateway, E2E-Sonderfälle und Secret Rotation sind manuell oder optional.
 
+## Workflow-Regeln für Beta
+
+- Nur `.github/workflows/ci.yml` darf automatisch auf `push` oder `pull_request` laufen.
+- Manuelle Legacy-/Ops-Workflows dürfen fehlende optionale Secrets nicht als Beta-CI-Fehler erscheinen lassen.
+- `pnpm`/Security-Gateway-Volltests laufen nur, wenn der manuelle Input `run_full_legacy=true` gesetzt ist und `ENABLE_SECURITY_GATEWAY_FULL_CI=true` als Repository Variable existiert.
+- Workflows dürfen keine mutierenden Lint-/Format-Befehle wie `--fix` ausführen.
+- Docker-, Slack-, AWS-, Kubernetes- und externe Loadtest-Flows sind keine Voraussetzung für eine grüne Beta-CI.
+
 ## Required Environment Secrets
 
 Diese Secrets gehören in die GitHub Environments `staging` und `production`, falls der manuelle Workflow `Production Readiness` genutzt wird.
@@ -57,6 +65,15 @@ Diese Secrets sind nicht erforderlich, damit die Beta-CI auf `main` grün wird.
 | `AWS_SECRET_ACCESS_KEY` | Optionale ML-/S3-Workflows |
 | `ML_MODELS_BUCKET` | Optionale ML-Modellablage |
 | `ML_REGISTRY_DB` | Optionale ML-Modellregistry |
+| `TEST_ADMIN_TOKEN` | Optionale manuelle E2E-/Payout-Tests |
+| `SECURITY_GATEWAY_URL` | Optionale manuelle Security-Gateway-Loadtests |
+| `SECURITY_GATEWAY_API_KEY` | Optionale manuelle Security-Gateway-Loadtests |
+
+## Optional Variables
+
+| Variable Name | Einsatz |
+|---------------|---------|
+| `ENABLE_SECURITY_GATEWAY_FULL_CI` | Nur für manuelle Legacy-Security-Gateway-Volltests. Für Beta standardmäßig nicht setzen oder `false`. |
 
 ## Nicht mehr aktiv benötigte Preis-Secrets
 

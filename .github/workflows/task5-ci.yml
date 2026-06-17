@@ -36,7 +36,7 @@ jobs:
         run: npm ci
 
       - name: Run linting
-        run: npm run lint -- --fix src/reports || true
+        run: npm run lint
 
       - name: Create test database schema
         env:
