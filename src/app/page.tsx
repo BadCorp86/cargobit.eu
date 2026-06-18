@@ -24,6 +24,7 @@ import {
   FileText,
   HeadphonesIcon,
   Check,
+  CheckCircle2,
   Play,
   Facebook,
   Linkedin,
@@ -34,6 +35,7 @@ import {
   MessageSquare,
   Send,
   Lightbulb,
+  Route as RouteIcon,
 } from 'lucide-react';
 
 import { buildUserRequestHeaders, useAuthStore } from '@/lib/auth-store';
@@ -192,6 +194,27 @@ const STRUCTURED_DATA = [
     })),
   },
 ];
+
+const INVESTOR_PROOF_POINTS = [
+  {
+    label: 'Kernprozess',
+    value: 'Preis → Auftrag → Angebot → POD → Zahlungsschutz',
+    detail: 'Eine durchgehende Demo-Strecke statt verstreuter Einzelfunktionen.',
+    icon: RouteIcon,
+  },
+  {
+    label: 'Trust Layer',
+    value: 'Verifizierung, Anti-Dumping, Dispute-Blocker',
+    detail: 'Jeder kritische Schritt bekommt einen nachvollziehbaren Kontrollpunkt.',
+    icon: Shield,
+  },
+  {
+    label: 'Beta-Fokus',
+    value: 'DACH/Benelux, invite-only, geprüfte Anbieter',
+    detail: 'Europa bleibt sichtbar, operativ startet CargoBit kontrolliert.',
+    icon: CheckCircle2,
+  },
+] as const;
 
 function formatCurrency(value: number, fractionDigits = 0) {
   return new Intl.NumberFormat('de-DE', {
@@ -1032,7 +1055,7 @@ export default function Home() {
                 {/* Tagline */}
                 <Badge className="mb-6 px-4 py-2 text-sm gap-2 bg-[#1C7ED6]/20 text-[#00D4FF] border border-[#00D4FF]/30">
                   <Globe className="w-4 h-4" />
-                  Europaweit vernetzt
+                  DACH/EU Beta · geprüfte Anbieter · Zahlungsschutz
                 </Badge>
 
                 {/* Main Headline */}
@@ -1044,7 +1067,7 @@ export default function Home() {
 
                 {/* Description */}
                 <p className="text-lg text-gray-300 max-w-xl mx-auto lg:mx-0 mb-8">
-                  Berechnen Sie realistische Preise für Fracht, Sondertransporte und Speditionsaufträge. CargoBit verbindet Verlader, Privatpersonen, Gewerbekunden, Transporteure und Fahrer.
+                  Berechnen Sie realistische Preise, veröffentlichen Sie geprüfte Transportaufträge und erhalten Sie Angebote von verifizierten Transporteuren. CargoBit führt den Prozess vom Auftrag bis zur POD-Prüfung und Zahlungsschutz-Freigabe.
                 </p>
 
                 {/* CTA Buttons */}
@@ -1076,11 +1099,11 @@ export default function Home() {
                   </div>
                   <div className="flex items-center gap-2 bg-[#0B3C5D]/50 rounded-full px-4 py-2 border border-[#1C7ED6]/30">
                     <MapPin className="w-4 h-4 text-[#00D4FF]" />
-                    <span className="text-sm text-gray-300">Live Tracking</span>
+                    <span className="text-sm text-gray-300">Verifizierte Anbieter</span>
                   </div>
                   <div className="flex items-center gap-2 bg-[#0B3C5D]/50 rounded-full px-4 py-2 border border-[#1C7ED6]/30">
                     <Shield className="w-4 h-4 text-[#00D4FF]" />
-                    <span className="text-sm text-gray-300">Sichere Zahlung</span>
+                    <span className="text-sm text-gray-300">Zahlungsschutz</span>
                   </div>
                 </div>
               </div>
@@ -1108,7 +1131,7 @@ export default function Home() {
                       </div>
                       <div>
                         <div className="text-xs text-gray-400">Live Transport</div>
-                        <div className="text-sm font-semibold text-white">Hamburg → Barcelona</div>
+                        <div className="text-sm font-semibold text-white">Hamburg → München</div>
                         <div className="flex items-center gap-1 mt-1">
                           <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                           <span className="text-xs text-green-400">unterwegs</span>
@@ -1119,6 +1142,25 @@ export default function Home() {
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="bg-[#06121C] px-4 pb-8 sm:px-6 lg:px-8">
+          <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-3">
+            {INVESTOR_PROOF_POINTS.map((point) => (
+              <Card key={point.label} className="border border-[#1C7ED6]/20 bg-[#0B3C5D]/45 shadow-xl shadow-black/10">
+                <CardContent className="flex gap-4 p-5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#00D4FF]/25 bg-[#00D4FF]/10 text-[#00D4FF]">
+                    <point.icon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#00D4FF]/80">{point.label}</p>
+                    <h2 className="mt-2 text-base font-semibold text-white">{point.value}</h2>
+                    <p className="mt-2 text-sm leading-6 text-gray-400">{point.detail}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </section>
 
@@ -1295,10 +1337,10 @@ export default function Home() {
             <div className="text-left mb-12">
               <Badge className="mb-4 bg-[#1C7ED6]/20 text-[#00D4FF] border border-[#00D4FF]/30">INTELLIGENT & PROFITABEL</Badge>
               <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-                KI-gestützte Preise. Maximaler Gewinn.
+                Ein klarer Auftrag-zu-Zahlungsschutz-Prozess.
               </h2>
               <p className="text-lg text-gray-400 max-w-2xl">
-                Unsere KI analysiert Marktdaten in Echtzeit und empfiehlt dir den optimalen Preis für jeden Transport – fair, transparent und marktgerecht.
+                CargoBit konzentriert die Investor-Demo auf den wertvollen Kern: realistischen Preis berechnen, Auftrag veröffentlichen, Angebote erhalten, Lieferung dokumentieren und Auszahlung kontrolliert freigeben.
               </p>
             </div>
 
@@ -1312,9 +1354,9 @@ export default function Home() {
                       <div className="w-10 h-10 rounded-xl bg-[#1C7ED6]/20 flex items-center justify-center mb-3">
                         <Truck className="w-5 h-5 text-[#00D4FF]" />
                       </div>
-                      <div className="text-2xl font-bold text-white">12.450+</div>
-                      <div className="text-xs text-gray-400">Transporte</div>
-                      <div className="text-xs text-gray-500">erfolgreich abgewickelt</div>
+                      <div className="text-2xl font-bold text-white">1</div>
+                      <div className="text-xs text-gray-400">Kernprozess</div>
+                      <div className="text-xs text-gray-500">Preis bis Auszahlung</div>
                     </CardContent>
                   </Card>
                   <Card className="bg-[#0B3C5D]/50 border border-[#1C7ED6]/20">
@@ -1322,9 +1364,9 @@ export default function Home() {
                       <div className="w-10 h-10 rounded-xl bg-[#1C7ED6]/20 flex items-center justify-center mb-3">
                         <Users className="w-5 h-5 text-[#00D4FF]" />
                       </div>
-                      <div className="text-2xl font-bold text-white">8.760+</div>
-                      <div className="text-xs text-gray-400">Partner</div>
-                      <div className="text-xs text-gray-500">vertrauen auf CargoBit</div>
+                      <div className="text-2xl font-bold text-white">4</div>
+                      <div className="text-xs text-gray-400">Rollen</div>
+                      <div className="text-xs text-gray-500">Verlader, Carrier, Fahrer, Admin</div>
                     </CardContent>
                   </Card>
                   <Card className="bg-[#0B3C5D]/50 border border-[#1C7ED6]/20">
@@ -1332,9 +1374,9 @@ export default function Home() {
                       <div className="w-10 h-10 rounded-xl bg-[#1C7ED6]/20 flex items-center justify-center mb-3">
                         <Star className="w-5 h-5 text-[#00D4FF]" />
                       </div>
-                      <div className="text-2xl font-bold text-white">98,6%</div>
-                      <div className="text-xs text-gray-400">Zufriedenheit</div>
-                      <div className="text-xs text-gray-500">unserer Kunden</div>
+                      <div className="text-2xl font-bold text-white">24h</div>
+                      <div className="text-xs text-gray-400">Freigabefrist</div>
+                      <div className="text-xs text-gray-500">werktags nach POD</div>
                     </CardContent>
                   </Card>
                   <Card className="bg-[#0B3C5D]/50 border border-[#1C7ED6]/20">
@@ -1342,9 +1384,9 @@ export default function Home() {
                       <div className="w-10 h-10 rounded-xl bg-[#1C7ED6]/20 flex items-center justify-center mb-3">
                         <HeadphonesIcon className="w-5 h-5 text-[#00D4FF]" />
                       </div>
-                      <div className="text-2xl font-bold text-white">24/7</div>
-                      <div className="text-xs text-gray-400">Support</div>
-                      <div className="text-xs text-gray-500">für dich da</div>
+                      <div className="text-2xl font-bold text-white">12%</div>
+                      <div className="text-xs text-gray-400">Business-Provision</div>
+                      <div className="text-xs text-gray-500">plus Zahlungsschutz-Gebühr</div>
                     </CardContent>
                   </Card>
                 </div>
@@ -1352,10 +1394,10 @@ export default function Home() {
                 {/* Features List */}
                 <div className="space-y-3">
                   {[
-                    'Echtzeit-Marktanalyse',
-                    'Berücksichtigung aller Kostenfaktoren',
-                    'Höherer Gewinn durch smarte Algorithmen',
-                    'Schnelle & datenbasierte Entscheidungen'
+                    'KI-Preis mit Mindestpreis gegen Dumping',
+                    'Wallet-Reservierung vor Veröffentlichung',
+                    'POD und Dispute blockieren Auszahlung bei Risiko',
+                    'Bankauszahlung nur aus dem eigenen Wallet'
                   ].map((feature, i) => (
                     <div key={i} className="flex items-center gap-3">
                       <div className="w-6 h-6 rounded-full bg-[#1C7ED6]/20 flex items-center justify-center flex-shrink-0">
@@ -1374,10 +1416,10 @@ export default function Home() {
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-gray-400">Empfohlener Preis</span>
-                      <Badge className="bg-green-500/20 text-green-400 border border-green-500/30">+12% höherer Gewinn</Badge>
+                      <Badge className="bg-green-500/20 text-green-400 border border-green-500/30">Zahlungsschutz-fähig</Badge>
                     </div>
                     <div className="text-4xl font-bold text-white mb-2">€1.680</div>
-                    <div className="text-sm text-gray-400">Inkl. aller Kosten</div>
+                    <div className="text-sm text-gray-400">KI-Preis inkl. Route, Fracht, Risiko und Gebührenbasis</div>
                   </CardContent>
                 </Card>
 
@@ -1401,19 +1443,19 @@ export default function Home() {
                           <MapPin className="w-4 h-4 text-[#00D4FF]" />
                         </div>
                         <div>
-                          <div className="text-white font-medium">Barcelona</div>
-                          <div className="text-xs text-gray-500">Spanien</div>
+                          <div className="text-white font-medium">München</div>
+                          <div className="text-xs text-gray-500">Deutschland</div>
                         </div>
                       </div>
                     </div>
                     <div className="flex gap-6 text-sm text-gray-400">
                       <div className="flex items-center gap-2">
                         <Globe className="w-4 h-4" />
-                        <span>1.893 km</span>
+                        <span>790 km</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4" />
-                        <span>24h 30m</span>
+                        <span>8h 45m</span>
                       </div>
                     </div>
                   </CardContent>
@@ -1425,7 +1467,7 @@ export default function Home() {
                 <div className="relative rounded-2xl overflow-hidden border border-[#1C7ED6]/30 bg-[#0B3C5D] h-full min-h-[400px]">
                   <Image
                     src="/images/dashboard-main.png"
-                    alt="Route Map Hamburg Barcelona"
+                    alt="CargoBit Auftrag-zu-Zahlungsschutz Demo"
                     fill
                     className="object-cover opacity-90"
                   />

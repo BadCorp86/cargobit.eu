@@ -724,14 +724,14 @@ function OrderCashFlow({
           <div>
             <CardTitle className="flex items-center gap-2 text-xl">
               <ReceiptText className="h-5 w-5 text-[#00D4FF]" />
-              Auftrag bis Rechnung
+              Auftrag bis Zahlungsschutz
             </CardTitle>
             <CardDescription className="mt-1 text-white/55">
-              Matching, Annahme, Transportstatus, POD, Rechnung und Auszahlung in einem Ablauf.
+              Matching, Annahme, Transportstatus, POD, Rechnung und Freigabe in einem Ablauf.
             </CardDescription>
           </div>
           <Badge className={source === 'database' ? 'bg-[#2ECC71] text-[#06121C]' : 'bg-[#00D4FF]/15 text-[#00D4FF]'}>
-            {showInternalData ? (source === 'database' ? 'Live Daten' : 'Demo/Fallback') : 'Zahlungsschutz aktiv'}
+            {showInternalData ? (source === 'database' ? 'Live Daten' : 'Preview-Daten') : 'Zahlungsschutz aktiv'}
           </Badge>
         </div>
       </CardHeader>
@@ -805,7 +805,7 @@ function OrderCashFlow({
                   ) : null}
                   {showInternalData ? (
                     <Button asChild variant="outline" className="border-white/15 bg-white/5 text-white hover:bg-white/10 hover:text-white">
-                      <a href={`/api/orders/${orderId}/invoice?amount=850`}>Rechnung JSON</a>
+                      <a href={`/api/orders/${orderId}/invoice?amount=850`}>Rechnungsdaten prüfen</a>
                     </Button>
                   ) : null}
                 </div>
@@ -1281,7 +1281,7 @@ function OrderBidsPanel({
   const parsedPrice = Number(price.replace(',', '.'));
   const priceIsValid = Number.isFinite(parsedPrice) && parsedPrice > 0;
   const bidBlockedReason = isDemoOrder
-    ? 'Dieser Demo-Auftrag ist nicht buchbar. Angebote können nur auf echte veröffentlichte Aufträge abgegeben werden.'
+    ? 'Dieser Preview-Auftrag ist nicht buchbar. Angebote können nur auf echte veröffentlichte Aufträge abgegeben werden.'
     : !jobOpenForBids
       ? 'Dieser Auftrag ist aktuell nicht für Angebote geöffnet.'
       : !user?.id
@@ -1334,7 +1334,7 @@ function OrderBidsPanel({
     }
 
     if (isDemoOrder) {
-      setFeedback('Dieser Demo-Auftrag ist nicht buchbar. Öffne einen echten veröffentlichten Auftrag aus dem Marketplace.');
+      setFeedback('Dieser Preview-Auftrag ist nicht buchbar. Öffne einen echten veröffentlichten Auftrag aus dem Marketplace.');
       return;
     }
 
@@ -1432,7 +1432,7 @@ function OrderBidsPanel({
 
         {isDemoOrder ? (
           <div className="rounded-2xl border border-[#F39C12]/25 bg-[#F39C12]/10 p-4 text-sm text-[#F8D99A]">
-            Dieser Demo-Auftrag dient nur zur Ansicht des Ablaufs. Für echte Angebote muss der Auftrag aus
+            Dieser Preview-Auftrag dient nur zur Ansicht des Ablaufs. Für echte Angebote muss der Auftrag aus
             `/carrier/loads` kommen und den Status „Veröffentlicht“ haben.
           </div>
         ) : null}
