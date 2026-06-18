@@ -140,7 +140,7 @@ export async function POST(
 
     const profile = await ensureCarrierProfile({
       userId,
-      email: auth.user.email || request.headers.get('x-user-email') || `${userId}@local.cargobit.test`,
+      email: auth.user.email || `${userId}@local.cargobit.test`,
       role: normalizeUserRole(userRole),
       transportType: transport.transportType,
       vehicleId: body.vehicleId,
